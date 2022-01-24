@@ -115,6 +115,12 @@ def build_config(config_name, job_id):
 	if config_name == "default":
 		CONFIG = dict()
 
+	elif config_name == "alex":
+		CONFIG = {
+			"MAX_LEARNING_RATE": 10.0,
+			"AUGMENT_DATA": False,
+		}
+
 	elif config_name == "sweep1":
 		# Specify random learning rate, for example.
 		CONFIG = {
@@ -128,9 +134,9 @@ def build_config(config_name, job_id):
 			)
 
 	# Fill in any default values.
-	for key, value in DEFAULT_CONFIG.items():
+	for key, default_value in DEFAULT_CONFIG.items():
 		if key not in CONFIG.keys():
-			CONFIG[key] = value
+			CONFIG[key] = default_value
 
 	return CONFIG
 
