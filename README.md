@@ -30,7 +30,7 @@ AHW (01/24/22)
 * Should we pre-compute all pairwise cross-correlations of the four microphones and feed this into the network at layer 1? I think this might help, since we know this is a good feature that human-engineered solutions for audio localization use.
 * I made a script `data/reshape_dataset.py` that lightly pre-processes the data. One thing we should think about is what units the audio inputs and spatial outputs should be. Right now I am multiplying the audio waveforms by `1e3` and the locations by `1e-3`, as this seemed to produce network that varied from input to input at initialization. We should play around with this more systematically though...
 * The `notebooks/0001-visualize-predictions.ipynb` file can be used to visualize network predictions and compare them to the ground truth. You can load `init_weights` or `best_weights` to view predictions of the initial model (before training) and the best model found during training.
-
+* We should prioritize data cleaning... My hope is that by getting rid of bad samples we'll get a big bump in performance. We should filter out the easy ones (frames where nose is super far away from ears), and then try spot-checking a few hundred random frames
 
 
 
