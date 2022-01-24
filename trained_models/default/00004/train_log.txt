@@ -1,0 +1,116 @@
+2022-01-23 18:59:13,516 INFO     Wrote config.txt file
+2022-01-23 18:59:13,523 INFO     GerbilizerDenseNet(
+  (pooling): AvgPool1d(kernel_size=(2,), stride=(2,), padding=(0,))
+  (f_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(19,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(17,), stride=(2,), padding=(8,))
+    (2): Conv1d(25, 10, kernel_size=(15,), stride=(2,), padding=(7,))
+    (3): Conv1d(35, 10, kernel_size=(13,), stride=(2,), padding=(6,))
+    (4): Conv1d(45, 10, kernel_size=(11,), stride=(2,), padding=(5,))
+    (5): Conv1d(55, 10, kernel_size=(9,), stride=(2,), padding=(4,))
+    (6): Conv1d(65, 10, kernel_size=(7,), stride=(2,), padding=(3,))
+    (7): Conv1d(75, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (8): Conv1d(85, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (9): Conv1d(95, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (10): Conv1d(105, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (11): Conv1d(115, 10, kernel_size=(3,), stride=(2,), padding=(1,))
+  )
+  (g_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(19,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(17,), stride=(2,), padding=(8,))
+    (2): Conv1d(25, 10, kernel_size=(15,), stride=(2,), padding=(7,))
+    (3): Conv1d(35, 10, kernel_size=(13,), stride=(2,), padding=(6,))
+    (4): Conv1d(45, 10, kernel_size=(11,), stride=(2,), padding=(5,))
+    (5): Conv1d(55, 10, kernel_size=(9,), stride=(2,), padding=(4,))
+    (6): Conv1d(65, 10, kernel_size=(7,), stride=(2,), padding=(3,))
+    (7): Conv1d(75, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (8): Conv1d(85, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (9): Conv1d(95, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (10): Conv1d(105, 10, kernel_size=(5,), stride=(2,), padding=(2,))
+    (11): Conv1d(115, 10, kernel_size=(3,), stride=(2,), padding=(1,))
+  )
+  (norm_layers): ModuleList(
+    (0): Identity()
+    (1): Identity()
+    (2): Identity()
+    (3): Identity()
+    (4): Identity()
+    (5): Identity()
+    (6): Identity()
+    (7): Identity()
+    (8): Identity()
+    (9): Identity()
+    (10): Identity()
+    (11): Identity()
+  )
+  (x_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+  (y_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+)
+2022-01-23 18:59:13,526 INFO     Training set:   <dataloaders.GerbilVocalizationDataset object at 0x14bd26790>
+2022-01-23 18:59:13,526 INFO     Validation set:   <dataloaders.GerbilVocalizationDataset object at 0x14bd268b0>
+2022-01-23 18:59:13,526 INFO     Test set:   <dataloaders.GerbilVocalizationDataset object at 0x14bd26970>
+2022-01-23 18:59:13,526 INFO      ==== STARTING TRAINING ====
+
+2022-01-23 18:59:13,526 INFO     >> SAVING INITIAL MODEL WEIGHTS TO /Users/alexanderwilliams/code/gerbilizer/trained_models/default/00004/init_weights.pt
+2022-01-23 18:59:13,529 INFO     >> STARTING EPOCH 1
+2022-01-23 18:59:18,600 INFO     TRAINING. 	 Epoch 1 / 10 [64/10521]   minibatch loss: 0.02206
+2022-01-23 18:59:23,190 INFO     TRAINING. 	 Epoch 1 / 10 [128/10521]   minibatch loss: 0.01678
+2022-01-23 18:59:27,870 INFO     TRAINING. 	 Epoch 1 / 10 [192/10521]   minibatch loss: 0.01647
+2022-01-23 18:59:32,354 INFO     TRAINING. 	 Epoch 1 / 10 [256/10521]   minibatch loss: 0.01425
+2022-01-23 18:59:36,709 INFO     TRAINING. 	 Epoch 1 / 10 [320/10521]   minibatch loss: 0.01325
+2022-01-23 18:59:41,065 INFO     TRAINING. 	 Epoch 1 / 10 [384/10521]   minibatch loss: 0.01533
+2022-01-23 18:59:45,504 INFO     TRAINING. 	 Epoch 1 / 10 [448/10521]   minibatch loss: 0.01387
+2022-01-23 18:59:49,876 INFO     TRAINING. 	 Epoch 1 / 10 [512/10521]   minibatch loss: 0.01607
+2022-01-23 18:59:54,364 INFO     TRAINING. 	 Epoch 1 / 10 [576/10521]   minibatch loss: 0.01596
+2022-01-23 18:59:59,320 INFO     TRAINING. 	 Epoch 1 / 10 [640/10521]   minibatch loss: 0.01312
+2022-01-23 19:00:05,328 INFO     TRAINING. 	 Epoch 1 / 10 [704/10521]   minibatch loss: 0.01426
+2022-01-23 19:00:11,082 INFO     TRAINING. 	 Epoch 1 / 10 [768/10521]   minibatch loss: 0.01408
+2022-01-23 19:00:15,675 INFO     TRAINING. 	 Epoch 1 / 10 [832/10521]   minibatch loss: 0.01393
+2022-01-23 19:00:20,525 INFO     TRAINING. 	 Epoch 1 / 10 [896/10521]   minibatch loss: 0.01336
+2022-01-23 19:00:25,395 INFO     TRAINING. 	 Epoch 1 / 10 [960/10521]   minibatch loss: 0.01234
+2022-01-23 19:00:30,242 INFO     TRAINING. 	 Epoch 1 / 10 [1024/10521]   minibatch loss: 0.01247
+2022-01-23 19:00:34,877 INFO     TRAINING. 	 Epoch 1 / 10 [1088/10521]   minibatch loss: 0.01554
+2022-01-23 19:00:39,314 INFO     TRAINING. 	 Epoch 1 / 10 [1152/10521]   minibatch loss: 0.01411
+2022-01-23 19:00:44,745 INFO     TRAINING. 	 Epoch 1 / 10 [1216/10521]   minibatch loss: 0.01392
+2022-01-23 19:00:49,566 INFO     TRAINING. 	 Epoch 1 / 10 [1280/10521]   minibatch loss: 0.01605
+2022-01-23 19:00:54,496 INFO     TRAINING. 	 Epoch 1 / 10 [1344/10521]   minibatch loss: 0.01372
+2022-01-23 19:00:59,266 INFO     TRAINING. 	 Epoch 1 / 10 [1408/10521]   minibatch loss: 0.01566
+2022-01-23 19:01:04,192 INFO     TRAINING. 	 Epoch 1 / 10 [1472/10521]   minibatch loss: 0.01235
+2022-01-23 19:01:08,852 INFO     TRAINING. 	 Epoch 1 / 10 [1536/10521]   minibatch loss: 0.01532
+2022-01-23 19:01:13,913 INFO     TRAINING. 	 Epoch 1 / 10 [1600/10521]   minibatch loss: 0.01616
+2022-01-23 19:01:18,910 INFO     TRAINING. 	 Epoch 1 / 10 [1664/10521]   minibatch loss: 0.01593
+2022-01-23 19:01:24,257 INFO     TRAINING. 	 Epoch 1 / 10 [1728/10521]   minibatch loss: 0.01365
+2022-01-23 19:01:28,830 INFO     TRAINING. 	 Epoch 1 / 10 [1792/10521]   minibatch loss: 0.01406
+2022-01-23 19:01:33,724 INFO     TRAINING. 	 Epoch 1 / 10 [1856/10521]   minibatch loss: 0.01168
+2022-01-23 19:01:39,759 INFO     TRAINING. 	 Epoch 1 / 10 [1920/10521]   minibatch loss: 0.01573
+2022-01-23 19:01:44,770 INFO     TRAINING. 	 Epoch 1 / 10 [1984/10521]   minibatch loss: 0.01389
+2022-01-23 19:01:49,997 INFO     TRAINING. 	 Epoch 1 / 10 [2048/10521]   minibatch loss: 0.01365
+2022-01-23 19:01:55,352 INFO     TRAINING. 	 Epoch 1 / 10 [2112/10521]   minibatch loss: 0.01367
+2022-01-23 19:02:00,256 INFO     TRAINING. 	 Epoch 1 / 10 [2176/10521]   minibatch loss: 0.01088
+2022-01-23 19:02:04,797 INFO     TRAINING. 	 Epoch 1 / 10 [2240/10521]   minibatch loss: 0.01690
+2022-01-23 19:02:09,480 INFO     TRAINING. 	 Epoch 1 / 10 [2304/10521]   minibatch loss: 0.01213
+2022-01-23 19:02:14,765 INFO     TRAINING. 	 Epoch 1 / 10 [2368/10521]   minibatch loss: 0.01446
+2022-01-23 19:02:19,073 INFO     TRAINING. 	 Epoch 1 / 10 [2432/10521]   minibatch loss: 0.01110
+2022-01-23 19:02:23,373 INFO     TRAINING. 	 Epoch 1 / 10 [2496/10521]   minibatch loss: 0.01189
+2022-01-23 19:02:27,884 INFO     TRAINING. 	 Epoch 1 / 10 [2560/10521]   minibatch loss: 0.01559
+2022-01-23 19:02:32,258 INFO     TRAINING. 	 Epoch 1 / 10 [2624/10521]   minibatch loss: 0.01681
+2022-01-23 19:02:36,619 INFO     TRAINING. 	 Epoch 1 / 10 [2688/10521]   minibatch loss: 0.01427
+2022-01-23 19:02:40,990 INFO     TRAINING. 	 Epoch 1 / 10 [2752/10521]   minibatch loss: 0.01335
+2022-01-23 19:02:45,846 INFO     TRAINING. 	 Epoch 1 / 10 [2816/10521]   minibatch loss: 0.01627
+2022-01-23 19:02:50,763 INFO     TRAINING. 	 Epoch 1 / 10 [2880/10521]   minibatch loss: 0.01258
+2022-01-23 19:02:55,162 INFO     TRAINING. 	 Epoch 1 / 10 [2944/10521]   minibatch loss: 0.01490
+2022-01-23 19:02:59,579 INFO     TRAINING. 	 Epoch 1 / 10 [3008/10521]   minibatch loss: 0.01419
+2022-01-23 19:03:03,977 INFO     TRAINING. 	 Epoch 1 / 10 [3072/10521]   minibatch loss: 0.01272
+2022-01-23 19:03:08,393 INFO     TRAINING. 	 Epoch 1 / 10 [3136/10521]   minibatch loss: 0.01509
+2022-01-23 19:03:12,784 INFO     TRAINING. 	 Epoch 1 / 10 [3200/10521]   minibatch loss: 0.01440
+2022-01-23 19:03:17,221 INFO     TRAINING. 	 Epoch 1 / 10 [3264/10521]   minibatch loss: 0.01432
+2022-01-23 19:03:21,691 INFO     TRAINING. 	 Epoch 1 / 10 [3328/10521]   minibatch loss: 0.01314
+2022-01-23 19:03:26,124 INFO     TRAINING. 	 Epoch 1 / 10 [3392/10521]   minibatch loss: 0.01298
+2022-01-23 19:03:30,658 INFO     TRAINING. 	 Epoch 1 / 10 [3456/10521]   minibatch loss: 0.01205
+2022-01-23 19:03:35,058 INFO     TRAINING. 	 Epoch 1 / 10 [3520/10521]   minibatch loss: 0.01356
+2022-01-23 19:03:39,542 INFO     TRAINING. 	 Epoch 1 / 10 [3584/10521]   minibatch loss: 0.01287
+2022-01-23 19:03:44,060 INFO     TRAINING. 	 Epoch 1 / 10 [3648/10521]   minibatch loss: 0.01301
+2022-01-23 19:03:48,510 INFO     TRAINING. 	 Epoch 1 / 10 [3712/10521]   minibatch loss: 0.01302
+2022-01-23 19:03:53,167 INFO     TRAINING. 	 Epoch 1 / 10 [3776/10521]   minibatch loss: 0.01386
+2022-01-23 19:03:59,382 INFO     TRAINING. 	 Epoch 1 / 10 [3840/10521]   minibatch loss: 0.01565
+2022-01-23 19:04:04,229 INFO     TRAINING. 	 Epoch 1 / 10 [3904/10521]   minibatch loss: 0.01203

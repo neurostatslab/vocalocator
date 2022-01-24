@@ -1,0 +1,5 @@
+Model Configuration
+-------------------
+config : default
+datapath : /Users/alexanderwilliams/code/gerbilizer/training/data
+job_id : 1

@@ -1,0 +1,110 @@
+2022-01-23 18:36:26,402 INFO     Wrote config.txt file
+2022-01-23 18:36:26,409 INFO     GerbilizerDenseNet(
+  (pooling): AvgPool1d(kernel_size=(2,), stride=(2,), padding=(0,))
+  (f_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(20,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (2): Conv1d(25, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (3): Conv1d(35, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (4): Conv1d(45, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (5): Conv1d(55, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (6): Conv1d(65, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (7): Conv1d(75, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (8): Conv1d(85, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (9): Conv1d(95, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (10): Conv1d(105, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (11): Conv1d(115, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+  )
+  (g_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(20,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (2): Conv1d(25, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (3): Conv1d(35, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (4): Conv1d(45, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (5): Conv1d(55, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (6): Conv1d(65, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (7): Conv1d(75, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (8): Conv1d(85, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (9): Conv1d(95, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (10): Conv1d(105, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+    (11): Conv1d(115, 10, kernel_size=(20,), stride=(2,), padding=(9,))
+  )
+  (norm_layers): ModuleList(
+    (0): Identity()
+    (1): Identity()
+    (2): Identity()
+    (3): Identity()
+    (4): Identity()
+    (5): Identity()
+    (6): Identity()
+    (7): Identity()
+    (8): Identity()
+    (9): Identity()
+    (10): Identity()
+    (11): Identity()
+  )
+  (x_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+  (y_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+)
+2022-01-23 18:36:26,411 INFO     Training set:   <dataloaders.GerbilVocalizationDataset object at 0x1443137c0>
+2022-01-23 18:36:26,411 INFO     Validation set:   <dataloaders.GerbilVocalizationDataset object at 0x1443138e0>
+2022-01-23 18:36:26,412 INFO     Test set:   <dataloaders.GerbilVocalizationDataset object at 0x1443139a0>
+2022-01-23 18:36:26,412 INFO      ==== STARTING TRAINING ====
+
+2022-01-23 18:36:26,412 INFO     >> SAVING INITIAL MODEL WEIGHTS TO /Users/alexanderwilliams/code/gerbilizer/trained_models/default/00002/init_weights.pt
+2022-01-23 18:36:26,414 INFO     >> STARTING EPOCH 1
+2022-01-23 18:36:51,884 INFO     Wrote config.txt file
+2022-01-23 18:36:51,890 INFO     GerbilizerDenseNet(
+  (pooling): AvgPool1d(kernel_size=(2,), stride=(2,), padding=(0,))
+  (f_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(19,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (2): Conv1d(25, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (3): Conv1d(35, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (4): Conv1d(45, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (5): Conv1d(55, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (6): Conv1d(65, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (7): Conv1d(75, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (8): Conv1d(85, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (9): Conv1d(95, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (10): Conv1d(105, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (11): Conv1d(115, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+  )
+  (g_convs): ModuleList(
+    (0): Conv1d(4, 11, kernel_size=(19,), stride=(2,), padding=(9,))
+    (1): Conv1d(15, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (2): Conv1d(25, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (3): Conv1d(35, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (4): Conv1d(45, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (5): Conv1d(55, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (6): Conv1d(65, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (7): Conv1d(75, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (8): Conv1d(85, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (9): Conv1d(95, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (10): Conv1d(105, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+    (11): Conv1d(115, 10, kernel_size=(19,), stride=(2,), padding=(9,))
+  )
+  (norm_layers): ModuleList(
+    (0): Identity()
+    (1): Identity()
+    (2): Identity()
+    (3): Identity()
+    (4): Identity()
+    (5): Identity()
+    (6): Identity()
+    (7): Identity()
+    (8): Identity()
+    (9): Identity()
+    (10): Identity()
+    (11): Identity()
+  )
+  (x_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+  (y_coord_readout): Linear(in_features=125, out_features=3, bias=True)
+)
+2022-01-23 18:36:51,892 INFO     Training set:   <dataloaders.GerbilVocalizationDataset object at 0x14815a730>
+2022-01-23 18:36:51,892 INFO     Validation set:   <dataloaders.GerbilVocalizationDataset object at 0x14815a850>
+2022-01-23 18:36:51,892 INFO     Test set:   <dataloaders.GerbilVocalizationDataset object at 0x14815a910>
+2022-01-23 18:36:51,892 INFO      ==== STARTING TRAINING ====
+
+2022-01-23 18:36:51,892 INFO     >> SAVING INITIAL MODEL WEIGHTS TO /Users/alexanderwilliams/code/gerbilizer/trained_models/default/00002/init_weights.pt
+2022-01-23 18:36:51,895 INFO     >> STARTING EPOCH 1
