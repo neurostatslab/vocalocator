@@ -52,19 +52,6 @@ def build_config(config_name, job_id):
 		"NUM_CHANNELS_LAYER_11": 10,
 		"NUM_CHANNELS_LAYER_12": 10,
 
-		# "FILTER_SIZE_LAYER_1": 49,
-		# "FILTER_SIZE_LAYER_2": 45,
-		# "FILTER_SIZE_LAYER_3": 41,
-		# "FILTER_SIZE_LAYER_4": 37,
-		# "FILTER_SIZE_LAYER_5": 33,
-		# "FILTER_SIZE_LAYER_6": 29,
-		# "FILTER_SIZE_LAYER_7": 25,
-		# "FILTER_SIZE_LAYER_8": 21,
-		# "FILTER_SIZE_LAYER_9": 17,
-		# "FILTER_SIZE_LAYER_10": 13,
-		# "FILTER_SIZE_LAYER_11": 9,
-		# "FILTER_SIZE_LAYER_12": 5,
-
 		"FILTER_SIZE_LAYER_1": 51,
 		"FILTER_SIZE_LAYER_2": 51,
 		"FILTER_SIZE_LAYER_3": 51,
@@ -117,7 +104,7 @@ def build_config(config_name, job_id):
 
 	elif config_name == "alex":
 		CONFIG = {
-			"MAX_LEARNING_RATE": 10.0,
+			"MAX_LEARNING_RATE": 1.0,
 			"AUGMENT_DATA": False,
 		}
 

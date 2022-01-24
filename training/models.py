@@ -26,7 +26,7 @@ def build_model(CONFIG):
     if CONFIG["ARCHITECTURE"] == "GerbilizerDenseNet":
         model = GerbilizerDenseNet(CONFIG)
     elif CONFIG["ARCHITECTURE"] == "GerbilizerReLUDenseNet":
-        model = GerbilizerDenseNet(CONFIG)
+        model = GerbilizerReLUDenseNet(CONFIG)
     
     def loss_function(x, y):
         return torch.mean(torch.square(x - y), axis=-1)
@@ -66,6 +66,12 @@ class GerbilizerDenseNet(torch.nn.Module):
                 self.norm_layers.append(torch.nn.Identity())
             N = N + n
 
+        # Final pooling layer, which takes a weighted average
+        # over the time axis.
+        self.final_pooling = torch.nn.Conv1d(
+            N, N, kernel_size=10, groups=N, padding=0
+        )
+
         # Final linear layer to reduce the number of channels.
         self.x_coord_readout = torch.nn.Linear(
             N, CONFIG["NUM_SLEAP_KEYPOINTS"]
@@ -83,8 +89,9 @@ class GerbilizerDenseNet(torch.nn.Module):
             xp = self.pooling(x)
             x = bnrm(torch.cat((xp, h), dim=1))
 
-        px = self.x_coord_readout(x.swapaxes(1, 2))
-        py = self.y_coord_readout(x.swapaxes(1, 2))
+        x_final = torch.squeeze(self.final_pooling(x), dim=-1)
+        px = self.x_coord_readout(x_final)
+        py = self.y_coord_readout(x_final)
         return torch.stack((px, py), dim=-1)
 
 
@@ -116,6 +123,12 @@ class GerbilizerReLUDenseNet(torch.nn.Module):
                 self.norm_layers.append(torch.nn.Identity())
             N = N + n
 
+        # Final pooling layer, which takes a weighted average
+        # over the time axis.
+        self.final_pooling = torch.nn.Conv1d(
+            N, N, kernel_size=10, groups=N, padding=0
+        )
+
         # Final linear layer to reduce the number of channels.
         self.x_coord_readout = torch.nn.Linear(
             N, CONFIG["NUM_SLEAP_KEYPOINTS"]
@@ -131,6 +144,7 @@ class GerbilizerReLUDenseNet(torch.nn.Module):
             xp = self.pooling(x)
             x = bnrm(torch.cat((xp, h), dim=1))
 
-        px = self.x_coord_readout(x.swapaxes(1, 2))
-        py = self.y_coord_readout(x.swapaxes(1, 2))
+        x_final = torch.squeeze(self.final_pooling(x), dim=-1)
+        px = self.x_coord_readout(x_final)
+        py = self.y_coord_readout(x_final)
         return torch.stack((px, py), dim=-1)

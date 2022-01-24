@@ -54,19 +54,19 @@ class GerbilVocalizationDataset(Dataset):
 
         # Load animal location in the environment.
         #
-        # shape: (num_keypoints, 2 (x/y coordinates), num_video_frames)
+        # shape: (num_keypoints, 2 (x/y coordinates))
         locations = self.dataset['locations'][idx]
 
         # With p = 0.5, flip vertically
         if self.flip_vert and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            locations[:, 1, :] *= -1
+            locations[:, 1] *= -1
             sound = sound[[3, 2, 1, 0]]
 
         # With p = 0.5, flip horizontally
         if self.flip_horiz and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            locations[:, 0, :] *= -1
+            locations[:, 0] *= -1
             sound = sound[[1, 0, 3, 2]]
 
         return sound, locations
