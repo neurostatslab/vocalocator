@@ -34,7 +34,7 @@ with h5py.File('preprocessed_vocalization_dataset.h5') as f_src:
 
     # Take average location as the target.
     all_locs = np.mean(
-        np.array(f_src["locations"])[np.load("filtered_idx.npy")],
+        np.array(f_src["locations"])[np.load("filtered_idx_notail.npy")],
         axis=1
     )
     # nt_old = loc_src.shape[1]

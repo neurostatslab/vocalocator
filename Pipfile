@@ -12,7 +12,8 @@ scipy = "*"
 h5py = "*"
 matplotlib = "*"
 tqdm = "*"
-audiomentations = "*"
+torch-audiomentations = "*"
+ipython = "*"
 
 [dev-packages]
 
