@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+numpy = "*"
+torch = "*"
+torchvision = "*"
+torchaudio = "*"
+scipy = "*"
+h5py = "*"
+matplotlib = "*"
+tqdm = "*"
+audiomentations = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.6"

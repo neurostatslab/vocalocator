@@ -10,7 +10,7 @@ random_state = np.random.RandomState(123)
 with h5py.File('preprocessed_vocalization_dataset.h5') as f_src:
 
     # All vocalizations.
-    all_vocs = np.array(f_src["vocalizations"])[np.load("filtered_idx.npy")]
+    all_vocs = np.array(f_src["vocalizations"])[np.load("filtered_idx_notail.npy")]
     n_samples = all_vocs.shape[0]
     n_mics = all_vocs.shape[1]
     nt_audio = all_vocs.shape[2]
