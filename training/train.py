@@ -134,6 +134,10 @@ logging.info(
 # Specifying data augmentations.
 augment = build_augmentations(CONFIG)
 
+# Move model to GPU, if desired.
+if CONFIG["DEVICE"] == "GPU":
+    model.cuda()
+
 # ========================== #
 # === MAIN TRAINING LOOP === #
 # ========================== #

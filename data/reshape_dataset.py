@@ -37,6 +37,7 @@ with h5py.File('preprocessed_vocalization_dataset.h5') as f_src:
         np.array(f_src["locations"])[np.load("filtered_idx_notail.npy")],
         axis=1
     )
+    all_locs = all_locs[:, :2, :]  # remove the tail
     # nt_old = loc_src.shape[1]
     # n_keypoints = loc_src.shape[2]
     # n_spatial_dims = loc_src.shape[3]
