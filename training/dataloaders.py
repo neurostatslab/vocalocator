@@ -40,7 +40,7 @@ class GerbilVocalizationDataset(Dataset):
     def __getitem__(self, idx):
         
         # Load audio waveforms in time domain. Each sample is held
-        # in a matrix with dimensions (4, num_audio_samples)
+        # in a matrix with dimensions (10, num_audio_samples)
         #
         # The four microphones are arranged like this:
         #
@@ -50,6 +50,19 @@ class GerbilVocalizationDataset(Dataset):
         #           |             |
         #           |             |
         #           2-------------3
+        #
+        # The 
+        # 0 - mic 0 trace
+        # 1 - mic 1 trace
+        # 2 - mic 2 trace
+        # 3 - mic 3 trace
+        # 4 - (0, 1) - cross-correlation of mic 0 and mic 1
+        # 5 - (0, 2) - cross-correlation of mic 0 and mic 2
+        # 6 - (0, 3) - cross-correlation of mic 0 and mic 3
+        # 7 - (1, 2) - cross-correlation of mic 1 and mic 2
+        # 8 - (1, 3) - cross-correlation of mic 1 and mic 3
+        # 9 - (2, 3) - cross-correlation of mic 2 and mic 3
+        #
         sound = self.dataset['vocalizations'][idx][:]
 
         # Load animal location in the environment.
@@ -61,15 +74,35 @@ class GerbilVocalizationDataset(Dataset):
         if self.flip_vert and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
             locations[:, 1] *= -1
-            sound = sound[[3, 2, 1, 0]]
+            # mic 0 -> mic 3
+            # mic 1 -> mic 2
+            # mic 2 -> mic 1
+            # mic 3 -> mic 0
+            # (0, 1) -> (3, 2)  so  4 -> 9
+            # (0, 2) -> (3, 1)  so  5 -> 8
+            # (0, 3) -> (3, 0)  so  6 -> 6
+            # (1, 2) -> (2, 1)  so  7 -> 7
+            # (1, 3) -> (2, 0)  so  8 -> 5
+            # (2, 3) -> (1, 0)  so  9 -> 4
+            sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
 
         # With p = 0.5, flip horizontally
         if self.flip_horiz and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
             locations[:, 0] *= -1
-            sound = sound[[1, 0, 3, 2]]
+            # mic 0 -> mic 1
+            # mic 1 -> mic 0
+            # mic 2 -> mic 3
+            # mic 3 -> mic 2
+            # (0, 1) -> (1, 0)  so  4 -> 4
+            # (0, 2) -> (1, 3)  so  5 -> 8
+            # (0, 3) -> (1, 2)  so  6 -> 7
+            # (1, 2) -> (0, 3)  so  7 -> 6
+            # (1, 3) -> (0, 2)  so  8 -> 5
+            # (2, 3) -> (3, 2)  so  9 -> 9
+            sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
 
-        return sound, locations
+        return sound.astype("float32"), locations.astype("float32")
 
 
 def build_dataloaders(path_to_data, CONFIG):

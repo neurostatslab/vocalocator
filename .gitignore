@@ -10,3 +10,5 @@ __pycache__/
 # Model weights
 *.pt
 
+.ipynb_checkpoints/
+trained_models/

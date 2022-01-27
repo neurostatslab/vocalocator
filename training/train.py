@@ -241,3 +241,27 @@ logging.info(
 )
 logging.info(f">> SAVING FINAL MODEL WEIGHTS TO {final_weights_file}")
 torch.save(model.state_dict(), final_weights_file)
+
+# === EVAL TEST ACCURACY === #
+logging.info(f">> EVALUATING ACCURACY ON TEST SET...")
+
+total_testloss = 0.0
+model.eval()
+with torch.no_grad():
+    for sounds, locations in testdata:
+
+        # Move data to gpu
+        if CONFIG["DEVICE"] == "GPU":
+            sounds = sounds.cuda()
+            locations = locations.cuda()
+
+        # Forward pass.
+        outputs = model(sounds)
+
+        # Compute loss.
+        losses = loss_function(outputs, locations)
+        total_testloss += torch.sum(losses).item()
+
+# Write test loss to file
+with open(os.path.join(output_dir, "test_set_rmse.txt"), "w") as f:
+    f.write(f"{1e3 * np.sqrt(total_testloss / len(testdata))}\n")
