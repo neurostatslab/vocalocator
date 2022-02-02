@@ -1,5 +1,12 @@
-from torch_audiomentations import Compose, PitchShift, Shift
+import torch
+from torch_audiomentations import Compose, Shift, PolarityInversion
 
+class AddGaussianNoise(torch.nn.Module):
+    def __init__(self, std):
+        self.std = std
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()).cuda() * self.std
 
 def build_augmentations(CONFIG):
 
@@ -24,12 +31,12 @@ def build_augmentations(CONFIG):
                 shift_unit="fraction",
                 p=CONFIG["AUGMENT_SHIFT_PROB"],
                 mode="per_example",
-            )
-            # AddGaussianNoise(
-            #     min_amplitude=CONFIG["AUGMENT_GAUSS_MIN"],
-            #     max_amplitude=CONFIG["AUGMENT_GAUSS_MAX"],
-            #     p=CONFIG["AUGMENT_GAUSS_PROB"]
-            # ),
+            ),
+            PolarityInversion(
+                p=CONFIG["AUGMENT_INVERSION_PROB"],
+                mode="per_example",
+            ),
+            # AddGaussianNoise(CONFIG["AUGMENT_GAUSS_NOISE"])
         ])
 
     else:

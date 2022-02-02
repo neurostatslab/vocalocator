@@ -13,21 +13,15 @@ from scipy.interpolate import interp1d
 class GerbilVocalizationDataset(Dataset):
     def __init__(
         self, datapath, *,
-        flip_vert=False, flip_horiz=False,
-        audio_pad_len=125000
+        flip_vert=False, flip_horiz=False
     ):
         """
         Args:
             datapath (str):
               Path to directory containing the 'snippet{idx}' subdirectories
-            audio_pad_len (int):
-              Standardized length of all audio samples. Shorter vocalizations
-              will be zero-pad to this length. Longer vocalizations will be
-              truncated equally at both ends to match this length
         """
         self.datapath = datapath
         self.dataset = h5py.File(datapath, 'r')
-        self.audio_pad_len = audio_pad_len  # Standardized audio sample length, int
         self.flip_vert = flip_vert
         self.flip_horiz = flip_horiz
 
@@ -63,7 +57,7 @@ class GerbilVocalizationDataset(Dataset):
         # 8 - (1, 3) - cross-correlation of mic 1 and mic 3
         # 9 - (2, 3) - cross-correlation of mic 2 and mic 3
         #
-        sound = self.dataset['vocalizations'][idx][:]
+        sound = self.dataset['vocalizations'][idx][:, 15000:25000]
 
         # Load animal location in the environment.
         #

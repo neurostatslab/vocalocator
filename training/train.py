@@ -161,6 +161,7 @@ torch.save(model.state_dict(), init_weights_file)
 for epochcount in range(CONFIG["NUM_EPOCHS"]):
 
     # Set the learning rate using cosine annealing.
+    logging.info(f">> SETTING NEW LEARNING RATE: {lr_schedule(epochcount)}")
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr_schedule(epochcount)
 
