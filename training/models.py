@@ -1,4 +1,7 @@
 import torch
+from torch import nn
+from torch.nn import functional as F
+
 
 def build_model(CONFIG):
     """
@@ -25,15 +28,20 @@ def build_model(CONFIG):
 
     if CONFIG["ARCHITECTURE"] == "GerbilizerDenseNet":
         model = GerbilizerDenseNet(CONFIG)
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerReLUDenseNet":
-        model = GerbilizerReLUDenseNet(CONFIG)
     elif CONFIG["ARCHITECTURE"] == "GerbilizerSimpleNetwork":
         model = GerbilizerSimpleNetwork(CONFIG)
+    elif CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
+        model = GerbilizerHourglassNet(CONFIG)
     else:
         raise ValueError("ARCHITECTURE not recognized.")
     
-    def loss_function(x, y):
-        return torch.mean(torch.square(x - y), axis=-1)
+    # TODO: implement Wasserstein metric
+    if CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
+        def loss_function(x, y):
+            return torch.mean(torch.square(), axis=(1, 2))
+    else:
+        def loss_function(x, y):
+            return torch.mean(torch.square(x - y), axis=-1)
 
     return model, loss_function
 
@@ -266,3 +274,96 @@ class GerbilizerDenseNet(torch.nn.Module):
         px = self.x_coord_readout(x_final)
         py = self.y_coord_readout(x_final)
         return torch.stack((px, py), dim=-1)
+
+
+class GerbilizerHourglassNet(nn.Module):
+    def __init__(self, config):
+        super(GerbilizerHourglassNet, self).__init__()
+        
+        self.nonlinearity = nn.ReLU()
+        
+        # Create a set of Conv1d layers to reduce input audio to a vector
+        n_mics = config['NUM_MICROPHONES']
+        n_conv_layers = config['NUM_CONV_LAYERS']
+        n_channels = [config[f'NUM_CHANNELS_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        n_channels.insert(0, n_mics)
+        # Each entry is a tuple of the form (in_channels, out_channels)
+        in_out_channels = zip(n_channels[:-1], n_channels[1:])
+        dilations = [config[f'DILATION_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        strides = [config[f'STRIDE_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        kernel_sizes = [config[f'FILTER_SIZE_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        
+        self.conv_layers = nn.ModuleList()
+        for in_out, filter_size, stride, dilation in zip(in_out_channels, kernel_sizes, strides, dilations):
+            in_channels, out_channels = in_out
+            self.conv_layers.append(
+                nn.Conv1d(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=filter_size,
+                    stride=stride,
+                    dilation=dilation
+                )
+            )
+        
+        self.b_norms = nn.ModuleList()
+        for n_features in n_channels[:-1]:
+            self.b_norms.append(
+                nn.BatchNorm1d(n_features) if config['USE_BATCH_NORM']
+                else nn.Identity()
+            )
+            
+        # Reshape the intermediate vector into an image
+        self.resize_channels = config['RESIZE_TO_N_CHANNELS']
+        self.resize_width = int(np.sqrt(n_channels[-1] // self.resize_channels))
+        self.resize_height = self.resize_width
+        
+        
+        # Create a set of TransposeConv2d layers to upsample the reshaped vector
+        self.tc_layers = nn.ModuleList()
+        n_tc_layers = config['NUM_TCONV_LAYERS']
+        n_tc_channels = [config[f'TCONV_CHANNELS_LAYER_{n + 1}'] for n in range(n_tc_layers)]
+        n_tc_channels.insert(0, self.resize_channels)
+        # Each entry is a tuple of the form (in_channels, out_channels)
+        in_out_channels = zip(n_tc_channels[:-1], n_tc_channels[1:])
+        tc_dilations = [config[f'TCONV_DILATION_LAYER_{n + 1}'] for n in range(n_tc_layers)]
+        tc_strides = [config[f'TCONV_STRIDE_LAYER_{n + 1}'] for n in range(n_tc_layers)]
+        tc_kernel_sizes = [config[f'TCONV_FILTER_SIZE_LAYER_{n + 1}'] for n in range(n_tc_layers)]
+        
+        for in_out, k_size, dilation, stride in zip(in_out_channels, tc_kernel_sizes, tc_dilations, tc_strides):
+            in_channels, out_channels = in_out
+            self.tc_layers.append(
+                nn.ConvTranspose2d(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=k_size,
+                    dilation=dilation,
+                    stride=stride
+                )
+            )
+        
+        self.tc_b_norms = nn.ModuleList()
+        for n_features in n_tc_channels[:-1]:
+            self.tc_b_norms.append(
+                nn.BatchNorm2d(n_features) if config['USE_BATCH_NORM']
+                else nn.Identity()
+            )
+        
+
+    def forward(self, x):
+        conv_output = x
+        for c_layer, b_norm in zip(self.conv_layers, self.b_norms):
+            conv_output = b_norm(conv_output)
+            conv_output = c_layer(conv_output)
+            conv_output = self.nonlinearity(conv_output)
+            
+        avg = F.adaptive_avg_pool1d(conv_output, 1)
+        # TODO: add intermediate linear layers?
+        avg = avg.reshape((-1, self.resize_channels, self.resize_height, self.resize_width))
+        tc_output = avg
+        for tc_layer, b_norm in zip(self.tc_layers, self.tc_b_norms):
+            tc_output = b_norm(tc_output)
+            tc_output = tc_layer(tc_output)
+            tc_output = self.nonlinearity(tc_output)
+        
+        return torch.squeeze(tc_output)
