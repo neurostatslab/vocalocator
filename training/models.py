@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -38,7 +40,7 @@ def build_model(CONFIG):
     # TODO: implement Wasserstein metric
     if CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
         def loss_function(x, y):
-            return torch.mean(torch.square(), axis=(1, 2))
+            return torch.mean(torch.square(y - x), axis=(1, 2))
     else:
         def loss_function(x, y):
             return torch.mean(torch.square(x - y), axis=-1)

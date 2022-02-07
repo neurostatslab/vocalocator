@@ -57,17 +57,18 @@ class GerbilVocalizationDataset(Dataset):
         # 8 - (1, 3) - cross-correlation of mic 1 and mic 3
         # 9 - (2, 3) - cross-correlation of mic 2 and mic 3
         #
-        sound = self.dataset['vocalizations'][idx][:, 15000:25000]
+        sound = self.dataset['vocalizations'][idx][:]
+        # TODO: Fold cross correlations into hourglass model
 
         # Load animal location in the environment.
         #
         # shape: (num_keypoints, 2 (x/y coordinates))
-        locations = self.dataset['locations'][idx]
+        location_map = self.dataset['locations'][idx][:]
 
         # With p = 0.5, flip vertically
         if self.flip_vert and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            locations[:, 1] *= -1
+            location_map = location_map[::-1, :]
             # mic 0 -> mic 3
             # mic 1 -> mic 2
             # mic 2 -> mic 1
@@ -78,12 +79,13 @@ class GerbilVocalizationDataset(Dataset):
             # (1, 2) -> (2, 1)  so  7 -> 7
             # (1, 3) -> (2, 0)  so  8 -> 5
             # (2, 3) -> (1, 0)  so  9 -> 4
-            sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
+            # sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
+            sound = sound[[3, 2, 1, 0]]
 
         # With p = 0.5, flip horizontally
         if self.flip_horiz and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            locations[:, 0] *= -1
+            location_map = location_map[:, ::-1]
             # mic 0 -> mic 1
             # mic 1 -> mic 0
             # mic 2 -> mic 3
@@ -94,9 +96,10 @@ class GerbilVocalizationDataset(Dataset):
             # (1, 2) -> (0, 3)  so  7 -> 6
             # (1, 3) -> (0, 2)  so  8 -> 5
             # (2, 3) -> (3, 2)  so  9 -> 9
-            sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
+            # sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
+            sound = sound[[1, 0, 3, 2]]
 
-        return sound.astype("float32"), locations.astype("float32")
+        return sound.astype("float32"), location_map.astype("float32")
 
 
 def build_dataloaders(path_to_data, CONFIG):
