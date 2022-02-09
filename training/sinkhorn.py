@@ -73,7 +73,7 @@ class SinkhornDistance(nn.Module):
         elif self.reduction == 'sum':
             cost = cost.sum()
 
-        return cost, pi, C
+        return cost.to(x.device)
 
     def M(self, C, u, v):
         "Modified cost for logarithmic updates"

@@ -167,10 +167,10 @@ def build_config(config_name, job_id):
             'NUM_MICROPHONES': 4,
             'NUM_CONV_LAYERS': 5,
             'USE_BATCH_NORM': True,
-            'DEVICE': 'GPU',
+            # 'DEVICE': 'GPU',
             'ARCHITECTURE': 'GerbilizerHourglassNet',
             'NUM_EPOCHS': 100,
-            'TRAIN_BATCH_SIZE': 32,
+            'TRAIN_BATCH_SIZE': 8,
             'SINKHORN_EPSILON': 1e-2,
             'SINKHORN_MAX_ITER': 60,
             
