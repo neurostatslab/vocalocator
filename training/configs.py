@@ -17,6 +17,7 @@ DEFAULT_CONFIG = {
     "NUM_SLEAP_KEYPOINTS": 3,
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
+    "SAVE_SAMPLE_OUTPUT": True,  # Will save part of the validation predictions at every epoch
 
     # Training hyperparameters.
     "NUM_EPOCHS": 20,

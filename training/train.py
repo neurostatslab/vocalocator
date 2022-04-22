@@ -118,7 +118,8 @@ class Trainer():
         logging.info(f" ==== STARTING TRAINING ====\n")
         logging.info(f">> SAVING INITIAL MODEL WEIGHTS TO {self.init_weights_file}")
         self.save_weights(self.init_weights_file)
-    
+        self.last_completed_epoch = 0
+
     def train_epoch(self, epoch_num):
         # Set the learning rate using cosine annealing.
         new_lr = self._get_lr(epoch_num)
@@ -158,7 +159,8 @@ class Trainer():
             self.progress_log.log_train_batch(
                 mean_loss.item(), np.nan, len(sounds)
             )
-    
+        self.last_completed_epoch = epoch_num + 1
+
     def eval_validation(self):
         self.progress_log.start_testing()
         self.model.eval()
@@ -180,6 +182,18 @@ class Trainer():
                 self.progress_log.log_val_batch(
                     mean_loss.item(), np.nan, len(sounds)
                 )
+        
+        if self._config['SAVE_SAMPLE_OUTPUT']:
+            maps_np = outputs.detach().cpu().numpy()
+            labels_np = locations.detach().cpu().numpy()
+            np.save(
+                os.path.join(self.sample_output_dir, 'epoch_{:0>4d}_pred.npy'.format(self.last_completed_epoch)),
+                maps_np
+            )
+            np.save(
+                os.path.join(self.sample_output_dir, 'epoch_{:0>4d}_true.npy'.format(self.last_completed_epoch)),
+                labels_np
+            )
 
         # Done with epoch.
         val_loss = self.progress_log.finish_epoch()
@@ -201,6 +215,12 @@ class Trainer():
             "{0:05g}".format(self._job_id)
         )
         os.makedirs(self.output_dir, exist_ok=True)
+
+        self.sample_output_dir = os.path.join(
+            self.output_dir,
+            'val_predictions'
+        )
+        os.makedirs(self.sample_output_dir, exist_ok=True)
 
         # Write the active configuration to disk
         with open(os.path.join(self.output_dir, 'config.json'), 'w') as ctx:

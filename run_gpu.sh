@@ -5,7 +5,7 @@
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
-#SBATCH --time=4:00:00
+#SBATCH --time=1:00:00
 #SBATCH -o slurm_logs/train_model_%j.log
 pwd; hostname; date;
 
