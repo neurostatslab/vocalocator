@@ -3,8 +3,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from sinkhorn import SinkhornDistance
-
 
 def build_model(CONFIG):
     """
@@ -31,29 +29,46 @@ def build_model(CONFIG):
 
     if CONFIG["ARCHITECTURE"] == "GerbilizerDenseNet":
         model = GerbilizerDenseNet(CONFIG)
+        loss_fn = se_loss_fn
     elif CONFIG["ARCHITECTURE"] == "GerbilizerSimpleNetwork":
         model = GerbilizerSimpleNetwork(CONFIG)
+        loss_fn = se_loss_fn
     elif CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
         model = GerbilizerHourglassNet(CONFIG)
+        loss_fn = wass_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
-    
-    # TODO: implement Wasserstein metric
-    if CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
-        def loss_function(x, y):
-            dist = SinkhornDistance(
-                eps=CONFIG['SINKHORN_EPSILON'],
-                max_iter=CONFIG['SINKHORN_MAX_ITER'],
-                reduction='mean'
-            ).cuda()
-            return dist(x, y)
-    else:
-        def loss_function(x, y):
-            return torch.mean(torch.square(x - y), axis=-1)
 
-    return model, loss_function
+    if CONFIG['DEVICE'] == 'GPU':
+        model.cuda()
 
-    
+    return model, loss_fn
+
+
+# MARK: Loss functions
+# All loss functions are expected to accept the prediction as the first argument
+# and the ground truth as the second argument
+def se_loss_fn(pred, target):
+    # Assumes the inputs have shape (B, 2), representing a batch of `B` 2-dimensional coordinates
+    return 2 * torch.mean(torch.square(target - pred))  # Should be a scalar tensor
+
+def wass_loss_fn(pred, target):
+    """ Calculates the earth mover's distance between the target and predicted locations.
+    This is done by element-wise multiplying the prediction map by a (pre-computed) matrix
+    of distances, in which each element contains the distance of that bin from the target
+    location.
+    This implementation is not symmetric because it scales the input 'pred' via a softmax.
+    What is returned is not the true distance, but a numerically stable analogue that shares
+    minima with the true distance w.r.t model parameters.
+    """
+    flat_pred = torch.flatten(pred, start_dim=1)
+    flat_target = torch.flatten(target, start_dim=1)
+    # Add 1 to target to make the smallest value 0
+    error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
+    return torch.logsumexp(error_map, dim=1)
+
+
+
 class GerbilizerSimpleLayer(torch.nn.Module):
 
     def __init__(
@@ -356,7 +371,7 @@ class GerbilizerHourglassNet(nn.Module):
                 nn.BatchNorm2d(n_features) if config['USE_BATCH_NORM']
                 else nn.Identity()
             )
-        
+
 
     def forward(self, x):
         conv_output = x
@@ -375,3 +390,5 @@ class GerbilizerHourglassNet(nn.Module):
             tc_output = self.nonlinearity(tc_output)
         
         return torch.squeeze(tc_output)
+
+

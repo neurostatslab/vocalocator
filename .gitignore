@@ -12,3 +12,5 @@ __pycache__/
 
 .ipynb_checkpoints/
 trained_models/
+slurm_logs/
+.vscode/

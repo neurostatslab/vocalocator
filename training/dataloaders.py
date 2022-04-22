@@ -13,12 +13,20 @@ from scipy.interpolate import interp1d
 class GerbilVocalizationDataset(Dataset):
     def __init__(
         self, datapath, *,
+        locations_are_maps=True,
         flip_vert=False, flip_horiz=False
     ):
         """
         Args:
             datapath (str):
-              Path to directory containing the 'snippet{idx}' subdirectories
+                Path to directory containing the 'snippet{idx}' subdirectories
+            locations_are_maps (bool):
+                When true, labels are presented as maps of shape (h, w). Otherwise, labels are
+                of shape (2,), representing an x- and y-coordinate
+            flip_vert (bool):
+                When true, mirroring augmentation will be applied to data and labels
+            flip_horiz (bool):
+                When true, mirroring augmentation will be applied to data and labels
         """
         self.datapath = datapath
         self.dataset = h5py.File(datapath, 'r')
@@ -79,8 +87,10 @@ class GerbilVocalizationDataset(Dataset):
             # (1, 2) -> (2, 1)  so  7 -> 7
             # (1, 3) -> (2, 0)  so  8 -> 5
             # (2, 3) -> (1, 0)  so  9 -> 4
-            # sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
-            sound = sound[[3, 2, 1, 0]]
+            if sound.shape[0] == 10:
+                sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
+            else:
+                sound = sound[[3, 2, 1, 0]]
 
         # With p = 0.5, flip horizontally
         if self.flip_horiz and np.random.binomial(1, 0.5):
@@ -96,8 +106,10 @@ class GerbilVocalizationDataset(Dataset):
             # (1, 2) -> (0, 3)  so  7 -> 6
             # (1, 3) -> (0, 2)  so  8 -> 5
             # (2, 3) -> (3, 2)  so  9 -> 9
-            # sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
-            sound = sound[[1, 0, 3, 2]]
+            if sound.shape[0] == 10:
+                sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
+            else:
+                sound = sound[[1, 0, 3, 2]]
 
         return sound.astype("float32"), location_map.astype("float32")
 
