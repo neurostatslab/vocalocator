@@ -13,16 +13,12 @@ from scipy.interpolate import interp1d
 class GerbilVocalizationDataset(Dataset):
     def __init__(
         self, datapath, *,
-        locations_are_maps=True,
         flip_vert=False, flip_horiz=False
     ):
         """
         Args:
             datapath (str):
                 Path to directory containing the 'snippet{idx}' subdirectories
-            locations_are_maps (bool):
-                When true, labels are presented as maps of shape (h, w). Otherwise, labels are
-                of shape (2,), representing an x- and y-coordinate
             flip_vert (bool):
                 When true, mirroring augmentation will be applied to data and labels
             flip_horiz (bool):
@@ -72,11 +68,20 @@ class GerbilVocalizationDataset(Dataset):
         #
         # shape: (num_keypoints, 2 (x/y coordinates))
         location_map = self.dataset['locations'][idx][:]
+        is_map = len(location_map.shape) == 2
+
+        if not is_map:
+            # Shift range to [-1, 1]
+            location_map[0] /= 300
+            location_map[1] /= 200
 
         # With p = 0.5, flip vertically
         if self.flip_vert and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            location_map = location_map[::-1, :]
+            if is_map:
+                location_map = location_map[::-1, :]
+            else:
+                location_map[1] *= -1
             # mic 0 -> mic 3
             # mic 1 -> mic 2
             # mic 2 -> mic 1
@@ -95,7 +100,10 @@ class GerbilVocalizationDataset(Dataset):
         # With p = 0.5, flip horizontally
         if self.flip_horiz and np.random.binomial(1, 0.5):
             # Assumes the center of the enclosure is (0, 0)
-            location_map = location_map[:, ::-1]
+            if is_map:
+                location_map = location_map[:, ::-1]
+            else:
+                location_map[0] *= -1
             # mic 0 -> mic 1
             # mic 1 -> mic 0
             # mic 2 -> mic 3

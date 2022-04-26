@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
     "SAVE_SAMPLE_OUTPUT": True,  # Will save part of the validation predictions at every epoch
+    "SAVE_LOSS_PLOT": True,  # Will plot loss at every epoch
 
     # Training hyperparameters.
     "NUM_EPOCHS": 20,
@@ -270,7 +271,8 @@ def build_config_from_file(filepath: str, job_id: int) -> JSON:
     if 'CONFIG_NAME' not in config:
         raise ValueError("Configurations provided as JSON files should include a 'CONFIG_NAME' string.")
 
-    config['JOB_ID'] = job_id
+    if job_id is not None:
+        config['JOB_ID'] = job_id
     for key, default_value in DEFAULT_CONFIG.items():
         if key not in config.keys():
             config[key] = default_value

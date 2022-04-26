@@ -3,9 +3,10 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Callable, NewType, Tuple
+from typing import Callable, NewType, Optional, Tuple
 
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 
 from configs import build_config_from_file, build_config_from_name
@@ -13,6 +14,10 @@ from models import build_model
 from dataloaders import build_dataloaders
 from augmentations import build_augmentations
 from logger import ProgressLogger
+
+
+logger = logging.getLogger('no_spam')
+logger.setLevel(logging.DEBUG)
 
 
 JSON = NewType('JSON', dict)
@@ -97,33 +102,42 @@ def validate_args(args):
             dirs = [f for f in os.listdir(job_dir) if os.path.isdir(os.path.join(job_dir, f))]
             # Finds the highest job id and adds 1, defualts to 1 if there are no existing jobs
             args.job_id = 1 if not dirs else 1 + max(int(d) for d in dirs)
+        args.config_data['JOB_ID'] = args.job_id
 
 
 class Trainer():
     def __init__(self,
         datafile: str,
         config_data: JSON,
-        job_id: int
+        job_id: int, *,
+        eval_mode: bool=False
     ):
+        self._eval = eval_mode
         self._datafile = datafile
         self._config = config_data
         self._job_id = job_id
-        self._setup_dataloaders()
-        self._setup_output_dirs()
-        self._setup_model()
-        self._augment = build_augmentations(self._config)
+        if not self._eval:
+            self._setup_dataloaders()
+            self._setup_output_dirs()
+            self._augment = build_augmentations(self._config)
 
-        self._best_loss = float('inf')
-        # Save initial weights.
-        logging.info(f" ==== STARTING TRAINING ====\n")
-        logging.info(f">> SAVING INITIAL MODEL WEIGHTS TO {self.init_weights_file}")
-        self.save_weights(self.init_weights_file)
-        self.last_completed_epoch = 0
+        # setup_model depends on logger setup in setup_output_dirA
+        # thus, the if statement on _eval is split in two
+        self._setup_model()
+
+        if not self._eval:
+            logger.info(f" ==== STARTING TRAINING ====\n")
+            logger.info(f">> SAVING INITIAL MODEL WEIGHTS TO {self.init_weights_file}")
+            self.save_weights(self.init_weights_file)
+
+            self._best_loss = float('inf')
+            self.last_completed_epoch = 0
+            self.loss_history = list()
 
     def train_epoch(self, epoch_num):
         # Set the learning rate using cosine annealing.
         new_lr = self._get_lr(epoch_num)
-        logging.info(f">> SETTING NEW LEARNING RATE: {new_lr}")
+        logger.info(f">> SETTING NEW LEARNING RATE: {new_lr}")
         for param_group in self.optim.param_groups:
             param_group['lr'] = new_lr
 
@@ -159,6 +173,10 @@ class Trainer():
             self.progress_log.log_train_batch(
                 mean_loss.item(), np.nan, len(sounds)
             )
+
+            if self._config['SAVE_LOSS_PLOT']:
+                self.loss_history.append(mean_loss.detach().cpu().item())
+            
         self.last_completed_epoch = epoch_num + 1
 
     def eval_validation(self):
@@ -194,6 +212,18 @@ class Trainer():
                 os.path.join(self.sample_output_dir, 'epoch_{:0>4d}_true.npy'.format(self.last_completed_epoch)),
                 labels_np
             )
+        
+        if self._config['SAVE_LOSS_PLOT']:
+            try:
+                plt.plot(self.loss_history, 'r-')
+                plt.xlabel('Minibatch #')
+                plt.ylabel('Loss (arb. unit)')
+                plt.title("Training loss evolution")
+                plt.yscale('log')
+                plt_path = os.path.join(self.output_dir, 'loss_fig.png')
+                plt.savefig(plt_path)
+            except:
+                pass  # If the loss is negative, things can go wrong here
 
         # Done with epoch.
         val_loss = self.progress_log.finish_epoch()
@@ -201,10 +231,44 @@ class Trainer():
         # Save best set of weights.
         if val_loss < self._best_loss:
             self._best_loss = val_loss
-            logging.info(
+            logger.info(
                 f">> VALIDATION LOSS IS BEST SO FAR, SAVING WEIGHTS TO {self.best_weights_file}"
             )
             self.save_weights(self.best_weights_file)
+        logger.info(self._query_mem_usage())
+    
+    def eval_on_dataset(self, dset, batch_size=None):
+        """ Creates a generator that sequentially evaluates the model on the data within
+        some dataset. The dataset is expected to be an h5py File object with a dataset labeled
+        'vocalizations' within the root group. This dataset should have shape 
+        (n, n_channels, n_samples), with n_channels corresponding to the channel count the model
+        was trained to handle.
+        """
+        self.model.eval()
+        if batch_size is None:
+            batch_size = self._config['TRAIN_BATCH_SIZE']
+        use_gpu = self._config['DEVICE'] == 'GPU'
+        pad_len = 8192  # I think I should be able to store this in the model parameter dict
+
+        vocalizations = dset['vocalizations']
+        n_vocs = vocalizations.shape[0]
+        idx = 0
+        with torch.no_grad():
+            while idx < n_vocs:
+                end_idx = min(idx + batch_size, n_vocs)
+                batch = vocalizations[idx:end_idx]
+                idx += batch.shape[0]
+                if batch.shape[1] < pad_len:
+                    temp = np.zeros((batch.shape[0], batch.shape[1], pad_len), dtype=batch.dtype)
+                    temp[..., :batch.shape[-1]] = batch
+                    batch = temp
+                elif batch.shape[1] > pad_len:
+                    batch = batch[..., :pad_len]
+                
+                batch = torch.from_numpy(batch)
+                if use_gpu:
+                    batch = batch.cuda()
+                yield self.model(batch).detach().cpu().numpy()
 
     def _setup_output_dirs(self):
         # Save results to `../../trained_models/{config}/{job_id}` directory.
@@ -224,23 +288,23 @@ class Trainer():
 
         # Write the active configuration to disk
         with open(os.path.join(self.output_dir, 'config.json'), 'w') as ctx:
-            json.dump(self._config, ctx)
+            json.dump(self._config, ctx, indent=4)
 
         # Configure log file.
         log_filepath = os.path.join(self.output_dir, 'train_log.txt')
-        logging.basicConfig(
-            level=logging.DEBUG,
-            filename=log_filepath,
-            format="%(asctime)-15s %(levelname)-8s %(message)s",
-            force=True
-        )
+        ch = logging.FileHandler(filename=log_filepath, mode='w')
+        ch.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)-15s %(levelname)-8s %(message)s')
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
 
         self.progress_log = ProgressLogger(
             self._config["NUM_EPOCHS"],
             self.traindata,
             self.valdata,
             self._config["LOG_INTERVAL"],
-            self.output_dir
+            self.output_dir,
+            logger
         )
         print(f"Saving logs to file: `{log_filepath}`")
 
@@ -262,25 +326,31 @@ class Trainer():
 
         # Specify network architecture and loss function.
         self.model, self._loss_fn = build_model(self._config)
-        logging.info(self.model.__repr__())
+        if not self._eval:
+            logger.info(self.model.__repr__())
 
-        # Specify optimizer.
-        self.optim = torch.optim.SGD(
-            self.model.parameters(),
-            lr=0.0, # this is set manually at the start of each epoch.
-            momentum=self._config["MOMENTUM"],
-            weight_decay=self._config["WEIGHT_DECAY"]
-        )
+            # Specify optimizer.
+            self.optim = torch.optim.SGD(
+                self.model.parameters(),
+                lr=0.0, # this is set manually at the start of each epoch.
+                momentum=self._config["MOMENTUM"],
+                weight_decay=self._config["WEIGHT_DECAY"]
+            )
 
+    def _query_mem_usage(self):
+        used_gb = torch.cuda.max_memory_allocated() / (2**30)
+        total_gb = torch.cuda.get_device_properties(0).total_memory / (2**30)
+        torch.cuda.reset_max_memory_allocated()
+        return 'Max mem. usage: {:.2f}/{:.2f}GiB'.format(used_gb, total_gb)
 
     def _setup_dataloaders(self):
         # Load training set, validation set, test set.
         self.traindata, self.valdata, self.testdata = build_dataloaders(
             self._datafile, self._config
         )
-        logging.info(f"Training set:\t{self.traindata.dataset}")
-        logging.info(f"Validation set:\t{self.valdata.dataset}")
-        logging.info(f"Test set:\t{self.testdata.dataset}")
+        logger.info(f"Training set:\t{self.traindata.dataset}")
+        logger.info(f"Validation set:\t{self.valdata.dataset}")
+        logger.info(f"Test set:\t{self.testdata.dataset}")
 
 
     def _get_lr(self, epoch_num: int) -> float:
@@ -294,6 +364,60 @@ class Trainer():
         return (
             lm0 + 0.5 * (lm1 - lm0) * (1 + np.cos(f * np.pi))
         )
+    
+    @classmethod
+    def from_trained_model(cls,
+        config: JSON, *,
+        model_name: Optional[str]=None,
+        job_id: Optional[int]=None,
+        device_override: Optional[str]=None
+    ):
+        """ Initializes the model with weights initialized from the best weights of a
+        previously trained instance.
+        Parameters:
+        config (JSON):
+            - config dictionary for the model
+        model_name (str):
+            - Model name under which the weights will be located. If not provided,
+            will be sourced from config dict (assuming it's present)
+        job_id (int):
+            - Job ID in which the weights will be located. If not provided, will be
+            sourced from config dict (assuming it's present)
+        device_override (str):
+            - When specified, overrides the device (cpu or gpu) present in the config
+        """
+        if job_id is None:
+            if config['JOB_ID'] is None:
+                raise ValueError('No job id provided. Cannot locate weights.')
+            job_id = config['JOB_ID']
+        if model_name is None:
+            if config['CONFIG_NAME'] is None:
+                raise ValueError('No model name provided. Cannot locate weights')
+            model_name = config['CONFIG_NAME']
+        
+        if device_override is not None:
+            device = device_override
+            # This needs to be changed so the model is loaded into the right device
+            config['DEVICE'] = device.upper()
+        else:
+            device = config['DEVICE'].lower()
+        
+        device = 'cuda:0' if device == 'gpu' else 'cpu'
+
+        trainer = cls(None, config, job_id, eval_mode=True)
+
+        weight_file = os.path.join(
+            base_dir,
+            "trained_models",
+            model_name,
+            "{0:05g}".format(job_id),
+            "best_weights.pt"
+        )
+
+        weights = torch.load(weight_file, map_location=device)
+        trainer.model.load_state_dict(weights)
+
+        return trainer
 
 
 def run():
@@ -305,11 +429,11 @@ def run():
         trainer.train_epoch(epoch)
         trainer.eval_validation()
 
-    logging.info(
+    logger.info(
         ">> FINISHED ALL EPOCHS. TOTAL TIME ELAPSED: " +
         trainer.progress_log.print_time_since_initialization()
     )
-    logging.info(f">> SAVING FINAL MODEL WEIGHTS TO {trainer.final_weights_file}")
+    logger.info(f">> SAVING FINAL MODEL WEIGHTS TO {trainer.final_weights_file}")
     trainer.save_weights(trainer.final_weights_file)
 
 
@@ -320,7 +444,7 @@ if __name__ == '__main__':
 # in real world units
 """
 # === EVAL TEST ACCURACY === #
-logging.info(f">> EVALUATING ACCURACY ON TEST SET...")
+logger.info(f">> EVALUATING ACCURACY ON TEST SET...")
 
 total_testloss = 0.0
 model.eval()

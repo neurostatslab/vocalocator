@@ -36,6 +36,9 @@ def build_model(CONFIG):
     elif CONFIG["ARCHITECTURE"] == "GerbilizerHourglassNet":
         model = GerbilizerHourglassNet(CONFIG)
         loss_fn = wass_loss_fn
+    elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionNet":
+        model = GerbilizerAttentionNet(CONFIG)
+        loss_fn = se_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -392,3 +395,126 @@ class GerbilizerHourglassNet(nn.Module):
         return torch.squeeze(tc_output)
 
 
+
+# Positional Encoding module copied from https://github.com/pytorch/examples/blob/main/word_language_model/model.py
+# and modified slightly to accomodate a batch-first data shape
+class PositionalEncoding(nn.Module):
+    r"""Inject some information about the relative or absolute position of the tokens in the sequence.
+        The positional encodings have the same dimension as the embeddings, so that the two can be summed.
+        Here, we use sine and cosine functions of different frequencies.
+    .. math:
+        \text{PosEncoder}(pos, 2i) = sin(pos/10000^(2i/d_model))
+        \text{PosEncoder}(pos, 2i+1) = cos(pos/10000^(2i/d_model))
+        \text{where pos is the word position and i is the embed idx)
+    Args:
+        d_model: the embed dim (required).
+        dropout: the dropout value (default=0.1).
+        max_len: the max. length of the incoming sequence (default=5000).
+    Examples:
+        >>> pos_encoder = PositionalEncoding(d_model)
+    """
+
+    def __init__(self, d_model, dropout=0, max_len=8192):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # Modification: remove transpose so resulting shape is (1, seq, features)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        r"""Inputs of forward function
+        Args:
+            x: the sequence fed to the positional encoder model (required).
+        Shape:
+            x: [batch size, sequence length, embed dim]
+            output: [batch size, sequence length, embed dim]
+        Examples:
+            >>> output = pos_encoder(x)
+        """
+
+        x = x + self.pe[:, :x.size(1), :]
+        return self.dropout(x)
+
+
+class GerbilizerAttentionNet(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        
+        n_mics = config['NUM_MICROPHONES']
+        n_conv_layers = config['NUM_CONV_LAYERS']
+        n_channels = [config[f'NUM_CHANNELS_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        n_channels.insert(0, n_mics)
+        # Each entry is a tuple of the form (in_channels, out_channels)
+        in_out_channels = zip(n_channels[:-1], n_channels[1:])
+        dilations = [config[f'DILATION_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        strides = [config[f'STRIDE_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+        kernel_sizes = [config[f'FILTER_SIZE_LAYER_{n + 1}'] for n in range(n_conv_layers)]
+
+        # Amount of padding needed to divide seq len (an even number) by 2
+        n_padding_formula = lambda k,d,s: k // 2 if s == 2 else 0
+        
+        self.conv_layers = nn.ModuleList()
+        for in_out, filter_size, stride, dilation in zip(in_out_channels, kernel_sizes, strides, dilations):
+            in_channels, out_channels = in_out
+            self.conv_layers.append(
+                nn.Conv1d(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=filter_size,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=n_padding_formula(filter_size, dilation, stride)
+                )
+            )
+        
+        n_transformer_layers = config['N_TRANSFORMER_LAYERS']
+        n_attn_heads = config['N_ATTENTION_HEADS']
+        n_features = n_channels[-1]
+        
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model=n_features,
+            nhead=n_attn_heads,
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(
+            self.encoder_layer,
+            n_transformer_layers
+        )
+        # No dropout here since the TransformerEncoder implements its own dropout
+        self.p_encoding = PositionalEncoding(n_features)
+
+        seq_len_reduction = 1
+        for stride in strides:
+            seq_len_reduction *= stride
+        transformer_out_size = 8192 // seq_len_reduction
+
+        self.dense = nn.Sequential(
+            nn.Linear(transformer_out_size * n_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU()
+        )
+
+        self.x_readout = nn.Sequential(nn.Linear(256, 1), nn.Tanh())
+        self.y_readout = nn.Sequential(nn.Linear(256, 1), nn.Tanh())
+    
+    def forward(self, x):
+        conv_out = x
+        for conv in self.conv_layers:
+            conv_out = conv(conv_out)
+            conv_out = F.relu(conv_out)
+            # Batch_norm?
+        # (batch, channel, seq) -> (batch, seq, channel)
+        transformer_input = conv_out.transpose(1, 2)
+        encoded = self.p_encoding(transformer_input)
+        transformer_out = self.transformer(encoded)
+        transformer_out = torch.flatten(transformer_out, start_dim=1)
+        linear_out = self.dense(transformer_out)
+        x = self.x_readout(linear_out)
+        y = self.y_readout(linear_out)
+        return torch.cat([x, y], dim=1)

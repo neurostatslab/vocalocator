@@ -58,7 +58,7 @@ class ProgressLogger:
 
     def __init__(
             self, num_epochs, traindata, valdata,
-            log_interval, output_dir
+            log_interval, output_dir, logger
         ):
 
         self.num_epochs = num_epochs
@@ -79,6 +79,8 @@ class ProgressLogger:
         self.train_loss_filepath = os.path.join(output_dir, "train_loss.txt")
         self.val_loss_filepath = os.path.join(output_dir, "val_loss.txt")
 
+        self.logger = logger
+
     def require_log(self):
         """Returns True if we need to log progress."""
         if (time() - self.last_log_time) > self.log_interval:
@@ -97,7 +99,7 @@ class ProgressLogger:
 
         # Increment epochs.
         self.epochcount += 1
-        logging.info(
+        self.logger.info(
             ">> STARTING EPOCH {}".format(self.epochcount)
         )
 
@@ -108,10 +110,10 @@ class ProgressLogger:
                 self.train_accumulator.secs_per_image * self.num_train_images +
                 self.val_accumulator.secs_per_image * self.num_val_images
             )
-            logging.info(
+            self.logger.info(
                 ">> TIME ELAPSED SO FAR:\t" + self.print_time_since_initialization()
             )
-            logging.info(
+            self.logger.info(
                 ">> EST. TIME REMAINING:\t" + format_seconds(time_remaining)
             )
 
@@ -133,7 +135,7 @@ class ProgressLogger:
 
         # Output training progress.
         if self.require_log():
-            logging.info(
+            self.logger.info(
                 "TRAINING. \t Epoch " +
                 "{} / {} ".format(self.epochcount, self.num_epochs) +
                 "[{}/{}]".format(
@@ -146,7 +148,7 @@ class ProgressLogger:
     def start_testing(self):
 
         # Log progress.
-        logging.info(">> DONE TRAINING, STARTING TESTING.")
+        self.logger.info(">> DONE TRAINING, STARTING TESTING.")
 
         # Reset testing statistics.
         self.val_accumulator.reset()
@@ -162,7 +164,7 @@ class ProgressLogger:
         )
         # Output training progress.
         if self.require_log():
-            logging.info(
+            self.logger.info(
                 "TESTING VALIDATION SET. Epoch {} ".format(self.epochcount) +
                 "[{}/{}]".format(
                     self.val_accumulator.imagecount,
@@ -172,7 +174,7 @@ class ProgressLogger:
 
     def finish_epoch(self):
         """Log statistics on the test set."""
-        logging.info(
+        self.logger.info(
             ">> FINISHED EPOCH IN: " + format_seconds(
             time() - self.epoch_start_time
         ))
