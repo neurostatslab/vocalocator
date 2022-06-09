@@ -1,11 +1,13 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p gpu
+#SBATCH --constraint=v100
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
-#SBATCH --time=4:00:00
-#SBATCH -o slurm_logs/train_model_%j.log
+#SBATCH --time=1:00:00
+#SBATCH --array=1-40%4
+#SBATCH -o slurm_logs/train_model_%a.log
 pwd; hostname; date;
 
 ##################################################
@@ -20,10 +22,15 @@ pwd; hostname; date;
 # Expects the data dir as first positional argument
 # config path/name as second argument
 DATA_DIR=$1
-CONFIG=$2
+BATCH_DIR=$2
 
 if [ -z $DATA_DIR ]; then
     echo "Path to train/val/test datasets should be provided as the first positional argument"
+    exit 1
+fi
+
+if [ -z $BATCH_DIR ]; then
+    echo "Path to directory containing config files should be provided as the second positional argument"
     exit 1
 fi
 
@@ -32,20 +39,9 @@ fi
 #    exit 1
 #fi
 
-if [ -z $CONFIG ]; then
-    echo "Config name or path to config JSON should be provided as second positional argument"
-    exit 1
-fi
 
-
-if [ -f $CONFIG ]; then
-    pipenv run python training/train.py \
-        --config_file $CONFIG \
-        --datafile $DATA_DIR
-else
-    pipenv run python training/train.py \
-        --config $CONFIG \
-        --datafile $DATA_DIR
-fi
+pipenv run python training/train.py \
+    --config_file $BATCH_DIR/batch_config_${SLURM_ARRAY_TASK_ID}.json \
+    --datafile $DATA_DIR
 
 date;

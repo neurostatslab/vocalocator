@@ -14,7 +14,6 @@ DEFAULT_CONFIG = {
     "NUMPY_SEED": 777,
     "LOG_INTERVAL": 3, # seconds
     "NUM_MICROPHONES": 10,  # including xcorrs
-    "NUM_SLEAP_KEYPOINTS": 3,
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
     "SAVE_SAMPLE_OUTPUT": True,  # Will save part of the validation predictions at every epoch
@@ -26,63 +25,23 @@ DEFAULT_CONFIG = {
     "MAX_LEARNING_RATE": 1e-2,
     "MIN_LEARNING_RATE": 1e-6,
     "WEIGHT_DECAY": 1e-5,
+    "OPTIMIZER": "SGD",
     "MOMENTUM": 0.5,
-
-    "INPUT_SCALE_FACTOR": 1.0,
-    "OUTPUT_SCALE_FACTOR": 1.0,
 
     "VAL_BATCH_SIZE": 64,
     "TEST_BATCH_SIZE": 64,
 
     # Architecture hyperparameters.
-    "ARCHITECTURE": "GerbilizerDenseNet",
+    "ARCHITECTURE": "GerbilizerSimpleNet",
     "USE_BATCH_NORM": False,
-
     "POOLING": "AVG",
 
-    "NUM_CHANNELS_LAYER_1": 11,
-    "NUM_CHANNELS_LAYER_2": 10,
-    "NUM_CHANNELS_LAYER_3": 10,
-    "NUM_CHANNELS_LAYER_4": 10,
-    "NUM_CHANNELS_LAYER_5": 10,
-    "NUM_CHANNELS_LAYER_6": 10,
-    "NUM_CHANNELS_LAYER_7": 10,
-    "NUM_CHANNELS_LAYER_8": 10,
-    "NUM_CHANNELS_LAYER_9": 10,
-    "NUM_CHANNELS_LAYER_10": 10,
-    "NUM_CHANNELS_LAYER_11": 10,
-    "NUM_CHANNELS_LAYER_12": 10,
-
-    "FILTER_SIZE_LAYER_1": 51,
-    "FILTER_SIZE_LAYER_2": 51,
-    "FILTER_SIZE_LAYER_3": 51,
-    "FILTER_SIZE_LAYER_4": 51,
-    "FILTER_SIZE_LAYER_5": 51,
-    "FILTER_SIZE_LAYER_6": 51,
-    "FILTER_SIZE_LAYER_7": 51,
-    "FILTER_SIZE_LAYER_8": 51,
-    "FILTER_SIZE_LAYER_9": 49,
-    "FILTER_SIZE_LAYER_10": 37,
-    "FILTER_SIZE_LAYER_11": 19,
-    "FILTER_SIZE_LAYER_12": 9,
-
-    "DILATION_LAYER_1": 1,
-    "DILATION_LAYER_2": 1,
-    "DILATION_LAYER_3": 1,
-    "DILATION_LAYER_4": 1,
-    "DILATION_LAYER_5": 1,
-    "DILATION_LAYER_6": 1,
-    "DILATION_LAYER_7": 1,
-    "DILATION_LAYER_8": 1,
-    "DILATION_LAYER_9": 1,
-    "DILATION_LAYER_10": 1,
-    "DILATION_LAYER_11": 1,
-    "DILATION_LAYER_12": 1,
+    "CONV_NUM_CHANNELS": [11, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+    "CONV_FILTER_SIZES": [51, 51, 51, 51, 51, 51, 51, 51, 49, 37, 19, 9],
+    "CONV_DILATIONS": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 
     # Data Augmentations present during training.
     "AUGMENT_DATA": True,
-    "AUGMENT_FLIP_HORIZ": True,
-    "AUGMENT_FLIP_VERT": True,
     "AUGMENT_STRETCH_MIN": 0.95,
     "AUGMENT_STRETCH_MAX": 1.1,
     "AUGMENT_STRETCH_PROB": 1e-6,
@@ -94,6 +53,11 @@ DEFAULT_CONFIG = {
     "AUGMENT_SHIFT_MAX": 0.1,
     "AUGMENT_SHIFT_PROB": 1.0,
     "AUGMENT_INVERSION_PROB": 0.5,
+    
+    # Label augmentations: involve mirroring sounds within the arena
+    "AUGMENT_LABELS": True,
+    "AUGMENT_FLIP_HORIZ": True,
+    "AUGMENT_FLIP_VERT": True,
 }
 
 
@@ -134,119 +98,9 @@ def build_config_from_name(config_name, job_id):
             "DEVICE": "CPU",
             "AUGMENT_DATA": True,
 
-            "NUM_CHANNELS_LAYER_1": 16,
-            "NUM_CHANNELS_LAYER_2": 16,
-            "NUM_CHANNELS_LAYER_3": 16,
-            "NUM_CHANNELS_LAYER_4": 32,
-            "NUM_CHANNELS_LAYER_5": 32,
-            "NUM_CHANNELS_LAYER_6": 32,
-            "NUM_CHANNELS_LAYER_7": 64,
-            "NUM_CHANNELS_LAYER_8": 64,
-            "NUM_CHANNELS_LAYER_9": 64,
-            "NUM_CHANNELS_LAYER_10": 128,
-            "NUM_CHANNELS_LAYER_11": 128,
-            "NUM_CHANNELS_LAYER_12": 128,
-
-            "FILTER_SIZE_LAYER_1": 11,
-            "FILTER_SIZE_LAYER_2": 11,
-            "FILTER_SIZE_LAYER_3": 11,
-            "FILTER_SIZE_LAYER_4": 7,
-            "FILTER_SIZE_LAYER_5": 7,
-            "FILTER_SIZE_LAYER_6": 7,
-            "FILTER_SIZE_LAYER_7": 7,
-            "FILTER_SIZE_LAYER_8": 7,
-            "FILTER_SIZE_LAYER_9": 7,
-            "FILTER_SIZE_LAYER_10": 7,
-            "FILTER_SIZE_LAYER_11": 7,
-            "FILTER_SIZE_LAYER_12": 7,
-
-            "DILATION_LAYER_1": 2,
-            "DILATION_LAYER_2": 2,
-            "DILATION_LAYER_3": 2,
-            "DILATION_LAYER_4": 2,
-            "DILATION_LAYER_5": 2,
-            "DILATION_LAYER_6": 2,
-            "DILATION_LAYER_7": 2,
-            "DILATION_LAYER_8": 2,
-            "DILATION_LAYER_9": 2,
-            "DILATION_LAYER_10": 2,
-            "DILATION_LAYER_11": 2,
-            "DILATION_LAYER_12": 2,
-        }
-    elif config_name == "sweep1":
-        # Specify random learning rate, for example.
-        CONFIG = {
-            "MAX_LEARNING_RATE": 10 ** rs.uniform(-1, 0),
-        }
-    elif config_name == "aramis_hourglass":
-        CONFIG = {
-            'NUM_MICROPHONES': 10,
-            'NUM_CONV_LAYERS': 5,
-            'USE_BATCH_NORM': True,
-            'DEVICE': 'GPU',
-            'ARCHITECTURE': 'GerbilizerHourglassNet',
-            'NUM_EPOCHS': 20,
-            'TRAIN_BATCH_SIZE': 16,
-            "MAX_LEARNING_RATE": 1e-2,
-            "MIN_LEARNING_RATE": 1e-4,
-            
-            'NUM_CHANNELS_LAYER_1': 4,
-            'NUM_CHANNELS_LAYER_2': 16,
-            'NUM_CHANNELS_LAYER_3': 64,
-            'NUM_CHANNELS_LAYER_4': 256,
-            'NUM_CHANNELS_LAYER_5': 1024,
-            
-            'STRIDE_LAYER_1': 1,
-            'STRIDE_LAYER_2': 2,
-            'STRIDE_LAYER_3': 2,
-            'STRIDE_LAYER_4': 2,
-            'STRIDE_LAYER_5': 4,
-            
-            'FILTER_SIZE_LAYER_1': 256,
-            'FILTER_SIZE_LAYER_2': 128,
-            'FILTER_SIZE_LAYER_3': 64,
-            'FILTER_SIZE_LAYER_4': 32,
-            'FILTER_SIZE_LAYER_5': 16,
-            
-            'DILATION_LAYER_1': 1,
-            'DILATION_LAYER_2': 2,
-            'DILATION_LAYER_3': 4,
-            'DILATION_LAYER_4': 8,
-            'DILATION_LAYER_5': 16,
-            
-            
-            'RESIZE_TO_N_CHANNELS': 16,
-
-            
-            'NUM_TCONV_LAYERS': 5,
-            
-            'TCONV_CHANNELS_LAYER_1': 16,
-            'TCONV_CHANNELS_LAYER_2': 8,
-            'TCONV_CHANNELS_LAYER_3': 4,
-            'TCONV_CHANNELS_LAYER_4': 2,
-            'TCONV_CHANNELS_LAYER_5': 1,
-            'TCONV_CHANNELS_LAYER_6': 0,
-            
-            'TCONV_FILTER_SIZE_LAYER_1': 4,
-            'TCONV_FILTER_SIZE_LAYER_2': 4,
-            'TCONV_FILTER_SIZE_LAYER_3': 4,
-            'TCONV_FILTER_SIZE_LAYER_4': 4,
-            'TCONV_FILTER_SIZE_LAYER_5': 4,
-            'TCONV_FILTER_SIZE_LAYER_6': 0,
-            
-            'TCONV_STRIDE_LAYER_1': 2,
-            'TCONV_STRIDE_LAYER_2': 2,
-            'TCONV_STRIDE_LAYER_3': 2,
-            'TCONV_STRIDE_LAYER_4': 2,
-            'TCONV_STRIDE_LAYER_5': 2,
-            'TCONV_STRIDE_LAYER_6': 0,
-            
-            'TCONV_DILATION_LAYER_1': 1,
-            'TCONV_DILATION_LAYER_2': 1,
-            'TCONV_DILATION_LAYER_3': 1,
-            'TCONV_DILATION_LAYER_4': 1,
-            'TCONV_DILATION_LAYER_5': 1,
-            'TCONV_DILATION_LAYER_6': 0
+            "CONV_NUM_CHANNELS": [16, 16, 16, 32, 32, 32, 64, 64, 64, 128, 128, 128],
+            "CONV_FILTER_SIZES": [11, 11, 11, 7,  7,  7,  7,  7,  7,  7,   7,   7],
+            "CONV_DILATIONS":    [2,  2,  2,  2,  2,  2,  2,  2,  2,  2,   2,   2],
         }
     else:
         raise ValueError(

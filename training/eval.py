@@ -1,12 +1,16 @@
 import argparse
 from os import path
+from pathlib import Path
+from sys import stderr
 
 import h5py
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 from configs import build_config_from_file, build_config_from_name
 from train import Trainer
+from dataloaders import GerbilVocalizationDataset
 
 
 def get_args():
@@ -61,19 +65,35 @@ def run():
     args = get_args()
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
-    with h5py.File(args.datafile, 'r+') as source:
-        n_vox = source['vocalizations'].shape[0]
+    dest_path = Path(args.datafile).stem + '_preds.h5'
+    dest_path = str(Path(args.datafile).parent / dest_path)
 
-        if 'predictions' in source:
-            del source['predictions']
+    with h5py.File(dest_path, 'w') as dest:
+        with h5py.File(args.datafile, 'r+') as source:
+            if 'len_idx' in source:
+                n_vox = len(source['len_idx']) - 1
+            else:
+                n_vox = source['vocalizations'].shape[0]
 
-        preds = source.create_dataset(
+            source.copy(source['locations'], dest['/'], 'locations')
+        
+        # Close the h5 here to reopen it in the Dataset obj
+        test_set = GerbilVocalizationDataset(args.datafile)
+        test_set.segment_len = args.config_data['SAMPLE_LEN']
+        test_set.samp_size = 30  # take 30 samples from each vocalization. Pass them to the model as if each were a full batch of inputs
+        #test_set_loader = DataLoader(test_set, args.config_data['TEST_BATCH_SIZE'], shuffle=False)
+        test_set_loader = DataLoader(test_set, 1, shuffle=False)  # Only using Dataloader here for the convenience of converting np.ndarray to torch.Tensor
+
+        preds = dest.create_dataset(
             'predictions',
             shape=(n_vox, 2),
             dtype=np.float32
         )
-
-        idx = 0
+        vars = dest.create_dataset(
+            'std',
+            shape=(n_vox,),
+            dtype=np.float32
+        )
 
         model = Trainer.from_trained_model(
             args.config_data,
@@ -81,10 +101,26 @@ def run():
             device_override=device
         )
 
-        for block in model.eval_on_dataset(source):
-            n_added = block.shape[0]
-            preds[idx:idx+n_added] = block
-            idx += n_added
+        model.model.eval()
+        with torch.no_grad():
+            idx = 0
+            for audio, _ in iter(test_set_loader):
+                audio = audio.squeeze()
+                if device == 'gpu':
+                    audio = audio.cuda()
+                # n_added = len(audio)
+                n_added = 1
+                # output = model.model(audio)
+                output = model.model(audio)
+                # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
+                centimeter_output = GerbilVocalizationDataset.unscale_features(output.cpu().numpy())
+                centroid = centimeter_output.mean(axis=0)
+                distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
+                dist_spread = distances.std()
+                # preds[idx:idx+n_added] = centimeter_output
+                preds[idx] = centroid
+                vars[idx] = dist_spread
+                idx += n_added
 
 
 if __name__ == '__main__':

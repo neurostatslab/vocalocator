@@ -9,11 +9,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
-from configs import build_config_from_file, build_config_from_name
-from models import build_model
-from dataloaders import build_dataloaders
 from augmentations import build_augmentations
+from configs import build_config_from_file, build_config_from_name
+from dataloaders import build_dataloaders, GerbilVocalizationDataset
 from logger import ProgressLogger
+from models import build_model
 
 
 logger = logging.getLogger('no_spam')
@@ -65,9 +65,30 @@ def get_args():
         help="Path to vocalization data.",
     )
 
+    parser.add_argument(
+        '--pretrained',
+        required=False,
+        action='store_true',
+        help='Flag indicating that the model is pretrained and will be finetuned.'
+    )
+
     args = parser.parse_args()
     validate_args(args)
     return args
+
+
+def find_next_job_id(model_name):
+    job_dir = os.path.join(
+        base_dir,
+        "trained_models",
+        model_name
+    )
+    if not os.path.exists(job_dir):
+        return 1
+    else:
+        dirs = [f for f in os.listdir(job_dir) if os.path.isdir(os.path.join(job_dir, f))]
+        # Finds the highest job id and adds 1, defualts to 1 if there are no existing jobs
+        return 1 if not dirs else 1 + max(int(d) for d in dirs)
 
 
 def validate_args(args):
@@ -91,18 +112,11 @@ def validate_args(args):
         args.config_data = build_config_from_name(args.config, args.job_id)
     
     if args.job_id is None:
-        job_dir = os.path.join(
-            base_dir,
-            "trained_models",
-            args.config_data['CONFIG_NAME']
-        )
-        if not os.path.exists(job_dir):
-            args.job_id = 1
+        args.job_id = find_next_job_id(args.config_data['CONFIG_NAME'])
+        if 'JOB_ID' in args.config_data and args.pretrained:
+            args.job_id = args.config_data['JOB_ID']
         else:
-            dirs = [f for f in os.listdir(job_dir) if os.path.isdir(os.path.join(job_dir, f))]
-            # Finds the highest job id and adds 1, defualts to 1 if there are no existing jobs
-            args.job_id = 1 if not dirs else 1 + max(int(d) for d in dirs)
-        args.config_data['JOB_ID'] = args.job_id
+            args.config_data['JOB_ID'] = args.job_id
 
 
 class Trainer():
@@ -116,6 +130,7 @@ class Trainer():
         self._datafile = datafile
         self._config = config_data
         self._job_id = job_id
+        
         if not self._eval:
             self._setup_dataloaders()
             self._setup_output_dirs()
@@ -124,6 +139,7 @@ class Trainer():
         # setup_model depends on logger setup in setup_output_dirA
         # thus, the if statement on _eval is split in two
         self._setup_model()
+        self.model.logger = logger
 
         if not self._eval:
             logger.info(f" ==== STARTING TRAINING ====\n")
@@ -158,7 +174,7 @@ class Trainer():
 
             # Forward pass, including data augmentation.
             outputs = self.model(
-                self._augment(sounds, sample_rate=16000)
+                self._augment(sounds, sample_rate=125000)
             )
 
             # Compute loss.
@@ -167,6 +183,7 @@ class Trainer():
 
             # Backwards pass.
             mean_loss.backward()
+            self.model._clip_grads()
             self.optim.step()
 
             # Count batch as completed.
@@ -237,39 +254,6 @@ class Trainer():
             self.save_weights(self.best_weights_file)
         logger.info(self._query_mem_usage())
     
-    def eval_on_dataset(self, dset, batch_size=None):
-        """ Creates a generator that sequentially evaluates the model on the data within
-        some dataset. The dataset is expected to be an h5py File object with a dataset labeled
-        'vocalizations' within the root group. This dataset should have shape 
-        (n, n_channels, n_samples), with n_channels corresponding to the channel count the model
-        was trained to handle.
-        """
-        self.model.eval()
-        if batch_size is None:
-            batch_size = self._config['TRAIN_BATCH_SIZE']
-        use_gpu = self._config['DEVICE'] == 'GPU'
-        pad_len = 8192  # I think I should be able to store this in the model parameter dict
-
-        vocalizations = dset['vocalizations']
-        n_vocs = vocalizations.shape[0]
-        idx = 0
-        with torch.no_grad():
-            while idx < n_vocs:
-                end_idx = min(idx + batch_size, n_vocs)
-                batch = vocalizations[idx:end_idx]
-                idx += batch.shape[0]
-                if batch.shape[1] < pad_len:
-                    temp = np.zeros((batch.shape[0], batch.shape[1], pad_len), dtype=batch.dtype)
-                    temp[..., :batch.shape[-1]] = batch
-                    batch = temp
-                elif batch.shape[1] > pad_len:
-                    batch = batch[..., :pad_len]
-                
-                batch = torch.from_numpy(batch)
-                if use_gpu:
-                    batch = batch.cuda()
-                yield self.model(batch).detach().cpu().numpy()
-
     def _setup_output_dirs(self):
         # Save results to `../../trained_models/{config}/{job_id}` directory.
         self.output_dir = os.path.join(
@@ -287,6 +271,7 @@ class Trainer():
         os.makedirs(self.sample_output_dir, exist_ok=True)
 
         # Write the active configuration to disk
+        self._config['DATAFILE_PATH'] = self._datafile  # Found that it's helpful to keep track of this
         with open(os.path.join(self.output_dir, 'config.json'), 'w') as ctx:
             json.dump(self._config, ctx, indent=4)
 
@@ -329,15 +314,29 @@ class Trainer():
         if not self._eval:
             logger.info(self.model.__repr__())
 
-            # Specify optimizer.
-            self.optim = torch.optim.SGD(
+            if self._config['OPTIMIZER'] == 'SGD':
+                base_optim = torch.optim.SGD
+                optim_args = {
+                    'momentum': self._config['MOMENTUM'],
+                    'weight_decay': self._config['WEIGHT_DECAY']
+                }
+            elif self._config['OPTIMIZER'] == 'ADAM':
+                base_optim = torch.optim.Adam
+                optim_args = {
+                    'betas': (self._config['ADAM_BETA1'], self._config['ADAM_BETA2'])
+                }
+            else:
+                raise NotImplementedError(f'Unrecognized optimizer "{self._config["OPTIMIZER"]}"')
+
+            self.optim = base_optim(
                 self.model.parameters(),
                 lr=0.0, # this is set manually at the start of each epoch.
-                momentum=self._config["MOMENTUM"],
-                weight_decay=self._config["WEIGHT_DECAY"]
+                **optim_args
             )
 
     def _query_mem_usage(self):
+        if not torch.cuda.is_available():
+            return ''
         used_gb = torch.cuda.max_memory_allocated() / (2**30)
         total_gb = torch.cuda.get_device_properties(0).total_memory / (2**30)
         torch.cuda.reset_max_memory_allocated()
@@ -348,6 +347,7 @@ class Trainer():
         self.traindata, self.valdata, self.testdata = build_dataloaders(
             self._datafile, self._config
         )
+        self.traindata.dataset.segment_len = self._config['SAMPLE_LEN'] if 'SAMPLE_LEN' in self._config else 256
         logger.info(f"Training set:\t{self.traindata.dataset}")
         logger.info(f"Validation set:\t{self.valdata.dataset}")
         logger.info(f"Test set:\t{self.testdata.dataset}")
@@ -360,7 +360,8 @@ class Trainer():
         """
         lm0 = self._config["MIN_LEARNING_RATE"]
         lm1 = self._config["MAX_LEARNING_RATE"]
-        f = epoch_num / self._config["NUM_EPOCHS"]
+        # f = epoch_num / self._config["NUM_EPOCHS"]
+        f = (epoch_num % 50) / 50
         return (
             lm0 + 0.5 * (lm1 - lm0) * (1 + np.cos(f * np.pi))
         )
@@ -370,7 +371,8 @@ class Trainer():
         config: JSON, *,
         model_name: Optional[str]=None,
         job_id: Optional[int]=None,
-        device_override: Optional[str]=None
+        device_override: Optional[str]=None,
+        finetune_data: Optional[str]=None
     ):
         """ Initializes the model with weights initialized from the best weights of a
         previously trained instance.
@@ -385,6 +387,8 @@ class Trainer():
             sourced from config dict (assuming it's present)
         device_override (str):
             - When specified, overrides the device (cpu or gpu) present in the config
+        finetune_data (str):
+            - When specified, indicates that a trained model is being finetuned on provided data.
         """
         if job_id is None:
             if config['JOB_ID'] is None:
@@ -402,15 +406,21 @@ class Trainer():
         else:
             device = config['DEVICE'].lower()
         
+        if finetune_data is not None:
+            job_id = config['JOB_ID']  # Use the pretrained model's ID to load weights
+            # Update config, which will be written to disk, with a fresh ID
+            config['JOB_ID'] = find_next_job_id(config['CONFIG_NAME'])
+        
         device = 'cuda:0' if device == 'gpu' else 'cpu'
 
-        trainer = cls(None, config, job_id, eval_mode=True)
+        # Use new ID to create model folder
+        trainer = cls(finetune_data, config, config['JOB_ID'], eval_mode=(finetune_data is None))
 
         weight_file = os.path.join(
             base_dir,
             "trained_models",
             model_name,
-            "{0:05g}".format(job_id),
+            "{0:05g}".format(job_id),  # Use the old ID to load weghhts
             "best_weights.pt"
         )
 
@@ -422,7 +432,14 @@ class Trainer():
 
 def run():
     args = get_args()
-    trainer = Trainer(args.datafile, args.config_data, args.job_id)
+    if args.pretrained:
+        trainer = Trainer.from_trained_model(
+            args.config_data,
+            job_id=args.job_id,
+            finetune_data=args.datafile
+        )
+    else:
+        trainer = Trainer(args.datafile, args.config_data, args.job_id)
 
     num_epochs = args.config_data['NUM_EPOCHS']
     for epoch in range(num_epochs):
