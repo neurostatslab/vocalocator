@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from encodings import LearnedEncoding, FixedEncoding
+from .encodings import LearnedEncoding, FixedEncoding
 
 
 class Transpose(nn.Module):
@@ -37,7 +37,6 @@ class GerbilizerAttentionNet(nn.Module):
     def __init__(self, config):
         super().__init__()
         
-        self._clip_gradients = config['CLIP_GRADIENTS'] if 'CLIP_GRADIENTS' in config else True
         n_mics = config['NUM_MICROPHONES']
         d_model = config[f'CONV_NUM_CHANNELS'][0]
         dilation = config[f'CONV_DILATIONS'][0]
@@ -87,8 +86,7 @@ class GerbilizerAttentionNet(nn.Module):
         # self.coord_readout = nn.Linear(linear_dim, 2)
     
     def _clip_grads(self):
-        if self._clip_gradients:
-            nn.utils.clip_grad_norm_(self.parameters(), 1.0)
+        nn.utils.clip_grad_norm_(self.parameters(), 1.0)
     
     def embed(self, x):
         """ I'm splitting the forward pass into this 'embedding' segment
@@ -104,13 +102,15 @@ class GerbilizerAttentionNet(nn.Module):
         transformer_out = self.transformer(encoded)[:, 0, :]
         return self.dense(transformer_out)
 
-
     def forward(self, x):
         linear_out = self.embed(x)
         x = self.x_readout(linear_out)
         y = self.y_readout(linear_out)
         return torch.cat([x, y], dim=1)
         # return self.coord_readout(linear_out)
+    
+    def trainable_params(self):
+        return self.parameters()
 
 
 class GerbilizerAttentionHourglassNet(GerbilizerAttentionNet):
@@ -132,7 +132,6 @@ class GerbilizerAttentionHourglassNet(GerbilizerAttentionNet):
 
         # Create a set of TransposeConv2d layers to upsample the reshaped vector
         self.tc_layers = nn.ModuleList()
-        n_tc_layers = config['NUM_TCONV_LAYERS']
         tc_dilations = config[f'TCONV_DILATIONS']
         tc_strides = config[f'TCONV_STRIDES']
         tc_kernel_sizes = config[f'TCONV_FILTER_SIZES']

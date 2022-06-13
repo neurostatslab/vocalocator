@@ -25,6 +25,7 @@ DEFAULT_CONFIG = {
     "MAX_LEARNING_RATE": 1e-2,
     "MIN_LEARNING_RATE": 1e-6,
     "WEIGHT_DECAY": 1e-5,
+    "CLIP_GRADIENTS": False,
     "OPTIMIZER": "SGD",
     "MOMENTUM": 0.5,
 

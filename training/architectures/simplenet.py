@@ -40,11 +40,11 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
     def __init__(self, CONFIG):
         super(GerbilizerSimpleNetwork, self).__init__()
 
-        T = CONFIG["NUM_AUDIO_SAMPLES"]
+        T = CONFIG["SAMPLE_LEN"]
         N = CONFIG["NUM_MICROPHONES"]
 
-        should_downsample = [False, False, True, False, False, True, False, False, True, False, True, True]
-        n_channels = CONFIG['CONV_NUM_OUTPUT_CHANNELS']  # Converting this to a JSON array in the config for convenience
+        should_downsample = CONFIG['SHOULD_DOWNSAMPLE']
+        n_channels = CONFIG['CONV_NUM_CHANNELS']  # Converting this to a JSON array in the config for convenience
         a = list()
         n_channels.insert(0, N)
         filter_sizes = CONFIG['CONV_FILTER_SIZES']  # Also making this an array, along with the others
@@ -53,8 +53,8 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
             GerbilizerSimpleLayer(
                 in_channels, out_channels, filter_size, downsample=downsample, dilation=dilation
             )
-            for in_channels, out_channels, filter_size, downsample, dilation in
-            zip(n_channels[:-1], n_channels[1:], filter_sizes, should_downsample, dilations)
+            for in_channels, out_channels, filter_size, downsample, dilation
+            in zip(n_channels[:-1], n_channels[1:], filter_sizes, should_downsample, dilations)
         ]
         self.conv_layers = torch.nn.Sequential(*convolutions)
         """

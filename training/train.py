@@ -183,7 +183,8 @@ class Trainer():
 
             # Backwards pass.
             mean_loss.backward()
-            self.model._clip_grads()
+            if self._config['CLIP_GRADIENTS']:
+                self.model._clip_grads()
             self.optim.step()
 
             # Count batch as completed.
@@ -348,6 +349,7 @@ class Trainer():
             self._datafile, self._config
         )
         self.traindata.dataset.segment_len = self._config['SAMPLE_LEN'] if 'SAMPLE_LEN' in self._config else 256
+        self.valdata.dataset.segment_len = self._config['SAMPLE_LEN'] if 'SAMPLE_LEN' in self._config else 256
         logger.info(f"Training set:\t{self.traindata.dataset}")
         logger.info(f"Validation set:\t{self.valdata.dataset}")
         logger.info(f"Test set:\t{self.testdata.dataset}")

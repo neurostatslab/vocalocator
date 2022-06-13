@@ -64,6 +64,17 @@ class GerbilVocalizationDataset(Dataset):
         n_samp = len(audio)
         margin = int(n_samp * 0.1)
         idx_range = margin, n_samp-margin-section_len
+        if n_samp - 2*margin <= section_len:
+            # If section_len is longer than the audio we're sampling from, randomly place the entire
+            # audio sample within a block of zeros of length section_len
+            padding = np.zeros((audio.shape[1], section_len))
+            offset = randint(-margin, margin, (1,)).item()
+            end = min(audio.shape[0] + offset, section_len)
+            if offset < 0:
+                padding[:, :end] = audio[-offset:end-offset, :].T
+            else:
+                padding[:, offset:end] = audio[:end-offset, :].T
+            return padding
         start = randint(*idx_range, (1,)).item()
         end = start + section_len
         return audio[start:end, ...].T
