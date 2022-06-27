@@ -1,3 +1,5 @@
+from itertools import chain
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -62,7 +64,8 @@ class GerbilizerAttentionNet(nn.Module):
         self.encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=n_attn_heads,
-            batch_first=True
+            batch_first=True,
+            activation='relu'
         )
         self.transformer = nn.TransformerEncoder(
             self.encoder_layer,
@@ -138,7 +141,7 @@ class GerbilizerAttentionHourglassNet(GerbilizerAttentionNet):
         tc_paddings = config[f'TCONV_PADDINGS']
         tc_out_paddings = config[f'TCONV_OUTPUT_PADDINGS']
 
-        n_tc_channels = config[f'TCONV_CHANNELS']
+        n_tc_channels = config[f'TCONV_NUM_CHANNELS']
         n_tc_channels.insert(0, self.resize_channels)
         # Each entry is a tuple of the form (in_channels, out_channels)
         in_out_channels = zip(n_tc_channels[:-1], n_tc_channels[1:])
@@ -164,7 +167,15 @@ class GerbilizerAttentionHourglassNet(GerbilizerAttentionNet):
                 nn.BatchNorm2d(n_features) if config['USE_BATCH_NORM']
                 else nn.Identity()
             )
-        
+    
+    def trainable_params(self):
+        # Pytorch expects a list containing a dict in which the key 'params' is assigned to a list of tensors
+        return [{'params': list(chain(
+            self.upscale.parameters(),
+            self.tc_layers.parameters(),
+            self.tc_b_norms.parameters()
+        ))}]
+
     def forward(self, x):
         linear_out = self.upscale(super().embed(x))
         tc_output = linear_out.reshape((-1, self.resize_channels, self.resize_height, self.resize_width))

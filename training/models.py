@@ -42,7 +42,7 @@ def build_model(CONFIG):
         loss_fn = se_loss_fn
     elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionHourglassNet":
         model = GerbilizerAttentionHourglassNet(CONFIG)
-        loss_fn = map_se_loss_fn
+        loss_fn = wass_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -64,7 +64,7 @@ def map_se_loss_fn(pred, target):
     """
     target = torch.flatten(target, start_dim=1)
     pred = torch.flatten(pred, start_dim=1)
-    return torch.mean(torch.square(target - pred), dim=1)
+    return torch.mean(torch.square(target - pred).sum(dim=1))
 
 def wass_loss_fn(pred, target):
     """ Calculates the earth mover's distance between the target and predicted locations.
@@ -77,9 +77,6 @@ def wass_loss_fn(pred, target):
     """
     flat_pred = torch.flatten(pred, start_dim=1)
     flat_target = torch.flatten(target, start_dim=1)
-    sum_weight = 10
     # Add 1 to target to make the smallest value 0
-    # error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
-    # Instead of forcing the sum to be 1, use loss function to drive it near one
-    return flat_pred * flat_target + sum_weight * (1 - flat_pred.sum(dim=1, keepdim=True))
-    # return torch.logsumexp(error_map, dim=1)
+    error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
+    return torch.logsumexp(error_map, dim=1)
