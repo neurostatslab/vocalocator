@@ -2,8 +2,7 @@ import argparse
 import json
 import logging
 import os
-from pathlib import Path
-from typing import Callable, NewType, Optional, Tuple
+from typing import NewType, Optional
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -173,9 +172,8 @@ class Trainer():
             self.optim.zero_grad()
 
             # Forward pass, including data augmentation.
-            outputs = self.model(
-                self._augment(sounds, sample_rate=125000)
-            )
+            aug_input = self._augment(sounds, sample_rate=125000) if self._config['AUGMENT_DATA'] else sounds
+            outputs = self.model(aug_input)
 
             # Compute loss.
             losses = self._loss_fn(outputs, locations)
@@ -329,8 +327,9 @@ class Trainer():
             else:
                 raise NotImplementedError(f'Unrecognized optimizer "{self._config["OPTIMIZER"]}"')
 
+            params = self.model.trainable_params() if hasattr(self.model, 'trainable_params') else self.model.parameters()
             self.optim = base_optim(
-                self.model.parameters(),
+                params,
                 lr=0.0, # this is set manually at the start of each epoch.
                 **optim_args
             )
@@ -418,16 +417,19 @@ class Trainer():
         # Use new ID to create model folder
         trainer = cls(finetune_data, config, config['JOB_ID'], eval_mode=(finetune_data is None))
 
-        weight_file = os.path.join(
-            base_dir,
-            "trained_models",
-            model_name,
-            "{0:05g}".format(job_id),  # Use the old ID to load weghhts
-            "best_weights.pt"
-        )
+        if 'WEIGHTS_PATH' in config:
+            weight_file = config['WEIGHTS_PATH']
+        else:
+            weight_file = os.path.join(
+                base_dir,
+                "trained_models",
+                model_name,
+                "{0:05g}".format(job_id),  # Use the old ID to load weghhts
+                "best_weights.pt"
+            )
 
         weights = torch.load(weight_file, map_location=device)
-        trainer.model.load_state_dict(weights)
+        trainer.model.load_state_dict(weights, strict=False)
 
         return trainer
 

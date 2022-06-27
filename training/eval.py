@@ -69,7 +69,7 @@ def run():
     dest_path = str(Path(args.datafile).parent / dest_path)
 
     with h5py.File(dest_path, 'w') as dest:
-        with h5py.File(args.datafile, 'r+') as source:
+        with h5py.File(args.datafile, 'r') as source:
             if 'len_idx' in source:
                 n_vox = len(source['len_idx']) - 1
             else:
@@ -78,8 +78,8 @@ def run():
             source.copy(source['locations'], dest['/'], 'locations')
         
         # Close the h5 here to reopen it in the Dataset obj
-        test_set = GerbilVocalizationDataset(args.datafile)
-        test_set.segment_len = args.config_data['SAMPLE_LEN']
+        arena_dims = (args.config_data['ARENA_WIDTH'], args.config_data['ARENA_LENGTH'])
+        test_set = GerbilVocalizationDataset(args.datafile, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims)
         test_set.samp_size = 30  # take 30 samples from each vocalization. Pass them to the model as if each were a full batch of inputs
         #test_set_loader = DataLoader(test_set, args.config_data['TEST_BATCH_SIZE'], shuffle=False)
         test_set_loader = DataLoader(test_set, 1, shuffle=False)  # Only using Dataloader here for the convenience of converting np.ndarray to torch.Tensor
@@ -113,7 +113,7 @@ def run():
                 # output = model.model(audio)
                 output = model.model(audio)
                 # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
-                centimeter_output = GerbilVocalizationDataset.unscale_features(output.cpu().numpy())
+                centimeter_output = GerbilVocalizationDataset.unscale_features(output.cpu().numpy(), arena_dims=arena_dims)
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
                 dist_spread = distances.std()
