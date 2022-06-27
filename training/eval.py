@@ -79,7 +79,8 @@ def run():
         
         # Close the h5 here to reopen it in the Dataset obj
         arena_dims = (args.config_data['ARENA_WIDTH'], args.config_data['ARENA_LENGTH'])
-        test_set = GerbilVocalizationDataset(args.datafile, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims)
+        make_xcorr = args.config_data['COMPUTE_XCORRS']
+        test_set = GerbilVocalizationDataset(args.datafile, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims, make_xcorrs=make_xcorr)
         test_set.samp_size = 30  # take 30 samples from each vocalization. Pass them to the model as if each were a full batch of inputs
         #test_set_loader = DataLoader(test_set, args.config_data['TEST_BATCH_SIZE'], shuffle=False)
         test_set_loader = DataLoader(test_set, 1, shuffle=False)  # Only using Dataloader here for the convenience of converting np.ndarray to torch.Tensor

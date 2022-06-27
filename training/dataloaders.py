@@ -105,19 +105,30 @@ class GerbilVocalizationDataset(Dataset):
         return audio[start:end, ...].T
 
     @classmethod
-    def _append_xcorr(cls, audio):
+    def _append_xcorr(cls, audio, *, is_batch=False):
         # Assumes the audio has shape (n_channels, n_samples), which is true
         # after sample_segment has been called
         # Assumes unbatched input
-        n_channels = audio.shape[0]
-        n_new_channels = comb(n_channels, 2)
-        audio_with_corr = np.empty((n_channels + n_new_channels, audio.shape[1]), audio.dtype)
-        audio_with_corr[:n_channels] = audio
+        if is_batch:
+            n_channels = audio.shape[1]
+            audio_with_corr = np.empty((audio.shape[0], n_channels + comb(n_channels, 2), audio.shape[2]), audio.dtype)
+        else:
+            n_channels = audio.shape[0]
+            audio_with_corr = np.empty((n_channels + comb(n_channels, 2), audio.shape[1]), audio.dtype)
+        
+        audio_with_corr[..., :n_channels, :] = audio
 
-        for n, (a, b) in enumerate(combinations(audio, 2)):
-            # a and b are mic traces
-            corr = correlate(a, b, 'same')
-            audio_with_corr[n+n_channels] = corr
+        if is_batch:
+            for batch in range(audio.shape[0]):
+                for n, (a, b) in enumerate(combinations(audio[batch], 2)):
+                    # a and b are mic traces
+                    corr = correlate(a, b, 'same')
+                    audio_with_corr[batch, n+n_channels, :] = corr
+        else:
+            for n, (a, b) in enumerate(combinations(audio, 2)):
+                # a and b are mic traces
+                corr = correlate(a, b, 'same')
+                audio_with_corr[n+n_channels, :] = corr
         
         return audio_with_corr
         
@@ -298,7 +309,7 @@ class GerbilVocalizationDataset(Dataset):
             sound = self.sample_segment(sound, self.segment_len)
 
         if self.make_xcorrs:
-            sound = GerbilVocalizationDataset._append_xcorr(sound)
+            sound = GerbilVocalizationDataset._append_xcorr(sound, is_batch=self.samp_size>1)
 
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
