@@ -3,11 +3,14 @@ Functions to construct torch Dataset, DataLoader
 objects and specify data augmentation.
 """
 
+from itertools import combinations
+from math import comb
 import os
 from typing import Optional, Tuple
 
 import h5py
 import numpy as np
+from scipy.signal import correlate
 from torch import randint
 from torch.utils.data import Dataset, DataLoader
 
@@ -20,7 +23,8 @@ class GerbilVocalizationDataset(Dataset):
         flip_horiz: bool=False,
         segment_len: int=256,
         map_size: Optional[int]=None,
-        arena_dims: Optional[Tuple[float, float]]=None
+        arena_dims: Optional[Tuple[float, float]]=None,
+        make_xcorrs: bool=False,
     ):
         """
         Args:
@@ -40,6 +44,9 @@ class GerbilVocalizationDataset(Dataset):
             arena_dims (float tuple):
                 The width and length of the arena in which sounds are localized. Used to
                 scale labels (in millimeters)
+            make_xcorrs (bool):
+                When true, the dataset will compute pairwise cross correlations between
+                the traces of all provided microphones.
         """
         self.datapath = datapath
         self.dataset = h5py.File(datapath, 'r')
@@ -49,6 +56,7 @@ class GerbilVocalizationDataset(Dataset):
         self.samp_size = 1
         self.map_dim = map_size
         self.arena_dims = arena_dims
+        self.make_xcorrs = make_xcorrs
 
     def __del__(self):
         self.dataset.close()
@@ -95,6 +103,24 @@ class GerbilVocalizationDataset(Dataset):
         start = randint(*idx_range, (1,)).item()
         end = start + section_len
         return audio[start:end, ...].T
+
+    @classmethod
+    def _append_xcorr(cls, audio):
+        # Assumes the audio has shape (n_channels, n_samples), which is true
+        # after sample_segment has been called
+        # Assumes unbatched input
+        n_channels = audio.shape[0]
+        n_new_channels = comb(n_channels, 2)
+        audio_with_corr = np.empty((n_channels + n_new_channels, audio.shape[1]), audio.dtype)
+        audio_with_corr[:n_channels] = audio
+
+        for n, (a, b) in enumerate(combinations(audio, 2)):
+            # a and b are mic traces
+            corr = correlate(a, b, 'same')
+            audio_with_corr[n+n_channels] = corr
+        
+        return audio_with_corr
+        
     
     def _audio_for_index(self, dataset, idx):
         """ Gets an audio sample from the dataset. Will determine the format
@@ -271,6 +297,9 @@ class GerbilVocalizationDataset(Dataset):
         else:
             sound = self.sample_segment(sound, self.segment_len)
 
+        if self.make_xcorrs:
+            sound = GerbilVocalizationDataset._append_xcorr(sound)
+
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
         location_map = self._label_for_index(self.dataset, idx)
@@ -334,7 +363,8 @@ def build_dataloaders(path_to_data, CONFIG):
         flip_horiz=(CONFIG["AUGMENT_LABELS"] and CONFIG["AUGMENT_FLIP_HORIZ"]),
         segment_len=CONFIG['SAMPLE_LEN'],
         arena_dims=(CONFIG['ARENA_WIDTH'], CONFIG['ARENA_LENGTH']),
-        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None
+        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None,
+        make_xcorrs=CONFIG['COMPUTE_XCORRS']
     )
     # TODO -- make new validation and test set files!
     valdata = GerbilVocalizationDataset(
@@ -342,14 +372,16 @@ def build_dataloaders(path_to_data, CONFIG):
         flip_vert=False, flip_horiz=False,
         segment_len=CONFIG['SAMPLE_LEN'],
         arena_dims=(CONFIG['ARENA_WIDTH'], CONFIG['ARENA_LENGTH']),
-        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None
+        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None,
+        make_xcorrs=CONFIG['COMPUTE_XCORRS']
     )
     testdata = GerbilVocalizationDataset(
         os.path.join(path_to_data, "test_set.h5"),
         flip_vert=False, flip_horiz=False,
         segment_len=CONFIG['SAMPLE_LEN'],
         arena_dims=(CONFIG['ARENA_WIDTH'], CONFIG['ARENA_LENGTH']),
-        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None
+        map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None,
+        make_xcorrs=CONFIG['COMPUTE_XCORRS']
     )
 
     # Construct DataLoader objects.

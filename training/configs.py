@@ -13,7 +13,8 @@ DEFAULT_CONFIG = {
     "TORCH_SEED": 888,
     "NUMPY_SEED": 777,
     "LOG_INTERVAL": 3, # seconds
-    "NUM_MICROPHONES": 10,  # including xcorrs
+    "NUM_MICROPHONES": 4,  # not including xcorrs
+    "COMPUTE_XCORRS": False,
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
     "SAVE_SAMPLE_OUTPUT": True,  # Will save part of the validation predictions at every epoch

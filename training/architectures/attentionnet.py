@@ -1,4 +1,5 @@
 from itertools import chain
+from math import comb
 
 import torch
 from torch import nn
@@ -40,6 +41,8 @@ class GerbilizerAttentionNet(nn.Module):
         super().__init__()
         
         n_mics = config['NUM_MICROPHONES']
+        if config['COMPUTE_XCORRS']:
+            n_mics += comb(n_mics, 2)
         d_model = config[f'CONV_NUM_CHANNELS'][0]
         dilation = config[f'CONV_DILATIONS'][0]
         stride = config[f'CONV_STRIDES'][0]

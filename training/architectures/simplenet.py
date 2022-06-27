@@ -1,3 +1,5 @@
+from math import comb
+
 import torch
 from torch import nn
 
@@ -42,6 +44,9 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
 
         T = CONFIG["SAMPLE_LEN"]
         N = CONFIG["NUM_MICROPHONES"]
+
+        if CONFIG['COMPUTE_XCORRS']:
+            N += comb(N, 2)
 
         should_downsample = CONFIG['SHOULD_DOWNSAMPLE']
         n_channels = CONFIG['CONV_NUM_CHANNELS']  # Converting this to a JSON array in the config for convenience

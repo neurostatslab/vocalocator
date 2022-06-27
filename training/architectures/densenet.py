@@ -1,3 +1,5 @@
+from math import comb
+
 import torch
 
 
@@ -19,6 +21,8 @@ class GerbilizerDenseNet(torch.nn.Module):
 
         # Initial number of audio channels.
         N = CONFIG["NUM_MICROPHONES"]
+        if CONFIG['COMPUTE_XCORRS']:
+            N += comb(N, 2)
 
         self.f_convs = torch.nn.ModuleList([])
         self.g_convs = torch.nn.ModuleList([])
