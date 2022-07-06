@@ -198,6 +198,7 @@ class Trainer():
     def eval_validation(self):
         self.progress_log.start_testing()
         self.model.eval()
+        arena_dims = (self._config['ARENA_WIDTH'], self._config['ARENA_LENGTH'])
         with torch.no_grad():
             for sounds, locations in self.valdata:
                 # Move data to gpu
@@ -208,9 +209,17 @@ class Trainer():
                 # Forward pass.
                 outputs = self.model(sounds)
 
-                # Compute loss.
-                losses = self._loss_fn(outputs, locations)
-                mean_loss = torch.mean(losses)
+                # Convert outputs and labels to centimeters from arb. unit
+                # But only if the outputs are x,y coordinate pairs
+                if outputs.dim() == 2 and outputs.shape[1] == 2:
+                    pred_cm = GerbilVocalizationDataset.unscale_features(outputs, arena_dims)
+                    label_cm = GerbilVocalizationDataset.unscale_features(locations, arena_dims)
+
+                    # Bypass the mse loss in favor of mean error
+                    mean_loss = torch.sqrt(((label_cm - pred_cm) ** 2).sum(dim=-1)).mean()
+                else:
+                    losses = self._loss_fn(outputs, locations)
+                    mean_loss = torch.mean(losses)
 
                 # Log progress
                 self.progress_log.log_val_batch(
@@ -247,8 +256,9 @@ class Trainer():
         # Save best set of weights.
         if val_loss < self._best_loss:
             self._best_loss = val_loss
+            fmt_val_loss = '{:.3f}cm'.format(val_loss)
             logger.info(
-                f">> VALIDATION LOSS IS BEST SO FAR, SAVING WEIGHTS TO {self.best_weights_file}"
+                f">> MEAN VALIDATION LOSS, {fmt_val_loss}, IS BEST SO FAR, SAVING WEIGHTS TO {self.best_weights_file}"
             )
             self.save_weights(self.best_weights_file)
         logger.info(self._query_mem_usage())
