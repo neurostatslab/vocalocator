@@ -17,7 +17,7 @@ DEFAULT_CONFIG = {
     "COMPUTE_XCORRS": False,
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
-    "SAVE_SAMPLE_OUTPUT": True,  # Will save part of the validation predictions at every epoch
+    "SAVE_SAMPLE_OUTPUT": False,  # Will save part of the validation predictions at every epoch
     "SAVE_LOSS_PLOT": True,  # Will plot loss at every epoch
     "ARENA_WIDTH": 600,  # Size of enclosure along x axis
     "ARENA_LENGTH": 400,  # Size of enclosure along y axis
@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
 
     # Architecture hyperparameters.
     "ARCHITECTURE": "GerbilizerSimpleNet",
-    "USE_BATCH_NORM": False,
+    "USE_BATCH_NORM": True,
     "POOLING": "AVG",
 
     "CONV_NUM_CHANNELS": [11, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
