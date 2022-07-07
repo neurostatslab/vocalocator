@@ -204,10 +204,10 @@ class Trainer():
                 # Move data to gpu
                 if self._config["DEVICE"] == "GPU":
                     sounds = sounds.cuda()
-                    locations = locations.cuda()
+                    # locations = locations.cuda()
 
                 # Forward pass.
-                outputs = self.model(sounds)
+                outputs = self.model(sounds).cpu()
 
                 # Convert outputs and labels to centimeters from arb. unit
                 # But only if the outputs are x,y coordinate pairs
@@ -216,14 +216,14 @@ class Trainer():
                     label_cm = GerbilVocalizationDataset.unscale_features(locations, arena_dims)
 
                     # Bypass the mse loss in favor of mean error
-                    mean_loss = torch.sqrt(((label_cm - pred_cm) ** 2).sum(dim=-1)).mean()
+                    mean_loss = np.sqrt(((label_cm - pred_cm) ** 2).sum(axis=-1)).mean()
                 else:
                     losses = self._loss_fn(outputs, locations)
-                    mean_loss = torch.mean(losses)
+                    mean_loss = torch.mean(losses).item()
 
                 # Log progress
                 self.progress_log.log_val_batch(
-                    mean_loss.item(), np.nan, len(sounds)
+                    mean_loss, np.nan, len(sounds)
                 )
         
         if self._config['SAVE_SAMPLE_OUTPUT']:
