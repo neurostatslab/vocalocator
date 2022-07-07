@@ -63,13 +63,14 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         ]
         self.conv_layers = torch.nn.Sequential(*convolutions)
 
-        self.final_pooling = torch.nn.Conv1d(
+        """self.final_pooling = torch.nn.Conv1d(
             n_channels[-1],
             n_channels[-1],
             kernel_size=ceiling_division(T, 32),
             groups=n_channels[-1],
             padding=0
-        )
+        )"""
+        self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
         # Final linear layer to reduce the number of channels.
         self.coord_readout = torch.nn.Linear(
