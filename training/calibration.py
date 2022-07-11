@@ -106,7 +106,7 @@ def calibration_step(
     model_output,
     true_location,
     arena_dims,
-    sigma_values,
+    std_values,
     n_calibration_bins: int = 10,
     grid_resolution: float = 0.1,
     ) -> np.ndarray:
@@ -164,18 +164,20 @@ def calibration_step(
 
     # recenter origin for the location estimates (by default,
     # origin is placed in the middle of the room)
+    model_output += arena_dims_cm / 2
+    true_location += arena_dims_cm / 2
 
     # now assemble an array of probability mass functions by smoothing
     # the location estimates with each value of sigma
-    pmfs = np.zeros((len(sigma_values), *xgrid.shape))
+    pmfs = np.zeros((len(std_values), *xgrid.shape))
 
-    for i, sigma in enumerate(sigma_values):
+    for i, std in enumerate(std_values):
         for loc_estimate in model_output:
             # place a spherical gaussian with variance sigma
             # at the individual location estimate
             distr = scipy.stats.multivariate_normal(
                 mean=loc_estimate,
-                cov=sigma
+                cov= (std ** 2)
             )
             # and add it to the corresponding entry in pmfs
             pmfs[i] += distr.pdf(coord_grid)
@@ -186,7 +188,7 @@ def calibration_step(
     pmfs /= sum_per_sigma_val
 
     # repeat location so we can use the vectorized min_mass_containing_location fn
-    true_loc_repeated = true_location.repeat(len(sigma_values), axis=0)
+    true_loc_repeated = true_location.repeat(len(std_values), axis=0)
 
     # perform the calibration calculation step
     m_vals = min_mass_containing_location(
@@ -214,8 +216,8 @@ def calibration_from_steps(cal_step_bulk: np.array):
             shape (n_sigma_values, n_bins).
     """
     # calculate the calibration curve by taking the cumsum
-    # and dividing by the total sum
-    calibration_curves = cal_step_bulk.cumsum(axis=1) / cal_step_bulk.sum(axis=1)
+    # and dividing by the total sum (adding extra axis so broadcasting works)
+    calibration_curves = cal_step_bulk.cumsum(axis=1) / cal_step_bulk.sum(axis=1)[:, None]
     # next, calculate the errors
     # get probabilities the model assigned to each region
     # note: these are also the bucket edges in the histogram
@@ -223,5 +225,7 @@ def calibration_from_steps(cal_step_bulk: np.array):
     assigned_probabilities = np.arange(1, n_bins + 1) / n_bins
     # get the sum of residuals between the assigned probabilities
     # and the true observed proportions for each value of sigma
-    errs = np.abs(calibration_curves - assigned_probabilities).sum(axis=1)
-    return calibration_curves, errs
+    residuals = calibration_curves - assigned_probabilities
+    abs_err = np.abs(residuals).sum(axis=1)
+    signed_err = residuals.sum(axis=1)
+    return calibration_curves, abs_err, signed_err
