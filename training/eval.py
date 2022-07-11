@@ -56,27 +56,27 @@ def get_args():
     )
 
     parser.add_argument(
-        '--min_variance',
+        '--min_std',
         type=float,
         required=False,
         default=MAX_SIGMA,
-        help='Minimum smoothing variance, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_variance_steps` values from [min_variance, max_variance]. Default: 1e-6.'
+        help='Minimum smoothing std, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_std_steps` values from [min_std, max_std]. Default: 0.1.'
     )
 
     parser.add_argument(
-        '--max_variance',
+        '--max_std',
         type=float,
         required=False,
         default=MAX_SIGMA,
-        help='Maximum smoothing variance, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_variance_steps` values from [min_variance, max_variance). Default: 15.'
+        help='Maximum smoothing std, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_std_steps` values from [min_std, max_std). Default: 50.'
     )
 
     parser.add_argument(
-        '--num_variance_steps',
+        '--num_std_steps',
         type=int,
         required=False,
         default=NUM_STEPS,
-        help='Number of steps in range (0, max_variance) at which to calculate the calibration curve and error for the model. Default: 100'
+        help='Number of steps in range (0, max_std) at which to calculate the calibration curve and error for the model. Default: 100'
     )
 
 
@@ -140,13 +140,8 @@ def run():
         )
 
         sigma_values = np.linspace(
-            args.min_variance, args.max_variance, args.num_variance_steps
+            args.min_std, args.max_std, args.num_std_steps
             )
-
-        dest.create_dataset(
-            'smoothing_stds_used',
-            data=sigma_values
-        )
 
         model = Trainer.from_trained_model(
             args.config_data,
@@ -164,7 +159,7 @@ def run():
             # prealloc space to store the calibration curve
             # intermediate calculations (i.e. the raw counts
             # before we take the cumulative sum and normalize).
-            mass_counts = np.zeros((args.num_variance_steps, NUM_CALIBRATION_BINS))
+            mass_counts = np.zeros((args.num_std_steps, NUM_CALIBRATION_BINS))
             for idx, (audio, location) in enumerate(test_set_loader):
                 audio = audio.squeeze()
                 if device == 'gpu':
@@ -220,6 +215,7 @@ def run():
 
         # and store the results
         cal_grp = dest.create_group('calibration')
+        cal_grp.attrs['sigma_values_used'] = sigma_values
         cal_grp.create_dataset(
             'curves',
             data=curves
