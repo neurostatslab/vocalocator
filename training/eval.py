@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 from os import path
 from pathlib import Path
 from sys import stderr
@@ -8,9 +9,27 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from calibration import calibration_from_steps, calibration_step
 from configs import build_config_from_file, build_config_from_name
 from train import Trainer
 from dataloaders import GerbilVocalizationDataset
+
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+
+# ============ calibration constants ==============
+# min and max variance used in the gaussian smoothing
+# of point estimates, in cm
+MIN_SIGMA = 1e-6
+MAX_SIGMA = 15
+# number of sigma values at which to calculate
+# calibration, up to MAX_SIGMA.
+NUM_STEPS = 100
+# number of bins used to calculate each calibration curve
+NUM_CALIBRATION_BINS = 10
+# ================================================
 
 
 def get_args():
@@ -34,6 +53,30 @@ def get_args():
         type=int,
         required=False,
         help="Used to indicate location of model weights, if not already provided by a saved config file.",
+    )
+
+    parser.add_argument(
+        '--min_variance',
+        type=float,
+        required=False,
+        default=MAX_SIGMA,
+        help='Minimum smoothing variance, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_variance_steps` values from [min_variance, max_variance]. Default: 1e-6.'
+    )
+
+    parser.add_argument(
+        '--max_variance',
+        type=float,
+        required=False,
+        default=MAX_SIGMA,
+        help='Maximum smoothing variance, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_variance_steps` values from [min_variance, max_variance). Default: 15.'
+    )
+
+    parser.add_argument(
+        '--num_variance_steps',
+        type=int,
+        required=False,
+        default=NUM_STEPS,
+        help='Number of steps in range (0, max_variance) at which to calculate the calibration curve and error for the model. Default: 100'
     )
 
 
@@ -96,6 +139,15 @@ def run():
             dtype=np.float32
         )
 
+        sigma_values = np.linspace(
+            args.min_variance, args.max_variance, args.num_variance_steps
+            )
+
+        smoothing_vars = dest.create_dataset(
+            'smoothing_vars_used',
+            data=sigma_values
+        )
+
         model = Trainer.from_trained_model(
             args.config_data,
             job_id=args.job_id,
@@ -103,25 +155,80 @@ def run():
         )
 
         model.model.eval()
+
+        # initialize a pool of processes to do the calibration
+        # calculations
+        pool = multiprocessing.Pool()
+
         with torch.no_grad():
-            idx = 0
-            for audio, _ in iter(test_set_loader):
+            # prealloc space to store the calibration curve
+            # intermediate calculations (i.e. the raw counts
+            # before we take the cumulative sum and normalize).
+            mass_counts = np.zeros((args.num_variance_steps, NUM_CALIBRATION_BINS))
+            for idx, (audio, location) in enumerate(test_set_loader):
                 audio = audio.squeeze()
                 if device == 'gpu':
                     audio = audio.cuda()
-                # n_added = len(audio)
-                n_added = 1
                 # output = model.model(audio)
                 output = model.model(audio)
                 # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
-                centimeter_output = GerbilVocalizationDataset.unscale_features(output.cpu().numpy(), arena_dims=arena_dims)
+                centimeter_output = GerbilVocalizationDataset.unscale_features(
+                    output.cpu().numpy(), arena_dims=arena_dims
+                    )
+                centimeter_location = GerbilVocalizationDataset.unscale_features(
+                    location.cpu().numpy(), arena_dims=arena_dims
+                    )
+                
+                def update_mass_counts(result):
+                    """Callback function for the async calibration calculation."""
+                    # result is an array of indices corresponding to
+                    # values in mass_counts that should be incremented
+                    # to keep a running tally of how many samples fall into
+                    # each mass bin.
+                    for i, bin_idx in enumerate(result):
+                        mass_counts[i][bin_idx] += 1
+                
+                # tell one of the pool processes to start calculating
+                pool.apply_async(calibration_step, )
+
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
                 dist_spread = distances.std()
                 # preds[idx:idx+n_added] = centimeter_output
                 preds[idx] = centroid
                 vars[idx] = dist_spread
-                idx += n_added
+                # calculate calibration masses
+                bin_idxs = calibration_step(
+                    centimeter_output,
+                    centimeter_location,
+                    arena_dims,
+                    sigma_values
+                )
+                # for each sigma, find the bin index into which
+                # the mass value falls, then increment it
+                for sigma_i, bin_idx in enumerate(bin_idxs):
+                    mass_counts[sigma_i][bin_idx] += 1
+                
+                logging.info(f'Vocalization {idx} successfully processed!')
+                logging.debug(f'Bin indices: {bin_idxs}')
+                logging.debug(f'Mass counts: {mass_counts}')
+
+        pool.close()
+        # wait for each process to exit
+        pool.join()
+
+        curves, errs = calibration_from_steps(mass_counts)        
+
+        calibration_curves = dest.create_dataset(
+            'calibration_curves',
+            data=curves
+        )
+
+        calibration_err = dest.create_dataset(
+            'calibration_errs',
+            data=errs
+        )
+
 
 
 if __name__ == '__main__':
