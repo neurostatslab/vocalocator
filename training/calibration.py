@@ -108,7 +108,7 @@ def calibration_step(
     arena_dims,
     std_values,
     n_calibration_bins: int = 10,
-    grid_resolution: float = 0.1,
+    grid_resolution: float = 0.5,
     ) -> np.ndarray:
     """
     Perform one step of the calibration process on `model_output`,
