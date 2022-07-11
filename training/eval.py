@@ -19,17 +19,17 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 
-# ============ calibration constants ==============
+# ================ calibration constants ==================
 # min and max variance used in the gaussian smoothing
 # of point estimates, in cm
-MIN_SIGMA = 1e-6
-MAX_SIGMA = 15
+MIN_SIGMA = 0.1
+MAX_SIGMA = 50
 # number of sigma values at which to calculate
 # calibration, up to MAX_SIGMA.
 NUM_STEPS = 100
 # number of bins used to calculate each calibration curve
 NUM_CALIBRATION_BINS = 10
-# ================================================
+# ========================================================
 
 
 def get_args():
@@ -143,8 +143,8 @@ def run():
             args.min_variance, args.max_variance, args.num_variance_steps
             )
 
-        smoothing_vars = dest.create_dataset(
-            'smoothing_vars_used',
+        dest.create_dataset(
+            'smoothing_stds_used',
             data=sigma_values
         )
 
@@ -185,11 +185,20 @@ def run():
                     # values in mass_counts that should be incremented
                     # to keep a running tally of how many samples fall into
                     # each mass bin.
-                    for i, bin_idx in enumerate(result):
-                        mass_counts[i][bin_idx] += 1
+                    for sigma_idx, bin_idx in enumerate(result):
+                        mass_counts[sigma_idx][bin_idx] += 1
                 
                 # tell one of the pool processes to start calculating
-                pool.apply_async(calibration_step, )
+                pool.apply_async(
+                    calibration_step,
+                    (
+                        centimeter_output,
+                        centimeter_location,
+                        arena_dims,
+                        sigma_values
+                    ),
+                    callback = update_mass_counts
+                )
 
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
@@ -197,39 +206,34 @@ def run():
                 # preds[idx:idx+n_added] = centimeter_output
                 preds[idx] = centroid
                 vars[idx] = dist_spread
-                # calculate calibration masses
-                bin_idxs = calibration_step(
-                    centimeter_output,
-                    centimeter_location,
-                    arena_dims,
-                    sigma_values
-                )
-                # for each sigma, find the bin index into which
-                # the mass value falls, then increment it
-                for sigma_i, bin_idx in enumerate(bin_idxs):
-                    mass_counts[sigma_i][bin_idx] += 1
                 
                 logging.info(f'Vocalization {idx} successfully processed!')
-                logging.debug(f'Bin indices: {bin_idxs}')
-                logging.debug(f'Mass counts: {mass_counts}')
+                logging.debug(f'Current mass_counts: {mass_counts}')
 
         pool.close()
         # wait for each process to exit
         pool.join()
 
-        curves, errs = calibration_from_steps(mass_counts)        
+        # calculate calibration information from our accumulated
+        # mass histograms
+        curves, abs_errs, signed_errs = calibration_from_steps(mass_counts)        
 
-        calibration_curves = dest.create_dataset(
-            'calibration_curves',
+        # and store the results
+        cal_grp = dest.create_group('calibration')
+        cal_grp.create_dataset(
+            'curves',
             data=curves
         )
 
-        calibration_err = dest.create_dataset(
-            'calibration_errs',
-            data=errs
+        cal_grp.create_dataset(
+            'abs_errs',
+            data=abs_errs
         )
 
-
+        cal_grp.create_dataset(
+            'signed_errs',
+            data=signed_errs
+        )
 
 if __name__ == '__main__':
     run()
