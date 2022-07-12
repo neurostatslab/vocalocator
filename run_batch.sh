@@ -39,9 +39,11 @@ fi
 #    exit 1
 #fi
 
+FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/scripts/pad_integer 4 ${SLURM_ARRAY_TASK_ID})
 
+# Note, config file should include path to data file under DATAFILE_PATH key
+# Else this will crash
 pipenv run python training/train.py \
-    --config_file $BATCH_DIR/batch_config_${SLURM_ARRAY_TASK_ID}.json \
-    --datafile $DATA_DIR
+    --config_file $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json
 
 date;
