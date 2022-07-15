@@ -87,10 +87,7 @@ class GerbilizerAttentionNet(nn.Module):
             nn.ReLU()
         )
 
-        # Keeping these separate for compatibility with existing state dicts
-        self.x_readout = nn.Sequential(nn.Linear(self.linear_dim, 1), nn.Tanh())
-        self.y_readout = nn.Sequential(nn.Linear(self.linear_dim, 1), nn.Tanh())
-        # self.coord_readout = nn.Linear(linear_dim, 2)
+        self.coord_readout = nn.Sequential(nn.Linear(self.linear_dim, 2), nn.Tanh())
     
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
@@ -111,10 +108,7 @@ class GerbilizerAttentionNet(nn.Module):
 
     def forward(self, x):
         linear_out = self.embed(x)
-        x = self.x_readout(linear_out)
-        y = self.y_readout(linear_out)
-        return torch.cat([x, y], dim=1)
-        # return self.coord_readout(linear_out)
+        return self.coord_readout(linear_out)
     
     def trainable_params(self):
         return self.parameters()
@@ -149,6 +143,9 @@ class GerbilizerSparseAttentionNet(GerbilizerAttentionNet):
         )
 
         self.transformer = SparseTransformerEncoder(encoder_layer, n_transformer_layers)
+    
+    def trainable_params(self):
+        return self.parameters()
 
 
 class GerbilizerAttentionHourglassNet(GerbilizerAttentionNet):

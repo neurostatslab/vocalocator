@@ -226,14 +226,14 @@ def sparse_attn(q: torch.Tensor,
         rand_gather_idx = torch.zeros((1, 1, k_block_sparse.shape[-3] * n_random, 1, 1), device=k_block_sparse.device, dtype=torch.int64)
         for row, valid_idx in enumerate(rand_sampled_cols):
             rand_gather_idx[0, 0, row * n_random:(row + 1) * n_random, 0, 0] = torch.from_numpy(valid_idx)
-        rand_gather_idx = rand_gather_idx.expand((1, n_heads, -1, block_size, d_model))
+        # rand_gather_idx = rand_gather_idx.expand((1, n_heads, -1, block_size, d_model))
     else:
         rand_gather_idx = rand_idx
         rand_requires_masking = [rand_gather_idx[0, 0, (row+1)*n_random-1, 0, 0] == (n_blocks - n_global - 1) for row in range(n_blocks-n_global)]
         
     # For cached rand_gather_idx, the expansion to batch_size prevents the validation batches, which tend to be of different size
     # than train batches or sized inconsistently, from causing problems
-    rand_cols = torch.gather(k_block_sparse, dim=2, index=rand_gather_idx.expand((batch_size, -1, -1, -1, -1)))
+    rand_cols = torch.gather(k_block_sparse, dim=2, index=rand_gather_idx.expand((batch_size, n_heads, -1, block_size, d_model)))
     rand_cols = rand_cols.view(batch_size, n_heads, k_block_sparse.shape[-3], n_random * block_size, d_model)
     rand_attn = torch.einsum('...IJ,...KJ->...IK', q_sparse, rand_cols)  # Should have shape (batch_size, n_heads, non_global_blocks, block_size, n_random*block_size)
 
@@ -296,7 +296,7 @@ def sparse_attn(q: torch.Tensor,
 
 
     # Random columns
-    v_rand = torch.gather(v_block_sparse, dim=2, index=rand_gather_idx.expand((batch_size, -1, -1, -1, -1)))
+    v_rand = torch.gather(v_block_sparse, dim=2, index=rand_gather_idx.expand((batch_size, n_heads, -1, block_size, d_model)))
     v_rand = v_rand.view(batch_size, n_heads, v_block_sparse.shape[-3], n_random * block_size, d_model)
     # Same thing that happened with the windows happens here
     rand_scores = rand_scores.view(batch_size, n_heads, -1, block_size, n_random * block_size)
@@ -421,7 +421,7 @@ class MultiheadSparseAttn(nn.Module):
             n_window = self.attn_n_window,
             n_random = self.attn_n_random,
             rand_idx = self.rand_pattern,
-            return_rand_idx=True
+            return_rand_idx = True
         )
 
         # Flatten for projection
