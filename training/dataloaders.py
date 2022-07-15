@@ -57,6 +57,7 @@ class GerbilVocalizationDataset(Dataset):
         self.map_dim = map_size
         self.arena_dims = arena_dims
         self.make_xcorrs = make_xcorrs
+        self.n_channels = None
 
     def __del__(self):
         self.dataset.close()
@@ -115,7 +116,7 @@ class GerbilVocalizationDataset(Dataset):
         else:
             n_channels = audio.shape[0]
             audio_with_corr = np.empty((n_channels + comb(n_channels, 2), audio.shape[1]), audio.dtype)
-        
+        self.n_channels = n_channels
         audio_with_corr[..., :n_channels, :] = audio
 
         if is_batch:
@@ -140,6 +141,8 @@ class GerbilVocalizationDataset(Dataset):
         if 'len_idx' in dataset:
             start, end = dataset['len_idx'][idx:idx+2]
             audio = dataset['vocalizations'][start:end, ...]
+            if self.n_channels is None:
+                self.n_channels = audio.shape[1]
             return audio
         else:
             return dataset['vocalizations'][idx]
@@ -152,7 +155,7 @@ class GerbilVocalizationDataset(Dataset):
         return location_map
     
     @classmethod
-    def scale_features(cls, inputs, labels, arena_dims, is_batch=False):
+    def scale_features(cls, inputs, labels, arena_dims, is_batch=False, n_mics=4):
         """ Scales the inputs to have zero mean and unit variance. Labels are scaled
         from millimeter units to an arbitrary unit with range [0, 1].
         """
@@ -178,13 +181,13 @@ class GerbilVocalizationDataset(Dataset):
         # std scaling: I think it's ok to use sample statistics instead of population statistics
         # because we treat each vocalization independantly of the others, their scale w.r.t other
         # vocalizations shouldn't affect our task
-        raw_audio_mean = inputs[..., :4, :].mean()
-        raw_audio_std = inputs[..., :4, :].std()
-        scaled_audio[..., :4, :] = (inputs[..., :4, :] - raw_audio_mean) / raw_audio_std
-        if (inputs.shape[1] if is_batch else inputs.shape[0]) == 10:
-            xcorr_mean = inputs[..., 4:, :].mean()
-            xcorr_std = inputs[..., 4:, :].std()
-            scaled_audio[..., 4:, :] = (inputs[..., 4:, :] - xcorr_mean) / xcorr_std
+        raw_audio_mean = inputs[..., :n_mics, :].mean()
+        raw_audio_std = inputs[..., :n_mics, :].std()
+        scaled_audio[..., :n_mics, :] = (inputs[..., :n_mics, :] - raw_audio_mean) / raw_audio_std
+        if n_mics < inputs.shape[-2]:
+            xcorr_mean = inputs[..., n_mics:, :].mean()
+            xcorr_std = inputs[..., n_mics:, :].std()
+            scaled_audio[..., n_mics:, :] = (inputs[..., 4:, :] - xcorr_mean) / xcorr_std
         
         return scaled_audio, scaled_labels
 
@@ -314,7 +317,7 @@ class GerbilVocalizationDataset(Dataset):
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
         location_map = self._label_for_index(self.dataset, idx)
-        sound, location_map = GerbilVocalizationDataset.scale_features(sound, location_map, is_batch=self.samp_size>1, arena_dims=self.arena_dims)
+        sound, location_map = GerbilVocalizationDataset.scale_features(sound, location_map, is_batch=self.samp_size>1, arena_dims=self.arena_dims, n_mics=self.n_channels)
 
         is_map = self.map_dim is not None
 
