@@ -51,8 +51,10 @@ class GerbilizerReducedAttentionNet(nn.Module):
             nn.Linear(d_model, self.linear_dim),
             nn.ReLU()
         )
-
-        self.coord_readout = nn.Sequential(nn.Linear(self.linear_dim, 2), nn.Tanh())
+        if config['TRANSFORMER_USE_TANH']:
+            self.coord_readout = nn.Sequential(nn.Linear(self.linear_dim, 2), nn.Tanh())
+        else:
+            self.coord_readout = nn.Linear(self.linear_dim, 2)
     
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
