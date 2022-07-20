@@ -6,6 +6,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from .encodings import LearnedEncoding, FixedEncoding
+from .sparse_attn import SparseTransformerEncoder, SparseTransformerEncoderLayer
 
 
 class Transpose(nn.Module):
@@ -86,10 +87,7 @@ class GerbilizerAttentionNet(nn.Module):
             nn.ReLU()
         )
 
-        # Keeping these separate for compatibility with existing state dicts
-        self.x_readout = nn.Sequential(nn.Linear(self.linear_dim, 1), nn.Tanh())
-        self.y_readout = nn.Sequential(nn.Linear(self.linear_dim, 1), nn.Tanh())
-        # self.coord_readout = nn.Linear(linear_dim, 2)
+        self.coord_readout = nn.Sequential(nn.Linear(self.linear_dim, 2), nn.Tanh())
     
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
@@ -110,10 +108,41 @@ class GerbilizerAttentionNet(nn.Module):
 
     def forward(self, x):
         linear_out = self.embed(x)
-        x = self.x_readout(linear_out)
-        y = self.y_readout(linear_out)
-        return torch.cat([x, y], dim=1)
-        # return self.coord_readout(linear_out)
+        return self.coord_readout(linear_out)
+    
+    def trainable_params(self):
+        return self.parameters()
+
+
+class GerbilizerSparseAttentionNet(GerbilizerAttentionNet):
+    def __init__(self, config):
+        super().__init__(config)
+
+        del self.encoder_layer
+        del self.transformer
+
+        d_model = config[f'CONV_NUM_CHANNELS'][0]
+        n_attn_heads = config['N_ATTENTION_HEADS']
+        n_transformer_layers = config['N_TRANSFORMER_LAYERS']
+
+
+        n_global = config['TRANSFORMER_GLOBAL_BLOCKS']
+        n_window = config['TRANSFORMER_WINDOW_BLOCKS']
+        n_random = config['TRANSFORMER_RANDOM_BLOCKS']
+        block_size = config['TRANSFORMER_BLOCK_SIZE']
+
+        encoder_layer = SparseTransformerEncoderLayer(
+            d_model,
+            n_attn_heads,
+            block_size=block_size,
+            n_global=n_global,
+            n_window=n_window,
+            n_random=n_random,
+            dim_feedforward=2048,
+            dropout=0.1
+        )
+
+        self.transformer = SparseTransformerEncoder(encoder_layer, n_transformer_layers)
     
     def trainable_params(self):
         return self.parameters()

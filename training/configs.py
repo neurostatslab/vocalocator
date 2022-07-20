@@ -4,7 +4,7 @@ File to configure all hyperparameters (model architecture and training).
 import json
 import numpy as np
 
-from typing import NewType
+from typing import NewType, Optional
 
 
 JSON = NewType('JSON', dict)
@@ -77,12 +77,15 @@ def keys_to_uppercase(dictionary: dict) -> dict:
     return new_dict
 
 
-def build_config_from_name(config_name, job_id):
+def build_config_from_name(config_name, job_id: Optional[int]=None):
     """
     Returns dictionary of hyperparameters.
     """
     # Use job_id to seed any random hyperparameters.
-    rs = np.random.RandomState(job_id)
+    if job_id is not None:
+        rs = np.random.RandomState(job_id)
+    else:
+        rs = np.random.RandomState(42)
 
     # Specify default hyperparameters
 
@@ -112,8 +115,10 @@ def build_config_from_name(config_name, job_id):
             "valid 'config_name' parameter."
             )
     
-    CONFIG['JOB_ID'] = job_id
     CONFIG['CONFIG_NAME'] = config_name
+    if job_id is not None:
+        CONFIG['JOB_ID'] = job_id
+
     # Fill in any default values.
     for key, default_value in DEFAULT_CONFIG.items():
         if key not in CONFIG.keys():
@@ -122,7 +127,7 @@ def build_config_from_name(config_name, job_id):
     return keys_to_uppercase(CONFIG)
 
 
-def build_config_from_file(filepath: str, job_id: int) -> JSON:
+def build_config_from_file(filepath: str, job_id: Optional[int]=None) -> JSON:
     with open(filepath, 'r') as ctx:
         config = json.load(ctx)
     
@@ -131,6 +136,7 @@ def build_config_from_file(filepath: str, job_id: int) -> JSON:
 
     if job_id is not None:
         config['JOB_ID'] = job_id
+
     for key, default_value in DEFAULT_CONFIG.items():
         if key not in config.keys():
             config[key] = default_value

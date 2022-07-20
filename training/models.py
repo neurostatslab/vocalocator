@@ -3,8 +3,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet
+from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet, GerbilizerSparseAttentionNet
 from architectures.densenet import GerbilizerDenseNet
+from architectures.reduced import GerbilizerReducedAttentionNet
 from architectures.simplenet import GerbilizerSimpleNetwork
 
 
@@ -37,8 +38,11 @@ def build_model(CONFIG):
     elif CONFIG["ARCHITECTURE"] == "GerbilizerSimpleNetwork":
         model = GerbilizerSimpleNetwork(CONFIG)
         loss_fn = se_loss_fn
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionNet":
-        model = GerbilizerAttentionNet(CONFIG)
+    elif CONFIG['ARCHITECTURE'] == "GerbilizerSparseAttentionNet":
+        model = GerbilizerSparseAttentionNet(CONFIG)
+        loss_fn = se_loss_fn
+    elif CONFIG['ARCHITECTURE'] == "GerbilizerReducedSparseAttentionNet":
+        model = GerbilizerReducedAttentionNet(CONFIG)
         loss_fn = se_loss_fn
     elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionHourglassNet":
         model = GerbilizerAttentionHourglassNet(CONFIG)

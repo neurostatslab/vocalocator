@@ -50,17 +50,10 @@ def get_args():
     )
 
     parser.add_argument(
-        "--job_id",
-        type=int,
-        required=False,
-        help="Used to seed random hyperparameters and save output.",
-    )
-
-    parser.add_argument(
         "--datafile",
         type=str,
         required=False,
-        default=os.path.join(base_dir, "data"),
+        # default=os.path.join(base_dir, "data"),
         help="Path to vocalization data.",
     )
 
@@ -91,9 +84,6 @@ def find_next_job_id(model_name):
 
 
 def validate_args(args):
-    if not os.path.exists(args.datafile):
-        raise ValueError(f"Error: could not find data at path {args.datafile}")
-
     if args.config_file is not None and not os.path.exists(args.config_file):
         raise ValueError(f"Requested config JSON file could not be found: {args.config_file}")
     
@@ -103,19 +93,24 @@ def validate_args(args):
     # Although it's somewhat inappropriate, I've elected to load config JSON here because a
     # thorough validation of the user input involves validating the presently unloaded JSON
     if args.config_file is not None:
-        args.config_data = build_config_from_file(args.config_file, args.job_id)
+        args.config_data = build_config_from_file(args.config_file)
     else:
         # Only runs when config_file is not provided
         # Although the intention is for the user to only provide one of the two, this
         # prioritizes config_file for the sake of eliminating undefined behavior
-        args.config_data = build_config_from_name(args.config, args.job_id)
+        args.config_data = build_config_from_name(args.config)
     
-    if args.job_id is None:
-        args.job_id = find_next_job_id(args.config_data['CONFIG_NAME'])
-        if 'JOB_ID' in args.config_data and args.pretrained:
-            args.job_id = args.config_data['JOB_ID']
+    if args.datafile is None:
+        if 'DATAFILE_PATH' not in args.config_data:
+            raise ValueError(f"Error: no data files provided")
         else:
-            args.config_data['JOB_ID'] = args.job_id
+            args.datafile = args.config_data['DATAFILE_PATH']
+    
+    args.job_id = find_next_job_id(args.config_data['CONFIG_NAME'])
+    if 'JOB_ID' in args.config_data:
+        args.job_id = args.config_data['JOB_ID']
+    else:
+        args.config_data['JOB_ID'] = args.job_id
 
 
 class Trainer():
@@ -371,8 +366,8 @@ class Trainer():
         """
         lm0 = self._config["MIN_LEARNING_RATE"]
         lm1 = self._config["MAX_LEARNING_RATE"]
-        # f = epoch_num / self._config["NUM_EPOCHS"]
-        f = (epoch_num % 50) / 50
+        f = epoch_num / self._config["NUM_EPOCHS"]
+        # f = (epoch_num % 50) / 50
         return (
             lm0 + 0.5 * (lm1 - lm0) * (1 + np.cos(f * np.pi))
         )
