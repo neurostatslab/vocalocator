@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 # ================ calibration constants ==================
+# gaussian mixture smoothing:
 # min and max variance used in the gaussian smoothing
 # of point estimates, in cm
 MIN_SIGMA = 0.1
@@ -28,8 +29,15 @@ MAX_SIGMA = 50
 # number of sigma values at which to calculate
 # calibration, up to MAX_SIGMA.
 NUM_STEPS = 100
+# dynamic spherical gaussian smoothing:
+# minimium and maximum proportion of the observed
+# mean distance between each point estimate and the
+# centroid, used as variance of a gaussian placed
+# at the centroid
+MIN_FRAC = 0.01
+MAX_FRAC = 5
 # number of bins used to calculate each calibration curve
-NUM_CALIBRATION_BINS = 10
+NUM_CALIBRATION_BINS = 20
 # ========================================================
 
 
@@ -77,9 +85,40 @@ def get_args():
         type=int,
         required=False,
         default=NUM_STEPS,
-        help='Number of steps in range (0, max_std) at which to calculate the calibration curve and error for the model. Default: 100'
+        help='Number of steps in range at which to calculate the calibration curve and error for the `gaussian_mixture` smoothing method. Default: 100'
     )
 
+    parser.add_argument(
+        '--min_frac',
+        type=float,
+        required=False,
+        default=MIN_FRAC,
+        help=(
+            'Minimum fraction to use in calibration curve calculation for the `dynamic_spherical_gaussian` smoothing method. '
+            'This smoothing method calculates the mean distance between each point estimate and their centroid, then uses various fractions '
+            'of that value as the variance of a spherical Gaussian placed at the centroid.'
+        )
+    )
+
+    parser.add_argument(
+        '--max_frac',
+        type=float,
+        required=False,
+        default=MAX_FRAC,
+        help=(
+            'Maximum fraction to use in calibration curve calculation for the `dynamic_spherical_gaussian` smoothing method. '
+            'This smoothing method calculates the mean distance between each point estimate and their centroid, then uses various fractions '
+            'of that value as the variance of a spherical Gaussian placed at the centroid.'
+        )
+    )
+
+    parser.add_argument(
+        '--num_frac_steps',
+        type=int,
+        required=False,
+        default=NUM_STEPS,
+        help='Number of steps in range at which to calculate the calibration curve and error for the `dynamic_spherical_gaussian` smoothing method. Default: 100'
+    )
 
     args = parser.parse_args()
     validate_args(args)
@@ -140,10 +179,6 @@ def run():
             dtype=np.float32
         )
 
-        sigma_values = np.linspace(
-            args.min_std, args.max_std, args.num_std_steps
-            )
-
         model = Trainer.from_trained_model(
             args.config_data,
             job_id=args.job_id,
@@ -156,7 +191,13 @@ def run():
         MM_TO_CM = 0.1
         arena_dims_cm = np.array(arena_dims) * MM_TO_CM
         # set up calibration accumulator
-        PMF_GRID_RESOLUTION = 1  # 1 cm grid resolution for pmfs
+        PMF_GRID_RESOLUTION = 0.5  # 0.5 cm grid resolution for pmfs
+        sigma_values = np.linspace(
+            args.min_std, args.max_std, args.num_std_steps
+        )
+        frac_values = np.linspace(
+            args.min_frac, args.max_frac, args.num_frac_steps
+        )
         smoothing_specs = {
             'model_output': {
                 'gaussian_mixture': {
@@ -164,7 +205,7 @@ def run():
                     'desired_resolution': PMF_GRID_RESOLUTION,
                 },
                 'dynamic_spherical_gaussian': {
-                    'fracs_of_est_variance': sigma_values,
+                    'fracs_of_est_variance': frac_values,
                     'desired_resolution': PMF_GRID_RESOLUTION,
                 }
             }
@@ -191,8 +232,6 @@ def run():
                     )
                 
                 # move origin from center of room to bottom left corner
-                MM_TO_CM = 0.1
-                arena_dims_cm = np.array(arena_dims) * MM_TO_CM
                 centered_output = centimeter_output + (arena_dims_cm / 2)
                 centered_location = centimeter_location + (arena_dims_cm / 2)
                 
