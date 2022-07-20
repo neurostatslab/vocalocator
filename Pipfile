@@ -15,6 +15,7 @@ tqdm = "*"
 torch-audiomentations = "*"
 ipython = "*"
 notebook = "*"
+calibrationtools = {git = "https://github.com/amanchoudhri/calibrationtools.git"}
 
 [dev-packages]
 
