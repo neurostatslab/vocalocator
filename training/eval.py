@@ -7,9 +7,10 @@ from sys import stderr
 import h5py
 import numpy as np
 import torch
+
+from calibrationtools import CalibrationAccumulator
 from torch.utils.data import DataLoader
 
-from calibration import calibration_from_steps, calibration_step
 from configs import build_config_from_file, build_config_from_name
 from train import Trainer
 from dataloaders import GerbilVocalizationDataset
@@ -151,15 +152,30 @@ def run():
 
         model.model.eval()
 
-        # initialize a pool of processes to do the calibration
-        # calculations
-        pool = multiprocessing.Pool()
+        # convert arena dims to cm (same unit as the output)
+        MM_TO_CM = 0.1
+        arena_dims_cm = np.array(arena_dims) * MM_TO_CM
+        # set up calibration accumulator
+        PMF_GRID_RESOLUTION = 1  # 1 cm grid resolution for pmfs
+        smoothing_specs = {
+            'model_output': {
+                'gaussian_mixture': {
+                    'std_values': sigma_values,
+                    'desired_resolution': PMF_GRID_RESOLUTION,
+                },
+                'dynamic_spherical_gaussian': {
+                    'fracs_of_est_variance': sigma_values,
+                    'desired_resolution': PMF_GRID_RESOLUTION,
+                }
+            }
+        }
+
+        ca = CalibrationAccumulator(
+            arena_dims,
+            smoothing_specs
+        )
 
         with torch.no_grad():
-            # prealloc space to store the calibration curve
-            # intermediate calculations (i.e. the raw counts
-            # before we take the cumulative sum and normalize).
-            mass_counts = np.zeros((args.num_std_steps, NUM_CALIBRATION_BINS))
             for idx, (audio, location) in enumerate(test_set_loader):
                 audio = audio.squeeze()
                 if device == 'gpu':
@@ -174,62 +190,40 @@ def run():
                     location.cpu().numpy(), arena_dims=arena_dims
                     )
                 
-                def update_mass_counts(result):
-                    """Callback function for the async calibration calculation."""
-                    # result is an array of indices corresponding to
-                    # values in mass_counts that should be incremented
-                    # to keep a running tally of how many samples fall into
-                    # each mass bin.
-                    for sigma_idx, bin_idx in enumerate(result):
-                        mass_counts[sigma_idx][bin_idx] += 1
+                # move origin from center of room to bottom left corner
+                MM_TO_CM = 0.1
+                arena_dims_cm = np.array(arena_dims) * MM_TO_CM
+                centered_output = centimeter_output + (arena_dims_cm / 2)
+                centered_location = centimeter_location + (arena_dims_cm / 2)
                 
-                # tell one of the pool processes to start calculating
-                pool.apply_async(
-                    calibration_step,
-                    (
-                        centimeter_output,
-                        centimeter_location,
-                        arena_dims,
-                        sigma_values
-                    ),
-                    callback = update_mass_counts
-                )
+                save_path = None
+                # occasionally visualize the pmfs
+                if idx % 500 == 0:
+                    save_path = (
+                        Path.home() / 'images' / 'pmfs' / 
+                        args.scenario / f'vox_{idx}'
+                        )
+                    save_path.mkdir(parents=True, exist_ok=True)
 
+                ca.calculate_step(
+                    centered_output,
+                    centered_location,
+                    pmf_save_path=save_path,
+                )
+                
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
                 dist_spread = distances.std()
                 # preds[idx:idx+n_added] = centimeter_output
                 preds[idx] = centroid
                 vars[idx] = dist_spread
-                
-                logging.info(f'Vocalization {idx} successfully processed!')
-                logging.debug(f'Current mass_counts: {mass_counts}')
 
-        pool.close()
-        # wait for each process to exit
-        pool.join()
-
-        # calculate calibration information from our accumulated
-        # mass histograms
-        curves, abs_errs, signed_errs = calibration_from_steps(mass_counts)        
-
-        # and store the results
-        cal_grp = dest.create_group('calibration')
-        cal_grp.attrs['sigma_values_used'] = sigma_values
-        cal_grp.create_dataset(
-            'curves',
-            data=curves
-        )
-
-        cal_grp.create_dataset(
-            'abs_errs',
-            data=abs_errs
-        )
-
-        cal_grp.create_dataset(
-            'signed_errs',
-            data=signed_errs
-        )
+        # calculate the calibration curves + errors
+        ca.calculate_curves_and_error(h5_file=dest)
+        # plot the figures
+        fig_path = dest_path.parent 
+        ca.plot_results(fig_path)
+        
 
 if __name__ == '__main__':
     run()
