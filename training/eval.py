@@ -18,6 +18,7 @@ from dataloaders import GerbilVocalizationDataset
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
 # ================ calibration constants ==================
@@ -282,10 +283,19 @@ def run():
                 centered_output = centimeter_output + (arena_dims_cm / 2)
                 centered_location = centimeter_location + (arena_dims_cm / 2)
 
+                # occasionally log progress
+                if idx % 100 == 0:
+                    logging.info(f'Reached vocalization {idx}.')
+                    logging.debug(
+                        f'Vox {idx} -- centimeter_output: {centimeter_output} '
+                        f'| centimeter_location: {centimeter_location} '
+                        f'| centered_output: {centered_output}'
+                        f'| centered_location: {centered_location}'
+                        )
                 save_path = None
                 # occasionally visualize the pmfs
                 if idx % 500 == 0:
-                    save_path = Path(args.outdir) / 'pmfs'
+                    save_path = Path(args.outdir) / 'pmfs' / f'vox_{idx}'
                     save_path.mkdir(parents=True, exist_ok=True)
 
                 ca.calculate_step(
