@@ -115,7 +115,7 @@ def gaussian_mle_loss_fn(pred, target):
     matrix as the estimated covariance :math: `\hat{\Sigma}`.
     """
     # assume that preds has shape: (B, 6) where B is the batch size
-    y_hat = pred[:, :2]  # shape: (B, 2)
+    y_hat = pred[:, :2].unsqueeze(-1)  # shape: (B, 2, 1)
     # construct the lower triangular matrix
     reshaped = pred[:, 2:].reshape((-1, 2, 2))
     L = reshaped.tril()
