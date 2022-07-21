@@ -35,7 +35,7 @@ NUM_STEPS = 100
 # centroid, used as variance of a gaussian placed
 # at the centroid
 MIN_FRAC = 0.01
-MAX_FRAC = 5
+MAX_FRAC = 10
 # number of bins used to calculate each calibration curve
 NUM_CALIBRATION_BINS = 20
 # ========================================================
@@ -51,25 +51,42 @@ def get_args():
     )
 
     parser.add_argument(
+        '--outdir',
+        type=str,
+        required=False,
+        help='Directory to which output should be saved.'
+    )
+
+    parser.add_argument(
         "--config",
         type=str,
         required=False,
-        help="Used to specify model configuration via a hard-coded named configuration or json file.",
+        help=(
+            "Used to specify model configuration via a hard-coded named "
+            "configuration or json file."
+            ),
     )
 
     parser.add_argument(
         "--job_id",
         type=int,
         required=False,
-        help="Used to indicate location of model weights, if not already provided by a saved config file.",
+        help=(
+            "Used to indicate location of model weights, if not already "
+            "provided by a saved config file."
+            )
     )
 
     parser.add_argument(
         '--min_std',
         type=float,
         required=False,
-        default=MAX_SIGMA,
-        help='Minimum smoothing std, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_std_steps` values from [min_std, max_std]. Default: 0.1.'
+        default=MIN_SIGMA,
+        help=(
+            'Min smoothing std, in cm, to use in calibration curve calculation. '
+            'Calibration curves will be calculated at `num_std_steps` values from '
+            f'[min_std, max_std]. Default: {MIN_SIGMA}.'
+        )
     )
 
     parser.add_argument(
@@ -77,7 +94,11 @@ def get_args():
         type=float,
         required=False,
         default=MAX_SIGMA,
-        help='Maximum smoothing std, in cm, to use in calibration curve calculation. Calibration curves will be calculated at `num_std_steps` values from [min_std, max_std). Default: 50.'
+        help=(
+            'Max smoothing std, in cm, to use in calibration curve calculation. '
+            'Calibration curves will be calculated at `num_std_steps` values from '
+            f'[min_std, max_std]. Default: {MAX_SIGMA}.'
+        )
     )
 
     parser.add_argument(
@@ -85,7 +106,11 @@ def get_args():
         type=int,
         required=False,
         default=NUM_STEPS,
-        help='Number of steps in range at which to calculate the calibration curve and error for the `gaussian_mixture` smoothing method. Default: 100'
+        help=(
+            'Number of steps in range at which to calculate the calibration curve '
+            'and error for the `gaussian_mixture` smoothing method. '
+            f'Default: {NUM_STEPS}'
+            )
     )
 
     parser.add_argument(
@@ -94,9 +119,11 @@ def get_args():
         required=False,
         default=MIN_FRAC,
         help=(
-            'Minimum fraction to use in calibration curve calculation for the `dynamic_spherical_gaussian` smoothing method. '
-            'This smoothing method calculates the mean distance between each point estimate and their centroid, then uses various fractions '
-            'of that value as the variance of a spherical Gaussian placed at the centroid.'
+            'Minimum fraction to use in calibration curve calculation for the '
+            '`dynamic_spherical_gaussian` smoothing method. This smoothing '
+            'method calculates the mean distance between each point estimate '
+            'and their centroid, then uses various fractions of that value '
+            'as the variance of a spherical Gaussian placed at the centroid.'
         )
     )
 
@@ -106,9 +133,11 @@ def get_args():
         required=False,
         default=MAX_FRAC,
         help=(
-            'Maximum fraction to use in calibration curve calculation for the `dynamic_spherical_gaussian` smoothing method. '
-            'This smoothing method calculates the mean distance between each point estimate and their centroid, then uses various fractions '
-            'of that value as the variance of a spherical Gaussian placed at the centroid.'
+            'Minimum fraction to use in calibration curve calculation for the '
+            '`dynamic_spherical_gaussian` smoothing method. This smoothing '
+            'method calculates the mean distance between each point estimate '
+            'and their centroid, then uses various fractions of that value '
+            'as the variance of a spherical Gaussian placed at the centroid.'
         )
     )
 
@@ -117,7 +146,11 @@ def get_args():
         type=int,
         required=False,
         default=NUM_STEPS,
-        help='Number of steps in range at which to calculate the calibration curve and error for the `dynamic_spherical_gaussian` smoothing method. Default: 100'
+        help=(
+            'Number of steps in range at which to calculate the calibration '
+            'curve and error for the `dynamic_spherical_gaussian` smoothing '
+            f'method. Default: {NUM_STEPS}'
+        )
     )
 
     args = parser.parse_args()
@@ -128,14 +161,23 @@ def get_args():
 def validate_args(args):
     if not path.exists(args.datafile):
         raise ValueError(f"Error: could not find data at path {args.datafile}")
-    
+
+    if not args.outdir:
+        # if no outdir was passed, put output in the same directory
+        # as the data file by default. this agrees with the previous
+        # implementation
+        args.outdir = Path(args.datafile).parent
+
+    elif not path.exists(args.outdir):
+        raise ValueError(f"Error: could not find output directory at path {args.outdir}")
+
     valid_ext = ('.h5', '.hdf', '.hdf5')
     if not any(args.datafile.endswith(ext) for ext in valid_ext):
-        raise ValueError(f"Datafile must be an HDF5 file (.h5, .hdf, .hdf5)")
-    
+        raise ValueError("Datafile must be an HDF5 file (.h5, .hdf, .hdf5)")
+
     if args.config is None:
         raise ValueError("No config or model name provided.")
-    
+
     if not path.exists(args.config):
         # Assuming a model name was provided rather than a path to a json file
         args.config_data = build_config_from_name(args.config, args.job_id)
@@ -149,7 +191,9 @@ def run():
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
     dest_path = Path(args.datafile).stem + '_preds.h5'
-    dest_path = str(Path(args.datafile).parent / dest_path)
+    dest_path = str(Path(args.outdir) / dest_path)
+
+    logging.debug(f'destination path: {dest_path}')
 
     with h5py.File(dest_path, 'w') as dest:
         with h5py.File(args.datafile, 'r') as source:
@@ -159,9 +203,12 @@ def run():
                 n_vox = source['vocalizations'].shape[0]
 
             source.copy(source['locations'], dest['/'], 'locations')
-        
+
         # Close the h5 here to reopen it in the Dataset obj
-        arena_dims = (args.config_data['ARENA_WIDTH'], args.config_data['ARENA_LENGTH'])
+        arena_dims = (
+            args.config_data['ARENA_WIDTH'],
+            args.config_data['ARENA_LENGTH']
+            )
         make_xcorr = args.config_data['COMPUTE_XCORRS']
         test_set = GerbilVocalizationDataset(args.datafile, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims, make_xcorrs=make_xcorr)
         test_set.samp_size = 30  # take 30 samples from each vocalization. Pass them to the model as if each were a full batch of inputs
@@ -230,26 +277,23 @@ def run():
                 centimeter_location = GerbilVocalizationDataset.unscale_features(
                     location.cpu().numpy(), arena_dims=arena_dims
                     )
-                
+
                 # move origin from center of room to bottom left corner
                 centered_output = centimeter_output + (arena_dims_cm / 2)
                 centered_location = centimeter_location + (arena_dims_cm / 2)
-                
+
                 save_path = None
                 # occasionally visualize the pmfs
                 if idx % 500 == 0:
-                    save_path = (
-                        Path.home() / 'images' / 'pmfs' / 
-                        args.scenario / f'vox_{idx}'
-                        )
+                    save_path = Path(args.outdir) / 'pmfs'
                     save_path.mkdir(parents=True, exist_ok=True)
 
                 ca.calculate_step(
-                    centered_output,
+                    {'model_output': centered_output},
                     centered_location,
                     pmf_save_path=save_path,
                 )
-                
+
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
                 dist_spread = distances.std()
@@ -260,9 +304,9 @@ def run():
         # calculate the calibration curves + errors
         ca.calculate_curves_and_error(h5_file=dest)
         # plot the figures
-        fig_path = dest_path.parent 
+        fig_path = dest_path.parent
         ca.plot_results(fig_path)
-        
+
 
 if __name__ == '__main__':
     run()
