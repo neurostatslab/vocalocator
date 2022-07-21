@@ -15,9 +15,10 @@ tqdm = "*"
 torch-audiomentations = "*"
 ipython = "*"
 notebook = "*"
-calibrationtools = {git = "https://github.com/amanchoudhri/calibrationtools.git"}
+calibrationtools = {editable = true, git = "https://github.com/amanchoudhri/calibrationtools.git"}
 
 [dev-packages]
+calibrationtools = {editable = true, path = "./../calibrationtools"}
 
 [requires]
 python_version = "3.9"

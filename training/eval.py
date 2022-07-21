@@ -26,10 +26,10 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 # min and max variance used in the gaussian smoothing
 # of point estimates, in cm
 MIN_SIGMA = 0.1
-MAX_SIGMA = 50
+MAX_SIGMA = 20
 # number of sigma values at which to calculate
 # calibration, up to MAX_SIGMA.
-NUM_STEPS = 100
+NUM_STEPS = 50
 # dynamic spherical gaussian smoothing:
 # minimium and maximum proportion of the observed
 # mean distance between each point estimate and the
@@ -239,7 +239,7 @@ def run():
         MM_TO_CM = 0.1
         arena_dims_cm = np.array(arena_dims) * MM_TO_CM
         # set up calibration accumulator
-        PMF_GRID_RESOLUTION = 0.5  # 0.5 cm grid resolution for pmfs
+        PMF_GRID_RESOLUTION = 1  # 1 cm grid resolution for pmfs
         sigma_values = np.linspace(
             args.min_std, args.max_std, args.num_std_steps
         )
@@ -260,7 +260,7 @@ def run():
         }
 
         ca = CalibrationAccumulator(
-            arena_dims,
+            arena_dims_cm,
             smoothing_specs
         )
 
@@ -284,14 +284,15 @@ def run():
                 centered_location = centimeter_location + (arena_dims_cm / 2)
 
                 # occasionally log progress
-                if idx % 100 == 0:
+                if idx % 10 == 0:
                     logging.info(f'Reached vocalization {idx}.')
-                    logging.debug(
-                        f'Vox {idx} -- centimeter_output: {centimeter_output} '
-                        f'| centimeter_location: {centimeter_location} '
-                        f'| centered_output: {centered_output}'
-                        f'| centered_location: {centered_location}'
-                        )
+                    if idx % 100 == 0:
+                        logging.debug(
+                            f'Vox {idx} -- centimeter_output: {centimeter_output} '
+                            f'| centimeter_location: {centimeter_location} '
+                            f'| centered_output: {centered_output}'
+                            f'| centered_location: {centered_location}'
+                            )
                 save_path = None
                 # occasionally visualize the pmfs
                 if idx % 500 == 0:
