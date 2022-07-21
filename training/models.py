@@ -115,7 +115,7 @@ def gaussian_mle_loss_fn(pred, target):
     matrix as the estimated covariance :math: `\hat{\Sigma}`.
     """
     # assume that preds has shape: (B, 6) where B is the batch size
-    y_hat = pred[:, :2].unsqueeze(-1)  # shape: (B, 2, 1)
+    y_hat = pred[:, :2]  # shape: (B, 2)
     # construct the lower triangular matrix
     reshaped = pred[:, 2:].reshape((-1, 2, 2))
     L = reshaped.tril()
@@ -123,9 +123,13 @@ def gaussian_mle_loss_fn(pred, target):
     S = torch.matmul(L, L.transpose(1, 2))
     # compute the loss
     # first term: `\ln |\hat{Sigma}|`
-    diff = y_hat - target
-    precision = torch.inverse(S)
-    # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
-    quadratic_form = torch.matmul(diff.transpose(1, 2), torch.matmul(precision, diff))
     _, logdet = torch.linalg.slogdet(S)
+    # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
+    diff = (y_hat - target).unsqueeze(-1)  # shape (B, 2, 1)
+    # use torch.linalg.solve(S, diff) instead of
+    # torch.matmul(torch.inverse(S), diff), since it's faster and more
+    # stable according to the docs for torch.linalg.inv
+    right_hand_term = torch.linalg.solve(S, diff)
+    quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term) # (B, 1, 1) by default
+    quadratic_form = quadratic_form.squeeze() # (B,)
     return quadratic_form + logdet
