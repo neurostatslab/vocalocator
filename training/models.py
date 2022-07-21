@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet, GerbilizerSparseAttentionNet
 from architectures.densenet import GerbilizerDenseNet
 from architectures.reduced import GerbilizerReducedAttentionNet
-from architectures.simplenet import GerbilizerSimpleNetwork
+from architectures.simplenet import GerbilizerSimpleNetwork, GerbilizerSimpleWithCovariance
 
 
 def build_model(CONFIG):
@@ -47,6 +47,9 @@ def build_model(CONFIG):
     elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionHourglassNet":
         model = GerbilizerAttentionHourglassNet(CONFIG)
         loss_fn = wass_loss_fn
+    elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleWithCovariance":
+        model = GerbilizerSimpleWithCovariance(CONFIG)
+        loss_fn = gaussian_mle_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -84,3 +87,45 @@ def wass_loss_fn(pred, target):
     # Add 1 to target to make the smallest value 0
     error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
     return torch.logsumexp(error_map, dim=1)
+
+def gaussian_mle_loss_fn(pred, target):
+    """
+    Gaussian MLE loss function as described in [Russell and Reale, 2021]. Assumes
+    that the true conditional distribution of a label :math: `y \in \R^2` given
+    an example :math: `\bold{x} \in \mathcal{X}` can be approximated by a
+    multivariate gaussian
+
+    .. math::
+        p(y | \bold{x}) = \mathcal{N}(\hat{\mu}(\bold(x)), \hat{\Sigma}(x)),
+
+    where :math:`\hat{mu}` and :math:`\hat{\Sigma}` are models of the mean and covariance.
+    
+    To train the models, simply minimize the negative log of the above likelihood
+    function
+    
+    .. math::
+        \ln |\hat{\Sigma}| + (y - \hat{\mu})^T \hat{\Sigma}^{-1} (y - \hat{\mu})
+
+    Note: we expect pred to be a vector of length 5, where the first two entries
+    represent the predicted :math: `\hat{\mu}` value and the remaining entries are
+    used to determine the covariance matrix as follows:
+
+    Place the three entries into a lower triangular matrix L. Since L is full
+    rank, the matrix L @ L.T is symmetric positive definite. Interpret this resulting
+    matrix as the estimated covariance :math: `\hat{\Sigma}`.
+    """
+    # assume that preds has shape: (B, 6) where B is the batch size
+    y_hat = pred[:, :2]  # shape: (B, 2)
+    # construct the lower triangular matrix
+    reshaped = pred[:, 2:].reshape((-1, 2, 2))
+    L = reshaped.tril()
+    # and now the covariance
+    S = torch.matmul(L, L.T)
+    # compute the loss
+    # first term: `\ln |\hat{Sigma}|`
+    diff = y_hat - target
+    precision = torch.inverse(S)
+    # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
+    quadratic_form = torch.matmul(diff.T, torch.matmul(precision, diff))
+    _, logdet = torch.linalg.slogdet(S)
+    return quadratic_form + logdet

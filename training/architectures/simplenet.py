@@ -49,8 +49,8 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
             N += comb(N, 2)
 
         should_downsample = CONFIG['SHOULD_DOWNSAMPLE']
-        n_channels = CONFIG['CONV_NUM_CHANNELS']  # Converting this to a JSON array in the config for convenience
-        n_channels.insert(0, N)
+        self.n_channels = CONFIG['CONV_NUM_CHANNELS']  # Converting this to a JSON array in the config for convenience
+        self.n_channels.insert(0, N)
         filter_sizes = CONFIG['CONV_FILTER_SIZES']  # Also making this an array, along with the others
         dilations = CONFIG['CONV_DILATIONS']
         use_batch_norm = CONFIG['USE_BATCH_NORM']
@@ -59,7 +59,7 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
                 in_channels, out_channels, filter_size, downsample=downsample, dilation=dilation, use_bn=use_batch_norm
             )
             for in_channels, out_channels, filter_size, downsample, dilation
-            in zip(n_channels[:-1], n_channels[1:], filter_sizes, should_downsample, dilations)
+            in zip(self.n_channels[:-1], self.n_channels[1:], filter_sizes, should_downsample, dilations)
         ]
         self.conv_layers = torch.nn.Sequential(*convolutions)
 
@@ -74,7 +74,7 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
 
         # Final linear layer to reduce the number of channels.
         self.coord_readout = torch.nn.Linear(
-            n_channels[-1],
+            self.n_channels[-1],
             2
         )
 
@@ -84,3 +84,25 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         coords = self.coord_readout(h2)
         return coords
+
+
+class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # replace the final coordinate readout with a block that outputs
+        # 6 numbers. Two are the coordinates, and then the
+        # remaining four determine the covariance matrix.
+    
+        # to guarantee that the resulting matrix will be symmetric positive
+        # definite, we reshape those extra four numbers into a 2x2 matrix,
+        # then use the torch.tril() function to convert that to a lower
+        # triangular matrix L. Since L is real and full rank, we have that
+        # L @ L.T is symmetric positive definite and is thus a
+        # valid covariance matrix.
+
+        self.coord_readout = torch.nn.Linear(
+            self.n_channels[-1],
+            6
+        )
+
