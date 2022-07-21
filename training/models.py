@@ -120,12 +120,12 @@ def gaussian_mle_loss_fn(pred, target):
     reshaped = pred[:, 2:].reshape((-1, 2, 2))
     L = reshaped.tril()
     # and now the covariance
-    S = torch.matmul(L, torch.transpose(L, 1, 2))
+    S = torch.matmul(L, L.transpose(1, 2))
     # compute the loss
     # first term: `\ln |\hat{Sigma}|`
     diff = y_hat - target
     precision = torch.inverse(S)
     # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
-    quadratic_form = torch.matmul(diff.T, torch.matmul(precision, diff))
+    quadratic_form = torch.matmul(diff.transpose(1, 2), torch.matmul(precision, diff))
     _, logdet = torch.linalg.slogdet(S)
     return quadratic_form + logdet
