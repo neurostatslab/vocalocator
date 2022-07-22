@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p gpu
+#SBATCH --constraint=v100
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
