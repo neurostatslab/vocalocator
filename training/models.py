@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import torch
 from torch import nn
@@ -8,6 +10,7 @@ from architectures.densenet import GerbilizerDenseNet
 from architectures.reduced import GerbilizerReducedAttentionNet
 from architectures.simplenet import GerbilizerSimpleNetwork, GerbilizerSimpleWithCovariance
 
+logger = logging.getLogger(__name__)
 
 def build_model(CONFIG):
     """
@@ -124,12 +127,16 @@ def gaussian_mle_loss_fn(pred, target):
     # compute the loss
     # first term: `\ln |\hat{Sigma}|`
     _, logdet = torch.linalg.slogdet(S)
+    logger.debug(f'gaussian_mle_loss_fn | logdet = {logdet}, shape = {logdet.shape}')
     # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
     diff = (y_hat - target).unsqueeze(-1)  # shape (B, 2, 1)
     # use torch.linalg.solve(S, diff) instead of
     # torch.matmul(torch.inverse(S), diff), since it's faster and more
     # stable according to the docs for torch.linalg.inv
     right_hand_term = torch.linalg.solve(S, diff)
+    
     quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term) # (B, 1, 1) by default
     quadratic_form = quadratic_form.squeeze() # (B,)
+    logger.debug(f'gaussian_mle_loss_fn | rh_term: {right_hand_term} | squeezeed quadratic_form: {quadratic_form}')
+    logger.debug(f'gaussian_mle_loss_fn | LOSS: {quadratic_form + logdet}')
     return quadratic_form + logdet
