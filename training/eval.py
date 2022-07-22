@@ -315,7 +315,7 @@ def run():
         # calculate the calibration curves + errors
         ca.calculate_curves_and_error(h5_file=dest)
         # plot the figures
-        fig_path = dest_path.parent
+        fig_path = Path(dest_path).parent
         ca.plot_results(fig_path)
 
 
