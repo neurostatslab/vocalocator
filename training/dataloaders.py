@@ -105,8 +105,7 @@ class GerbilVocalizationDataset(Dataset):
         end = start + section_len
         return audio[start:end, ...].T
 
-    @classmethod
-    def _append_xcorr(cls, audio, *, is_batch=False):
+    def _append_xcorr(self, audio, *, is_batch=False):
         # Assumes the audio has shape (n_channels, n_samples), which is true
         # after sample_segment has been called
         # Assumes unbatched input
@@ -312,7 +311,7 @@ class GerbilVocalizationDataset(Dataset):
             sound = self.sample_segment(sound, self.segment_len)
 
         if self.make_xcorrs:
-            sound = GerbilVocalizationDataset._append_xcorr(sound, is_batch=self.samp_size>1)
+            sound = self._append_xcorr(sound, is_batch=self.samp_size>1)
 
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
