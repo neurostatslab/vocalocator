@@ -101,8 +101,19 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         # L @ L.T is symmetric positive definite and is thus a
         # valid covariance matrix.
 
-        self.coord_readout = torch.nn.Linear(
+        del self.coord_readout
+
+        self.last_layer = torch.nn.Linear(
             self.n_channels[-1],
             6
         )
+    
+    def forward(self, x):
+        h1 = self.conv_layers(x)
+        h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
+        output = self.last_layer(h2)
+        return output
+
+    def _clip_grads(self):
+        nn.utils.clip_grad_norm_(self.parameters(), 1.0)
 
