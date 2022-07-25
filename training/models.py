@@ -11,6 +11,12 @@ from architectures.reduced import GerbilizerReducedAttentionNet
 from architectures.simplenet import GerbilizerSimpleNetwork, GerbilizerSimpleWithCovariance
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+outfile = '/mnt/home/achoudhri/logs/train_model_loss_debugging_1.log'
+fh = logging.FileHandler(outfile)
+fh.setLevel(logging.DEBUG)
+logger.addHandler(fh)
+
 
 def build_model(CONFIG):
     """
@@ -109,6 +115,8 @@ def gaussian_mle_loss_fn(pred, target):
     .. math::
         \ln |\hat{\Sigma}| + (y - \hat{\mu})^T \hat{\Sigma}^{-1} (y - \hat{\mu})
 
+    With an added Frobenius regularization penalty on :math: `\hat{\Sigma}`.
+
     Note: we expect pred to be a vector of length 5, where the first two entries
     represent the predicted :math: `\hat{\mu}` value and the remaining entries are
     used to determine the covariance matrix as follows:
@@ -122,14 +130,27 @@ def gaussian_mle_loss_fn(pred, target):
     # construct the lower triangular matrix
     reshaped = pred[:, 2:].reshape((-1, 2, 2))
     L = reshaped.tril()
+    # apply a softplus to make sure none of the entries are zero
+    # this guarantees that the matrix is full rank
+    epsilon = 1e-3
+    L = F.softplus(L) + epsilon
     # and now the covariance
     S = torch.matmul(L, L.transpose(1, 2))
+    # for now, print out the eigenvalues
+    eigvals = torch.linalg.eigvalsh(S)
+    determinants = eigvals.prod(1)
+    if not (eigvals > 0).all():
+        logger.debug('EIGENVALUES NOT ALL POSITIVE')
+        logger.debug(f'eigenvalues: {eigvals}')
+        logger.debug(f'determinants: {determinants}')
+    # # get the log determinant
+    # logger.debug(f'gaussian_mle_loss_fn | product of log eigenvalues: {torch.log(determinants)}')
     # compute the loss
     # first term: `\ln |\hat{Sigma}|`
     _, logdet = torch.linalg.slogdet(S)
-    logger.debug(f'gaussian_mle_loss_fn | logdet = {logdet}, shape = {logdet.shape}')
+    logger.debug(f'logdet shape = {logdet.shape}, logdet = {logdet}')
     # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
-    diff = (y_hat - target).unsqueeze(-1)  # shape (B, 2, 1)
+    diff = (target - y_hat).unsqueeze(-1)  # shape (B, 2, 1)
     # use torch.linalg.solve(S, diff) instead of
     # torch.matmul(torch.inverse(S), diff), since it's faster and more
     # stable according to the docs for torch.linalg.inv
@@ -137,6 +158,11 @@ def gaussian_mle_loss_fn(pred, target):
     
     quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term) # (B, 1, 1) by default
     quadratic_form = quadratic_form.squeeze() # (B,)
-    logger.debug(f'gaussian_mle_loss_fn | rh_term: {right_hand_term} | squeezeed quadratic_form: {quadratic_form}')
-    logger.debug(f'gaussian_mle_loss_fn | LOSS: {quadratic_form + logdet}')
-    return quadratic_form + logdet
+    logger.debug(f'rh_term: {right_hand_term} | squeezeed quadratic_form: {quadratic_form}')
+    # logger.debug(f'LOSS: {quadratic_form + logdet}')
+    # calculate the regularization penalty
+    alpha = 1
+    penalty = alpha * torch.linalg.matrix_norm(S)
+    logger.debug(f'penalty: {penalty}')
+    logger.debug(f'LOSS: {quadratic_form + logdet + penalty}')
+    return quadratic_form + logdet + penalty
