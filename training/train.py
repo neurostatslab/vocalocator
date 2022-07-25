@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from typing import NewType, Optional
+import pprint
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -176,6 +177,9 @@ class Trainer():
 
             # Backwards pass.
             mean_loss.backward()
+            # temporarily print gradients
+            output = [(name, torch.norm(p.grad)) for name, p in self.model.named_parameters()]
+            logger.debug(pprint.pformat(output))
             if self._config['CLIP_GRADIENTS']:
                 self.model._clip_grads()
             self.optim.step()
