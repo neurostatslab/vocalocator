@@ -107,15 +107,32 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
             self.n_channels[-1],
             6
         )
-    
-    def forward(self, x):
-        h1 = self.conv_layers(x)
-        h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
-        output = self.last_layer(h2)
-        # extract the location estimate
-        y_hat = output[:, :2]  # (batch, 2)
-        # construct the covariance matrix estimate
-        reshaped = output[:, 2:].reshape((-1, 2, 2))  # (batch, 2, 2)
+
+        METHODS = {
+            'CHOLESKY': self._cholesky_covariance_calculation,
+            'TANH': self._tanh_covariance_calculation,
+        }
+        # calculate covariance using the cholesky factorization by default
+        self.calculate_covariance = METHODS['CHOLESKY']
+        if method_name := config.get('COVARIANCE_CALC_METHOD'):
+            if method_name not in METHODS:
+                # TODO RAISE SMTH handle error somehow
+                pass
+            else:
+                self.calculate_covariance = METHODS[method_name]
+
+    # function spec: take in a [B, 4] vector
+    # output a [B, 2, 2] psd matrix
+    def _cholesky_covariance_calculation(self, output_vec):
+        """
+        Build 2x2 covariance matrices from vectors of length 4,
+        by taking 3 values to form a lower triangular matrix L. Then
+        apply softplus to make sure L is full rank, and lastly output
+        L @ L.T.
+        """
+        assert output_vec.shape[2] == 4
+        # reshape to be a matrix
+        reshaped = output_vec.reshape((-1, 2, 2))
         L = reshaped.tril()
         # apply a softplus to make sure none of the entries are zero
         # this guarantees that the matrix is full rank
@@ -123,7 +140,48 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         L = F.softplus(L) + epsilon
         # compute LL^T for each matrix in the batch
         S = torch.matmul(L, L.transpose(1, 2))  # (batch, 2, 2)
-        # TODO: find the best way to return these values?
+        return S
+    
+    def _tanh_covariance_calculation(self, output_vec):
+        """
+        Build a 2x2 covariance matrix from 4 outputted values, as described in 
+        (Russell and Reale, 2021).
+        """
+        # let the first two elements represent the
+        # diagonal entries
+        diag = S[:, :2] # (B, 2)
+        offdiag = S[:, 3] # (B, 1)
+        # exponentiate the diagonal entries
+        variances = torch.exp(diag)
+        # and place into a matrix
+        batch_dim = len(output_vec)
+        S = torch.zeros(batch_dim, 2, 2)
+        # for each batch, place the two entries into the diagonal
+        S = torch.diagonal_scatter(S, variances, dim1=-2, dim2=-1)
+        # calculate the covariance value
+        correlation_coefficient = torch.tanh(offdiag)
+        # cov_ij = r * sqrt(sigma_i^2 * sigma_j*2)
+        # shape: (B, )
+        cov = correlation_coefficient * torch.sqrt(variances.prod(dim=-1))
+        # repeat the entry to be shape (B, 2) so we get cov_ji
+        cov = cov[:, None].repeat(1, 2)
+        # place the covariance value into the upper right
+        # and lower right corners
+        flipped = S.fliplr() # matrix where variances are on the off diagonals
+        # put the covariances on the diagonals on this flipped matrix
+        flipped = torch.diagonal_scatter(flipped, cov, dim1=-2, dim2=-1)
+        # flip it back
+        S = flipped.fliplr()
+        return S
+
+    def forward(self, x):
+        h1 = self.conv_layers(x)
+        h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
+        output = self.last_layer(h2)
+        # extract the location estimate
+        y_hat = output[:, :2]  # (batch, 2)
+        # calculate the covariance matrix
+        S = self.calculate_covariance(output[:, 2:])
         # reshape y_hat so we can concatenate it to the
         # covariance matrix
         y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
