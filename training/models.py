@@ -1,5 +1,7 @@
 import logging
 
+from functools import partial
+
 import numpy as np
 import torch
 from torch import nn
@@ -58,7 +60,9 @@ def build_model(CONFIG):
         loss_fn = wass_loss_fn
     elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleWithCovariance":
         model = GerbilizerSimpleWithCovariance(CONFIG)
-        loss_fn = gaussian_mle_loss_fn
+        loss_fn = conditional_gaussian_loss_fn
+        if mode := CONFIG.get('GAUSSIAN_LOSS_MODE'):
+            loss_fn = partial(loss_fn, mode=mode)
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -97,9 +101,9 @@ def wass_loss_fn(pred, target):
     error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
     return torch.logsumexp(error_map, dim=1)
 
-def gaussian_mle_loss_fn(pred, target):
+def conditional_gaussian_loss_fn(pred, target, mode='mle'):
     """
-    Gaussian MLE loss function as described in [Russell and Reale, 2021]. Assumes
+    Gaussian MLE/MAP loss function as described in [Russell and Reale, 2021]. Assumes
     that the true conditional distribution of a label :math: `y \in \R^2` given
     an example :math: `\bold{x} \in \mathcal{X}` can be approximated by a
     multivariate gaussian
@@ -110,21 +114,27 @@ def gaussian_mle_loss_fn(pred, target):
     where :math:`\hat{mu}` and :math:`\hat{\Sigma}` are models of the mean and covariance.
     
     To train the models, simply minimize the negative log of the above likelihood
-    function
+    function, optionally including a Wishart prior on the covariance matrix.
     
     .. math::
-        \ln |\hat{\Sigma}| + (y - \hat{\mu})^T \hat{\Sigma}^{-1} (y - \hat{\mu})
+        \ln |\hat{\Sigma}| + (y - \hat{\mu})^T \hat{\Sigma}^{-1} (y - \hat{\mu}) + prior
 
-    With an added Frobenius regularization penalty on :math: `\hat{\Sigma}`.
-
-    Note: we expect pred to be a vector of length 5, where the first two entries
+    Note: we expect pred to be a vector of length 6, where the first two entries
     represent the predicted :math: `\hat{\mu}` value and the remaining entries are
     used to determine the covariance matrix as follows:
 
     Place the three entries into a lower triangular matrix L. Since L is full
     rank, the matrix L @ L.T is symmetric positive definite. Interpret this resulting
     matrix as the estimated covariance :math: `\hat{\Sigma}`.
+
+    The argument `mode` refers to whether we should return a loss function
+    for maximum likelihood estimation ('mle') or maximum a posteriori estimation
+    ('map'), where we use a Wishart prior.
     """
+    if mode not in ('mle', 'map'):
+        raise ValueError(
+            f"Invalid value for `mode` passed: {mode}. Valid values are: 'mle', 'map'."
+            )
     # assume that preds has shape: (B, 3, 2) where B is the batch size
     y_hat = pred[:, 0]  # shape: (B, 2)
     S = pred[:, 1:]  # shape: (B, 2, 2)
@@ -150,11 +160,27 @@ def gaussian_mle_loss_fn(pred, target):
     
     quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term) # (B, 1, 1) by default
     quadratic_form = quadratic_form.squeeze() # (B,)
-    logger.debug(f'rh_term: {right_hand_term} | squeezeed quadratic_form: {quadratic_form}')
-    # logger.debug(f'LOSS: {quadratic_form + logdet}')
-    # calculate the regularization penalty
-    alpha = 1
-    penalty = alpha * torch.linalg.matrix_norm(S)
-    logger.debug(f'penalty: {penalty}')
-    logger.debug(f'LOSS: {quadratic_form + logdet + penalty}')
-    return quadratic_form + logdet + penalty
+    logger.debug(f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}')
+    loss = quadratic_form + logdet
+
+    if mode == 'map':
+        # add in a wishart prior on sigma
+        # negative log density:
+        # tr(V^{-1}X) - (n - p - 1) ln|X|
+        # where X = S^{-1}
+        epsilon = 1
+        V = epsilon * torch.eye(2)
+        n = 2
+        p = 2
+        # V^{-1}X = V^{-1}S^{-1} = (SV)^{-1}
+        lhs = torch.inverse(torch.matmul(S, V))
+        # now take the trace
+        lhs = lhs.diagonal(dim1=-2, dim2=-1).sum(-1)
+        # the right hand term is much easier, following from our
+        # previous computation of the log determinant:
+        # ln|X| = ln |S^{-1}| = ln (1 / |S|) = -ln|S|
+        rhs = (n - p - 1) * logdet
+        prior_term = lhs + rhs
+        loss += prior_term
+        
+    return loss
