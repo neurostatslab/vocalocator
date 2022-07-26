@@ -2,7 +2,7 @@ from math import comb
 
 import torch
 from torch import nn
-
+from torch.nn import functional as F
 
 class GerbilizerSimpleLayer(torch.nn.Module):
 
@@ -112,7 +112,24 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         output = self.last_layer(h2)
-        return output
+        # extract the location estimate
+        y_hat = output[:, :2]  # (batch, 2)
+        # construct the covariance matrix estimate
+        reshaped = output[:, 2:].reshape((-1, 2, 2))  # (batch, 2, 2)
+        L = reshaped.tril()
+        # apply a softplus to make sure none of the entries are zero
+        # this guarantees that the matrix is full rank
+        epsilon = 1e-3
+        L = F.softplus(L) + epsilon
+        # compute LL^T for each matrix in the batch
+        S = torch.matmul(L, L.transpose(1, 2))  # (batch, 2, 2)
+        # TODO: find the best way to return these values?
+        # reshape y_hat so we can concatenate it to the
+        # covariance matrix
+        y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
+        # concat the two to make a (batch, 3, 2) tensor
+        concatenated = torch.cat((y_hat, S), dim=-2)
+        return concatenated
 
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
