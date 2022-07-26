@@ -125,24 +125,16 @@ def gaussian_mle_loss_fn(pred, target):
     rank, the matrix L @ L.T is symmetric positive definite. Interpret this resulting
     matrix as the estimated covariance :math: `\hat{\Sigma}`.
     """
-    # assume that preds has shape: (B, 6) where B is the batch size
-    y_hat = pred[:, :2]  # shape: (B, 2)
-    # construct the lower triangular matrix
-    reshaped = pred[:, 2:].reshape((-1, 2, 2))
-    L = reshaped.tril()
-    # apply a softplus to make sure none of the entries are zero
-    # this guarantees that the matrix is full rank
-    epsilon = 1e-3
-    L = F.softplus(L) + epsilon
-    # and now the covariance
-    S = torch.matmul(L, L.transpose(1, 2))
-    # for now, print out the eigenvalues
-    eigvals = torch.linalg.eigvalsh(S)
-    determinants = eigvals.prod(1)
-    if not (eigvals > 0).all():
-        logger.debug('EIGENVALUES NOT ALL POSITIVE')
-        logger.debug(f'eigenvalues: {eigvals}')
-        logger.debug(f'determinants: {determinants}')
+    # assume that preds has shape: (B, 3, 2) where B is the batch size
+    y_hat = pred[:, 0]  # shape: (B, 2)
+    S = pred[:, 1:]  # shape: (B, 2, 2)
+    # # for now, print out the eigenvalues
+    # eigvals = torch.linalg.eigvalsh(S)
+    # determinants = eigvals.prod(1)
+    # if not (eigvals > 0).all():
+    #     logger.debug('EIGENVALUES NOT ALL POSITIVE')
+    #     logger.debug(f'eigenvalues: {eigvals}')
+    #     logger.debug(f'determinants: {determinants}')
     # # get the log determinant
     # logger.debug(f'gaussian_mle_loss_fn | product of log eigenvalues: {torch.log(determinants)}')
     # compute the loss
