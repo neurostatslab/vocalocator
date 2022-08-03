@@ -25,6 +25,8 @@ base_dir = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..")
 )
 
+torch.autograd.set_detect_anomaly(True)
+
 # =============================== #
 # === Parse Command Line Args === #
 # =============================== #
