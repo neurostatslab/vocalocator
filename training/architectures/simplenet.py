@@ -188,15 +188,14 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         # extract the location estimate
         logging.debug(f'output shape: {output.shape}')
         y_hat = output[:, :2]  # (batch, 2)
-        # calculate the cholesky lower triangular factor
+        # calculate the lower triangular Cholesky factor
         # of the covariance matrix
-        L = output[:, 2:].reshape((-1, 2, 2)).tril()
-        # softplus the diagonal entries
-        softplussed_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
-        L = L.diagonal_scatter(softplussed_diagonals, dim1=-2, dim2=-1)
-        # S = self.calculate_covariance(output[:, 2:])
-        # reshape y_hat so we can concatenate it to the
-        # L matrix
+        reshaped = output[:, 2:].reshape((-1, 2, 2))
+        L = reshaped.tril()
+        # apply the softplus to the diagonal entries
+        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(L, new_diagonals, dim1=-2, dim2=-1)
+        # reshape y_hat so we can concatenate it to L
         y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
         # concat the two to make a (batch, 3, 2) tensor
         concatenated = torch.cat((y_hat, L), dim=-2)
