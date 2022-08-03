@@ -3,12 +3,19 @@ import multiprocessing
 from os import path
 from pathlib import Path
 from sys import stderr
+import json
 
 import h5py
 import numpy as np
 import torch
 
+from matplotlib import pyplot as plt
+
 from calibrationtools import CalibrationAccumulator
+from calibrationtools.smoothing import gaussian_mixture
+from calibrationtools.util import make_xy_grids
+from calibrationtools.calculate import assign_to_bin_2d
+
 from torch.utils.data import DataLoader
 
 from configs import build_config_from_file, build_config_from_name
@@ -21,47 +28,27 @@ logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
-# ================ calibration constants ==================
-# gaussian mixture smoothing:
-# min and max variance used in the gaussian smoothing
-# of point estimates, in cm
-MIN_SIGMA = 1
-MAX_SIGMA = 20
-# number of sigma values at which to calculate
-# calibration, up to MAX_SIGMA.
-NUM_STEPS = 50
-# dynamic spherical gaussian smoothing:
-# minimium and maximum proportion of the observed
-# mean distance between each point estimate and the
-# centroid, used as variance of a gaussian placed
-# at the centroid
-MIN_FRAC = 0.05
-MAX_FRAC = 10
-# number of bins used to calculate each calibration curve
-NUM_CALIBRATION_BINS = 20
-# ========================================================
+TEST_SET_PATH = Path('/mnt/home/atanelus/ceph/iteration/finetune_split/test_set.h5')
+OUTDIR = Path.home() / 'ceph' / 'poster' / 'eval'
+OPTIMAL_STDS = Path.home() / 'ceph' / 'poster' / 'optimal_stds.json'
 
+def confidence_set(pmf, alpha):
+    """
+    Return the region around the mean to which the model assigns `alpha` proportion
+    of the probability mass.
+    """
+    sorted_bins = pmf.flatten().argsort()[::-1]
+    sorted_masses = pmf.flatten()[sorted_bins]
+    total_mass_by_bins = sorted_masses.cumsum()
+    desired_bins = sorted_bins[total_mass_by_bins <= alpha]
+    return desired_bins
 
 def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "datafile",
+        "config",
         type=str,
-        help="Path to vocalization data to evaluate.",
-    )
-
-    parser.add_argument(
-        '--outdir',
-        type=str,
-        required=False,
-        help='Directory to which output should be saved.'
-    )
-
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=False,
         help=(
             "Used to specify model configuration via a hard-coded named "
             "configuration or json file."
@@ -78,104 +65,12 @@ def get_args():
             )
     )
 
-    parser.add_argument(
-        '--min_std',
-        type=float,
-        required=False,
-        default=MIN_SIGMA,
-        help=(
-            'Min smoothing std, in cm, to use in calibration curve calculation. '
-            'Calibration curves will be calculated at `num_std_steps` values from '
-            f'[min_std, max_std]. Default: {MIN_SIGMA}.'
-        )
-    )
-
-    parser.add_argument(
-        '--max_std',
-        type=float,
-        required=False,
-        default=MAX_SIGMA,
-        help=(
-            'Max smoothing std, in cm, to use in calibration curve calculation. '
-            'Calibration curves will be calculated at `num_std_steps` values from '
-            f'[min_std, max_std]. Default: {MAX_SIGMA}.'
-        )
-    )
-
-    parser.add_argument(
-        '--num_std_steps',
-        type=int,
-        required=False,
-        default=NUM_STEPS,
-        help=(
-            'Number of steps in range at which to calculate the calibration curve '
-            'and error for the `gaussian_mixture` smoothing method. '
-            f'Default: {NUM_STEPS}'
-            )
-    )
-
-    parser.add_argument(
-        '--min_frac',
-        type=float,
-        required=False,
-        default=MIN_FRAC,
-        help=(
-            'Minimum fraction to use in calibration curve calculation for the '
-            '`dynamic_spherical_gaussian` smoothing method. This smoothing '
-            'method calculates the mean distance between each point estimate '
-            'and their centroid, then uses various fractions of that value '
-            'as the variance of a spherical Gaussian placed at the centroid.'
-        )
-    )
-
-    parser.add_argument(
-        '--max_frac',
-        type=float,
-        required=False,
-        default=MAX_FRAC,
-        help=(
-            'Minimum fraction to use in calibration curve calculation for the '
-            '`dynamic_spherical_gaussian` smoothing method. This smoothing '
-            'method calculates the mean distance between each point estimate '
-            'and their centroid, then uses various fractions of that value '
-            'as the variance of a spherical Gaussian placed at the centroid.'
-        )
-    )
-
-    parser.add_argument(
-        '--num_frac_steps',
-        type=int,
-        required=False,
-        default=NUM_STEPS,
-        help=(
-            'Number of steps in range at which to calculate the calibration '
-            'curve and error for the `dynamic_spherical_gaussian` smoothing '
-            f'method. Default: {NUM_STEPS}'
-        )
-    )
-
     args = parser.parse_args()
     validate_args(args)
     return args
 
 
 def validate_args(args):
-    if not path.exists(args.datafile):
-        raise ValueError(f"Error: could not find data at path {args.datafile}")
-
-    if not args.outdir:
-        # if no outdir was passed, put output in the same directory
-        # as the data file by default. this agrees with the previous
-        # implementation
-        args.outdir = Path(args.datafile).parent
-
-    elif not path.exists(args.outdir):
-        raise ValueError(f"Error: could not find output directory at path {args.outdir}")
-
-    valid_ext = ('.h5', '.hdf', '.hdf5')
-    if not any(args.datafile.endswith(ext) for ext in valid_ext):
-        raise ValueError("Datafile must be an HDF5 file (.h5, .hdf, .hdf5)")
-
     if args.config is None:
         raise ValueError("No config or model name provided.")
 
@@ -191,13 +86,19 @@ def run():
     args = get_args()
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
-    dest_path = Path(args.datafile).stem + '_preds.h5'
-    dest_path = str(Path(args.outdir) / dest_path)
+    model_name = args.config_data['CONFIG_NAME']
 
-    logging.debug(f'destination path: {dest_path}')
+    fh = logging.FileHandler(Path.home() / 'logs' / model_name / 'eval_calib.log')
+    logger = logging.getLogger('eval_calib')
+    logger.addHandler(fh)
+
+    dest_path = Path(TEST_SET_PATH).stem + '_preds.h5'
+    dest_path = str(Path(OUTDIR) / model_name / dest_path)
+
+    logger.debug(f'destination path: {dest_path}')
 
     with h5py.File(dest_path, 'w') as dest:
-        with h5py.File(args.datafile, 'r') as source:
+        with h5py.File(TEST_SET_PATH, 'r') as source:
             if 'len_idx' in source:
                 n_vox = len(source['len_idx']) - 1
             else:
@@ -211,7 +112,7 @@ def run():
             args.config_data['ARENA_LENGTH']
             )
         make_xcorr = args.config_data['COMPUTE_XCORRS']
-        test_set = GerbilVocalizationDataset(args.datafile, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims, make_xcorrs=make_xcorr)
+        test_set = GerbilVocalizationDataset(TEST_SET_PATH, segment_len=args.config_data['SAMPLE_LEN'], arena_dims=arena_dims, make_xcorrs=make_xcorr)
         test_set.samp_size = 30  # take 30 samples from each vocalization. Pass them to the model as if each were a full batch of inputs
         #test_set_loader = DataLoader(test_set, args.config_data['TEST_BATCH_SIZE'], shuffle=False)
         test_set_loader = DataLoader(test_set, 1, shuffle=False)  # Only using Dataloader here for the convenience of converting np.ndarray to torch.Tensor
@@ -240,29 +141,27 @@ def run():
         arena_dims_cm = np.array(arena_dims) * MM_TO_CM
         # set up calibration accumulator
         PMF_GRID_RESOLUTION = 0.5  # 1 cm grid resolution for pmfs
-        sigma_values = np.linspace(
-            args.min_std, args.max_std, args.num_std_steps
-        )
-        frac_values = np.linspace(
-            args.min_frac, args.max_frac, args.num_frac_steps
-        )
-        smoothing_specs = {
-            'model_output': {
-                'gaussian_mixture': {
-                    'std_values': sigma_values,
-                    'desired_resolution': PMF_GRID_RESOLUTION,
-                },
-                'dynamic_spherical_gaussian': {
-                    'fracs_of_est_variance': frac_values,
-                    'desired_resolution': PMF_GRID_RESOLUTION,
-                }
-            }
-        }
+        with open(OPTIMAL_STDS, 'r') as f:
+            stds = json.load(f)
+            std_to_use = np.array([stds[model_name]])
+
+        smoothing_specs = {model_name: {}}
 
         ca = CalibrationAccumulator(
             arena_dims_cm,
-            smoothing_specs
+            smoothing_specs,
+            use_multiprocessing=False,
         )
+
+        cal_sets = []
+        cal_set_areas = []
+        loc_bins = []
+        loc_in_calib_set = np.zeros(len(test_set_loader))
+        distances_to_furthest_point = np.zeros(len(test_set_loader))
+        furthest_points = []
+        centered_preds = np.zeros((len(test_set_loader), 2))
+        centered_locs = np.zeros((len(test_set_loader), 2))
+        errs = np.zeros(len(test_set_loader))
 
         with torch.no_grad():
             for idx, (audio, location) in enumerate(test_set_loader):
@@ -285,9 +184,9 @@ def run():
 
                 # occasionally log progress
                 if idx % 10 == 0:
-                    logging.info(f'Reached vocalization {idx}.')
+                    logger.info(f'Reached vocalization {idx}.')
                     if idx % 100 == 0:
-                        logging.debug(
+                        logger.debug(
                             f'Vox {idx} -- centimeter_output: {centimeter_output} '
                             f'| centimeter_location: {centimeter_location} '
                             f'| centered_output: {centered_output}'
@@ -295,16 +194,24 @@ def run():
                             )
                 save_path = None
                 # occasionally visualize the pmfs
-                if idx % 500 == 0:
-                    save_path = Path(args.outdir) / 'pmfs' / f'vox_{idx}'
+                if idx % 100 == 0:
+                    save_path = Path(OUTDIR)  / model_name / 'pmfs' / f'vox_{idx}'
                     save_path.mkdir(parents=True, exist_ok=True)
 
+                smoothed_output = gaussian_mixture(
+                    centered_output,
+                    std_to_use,
+                    arena_dims_cm,
+                    PMF_GRID_RESOLUTION
+                )
+
                 ca.calculate_step(
-                    {'model_output': centered_output},
+                    {model_name: smoothed_output},
                     centered_location,
                     pmf_save_path=save_path,
                 )
 
+                # calculate error stats
                 centroid = centimeter_output.mean(axis=0)
                 distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
                 dist_spread = distances.std()
@@ -312,12 +219,87 @@ def run():
                 preds[idx] = centroid
                 vars[idx] = dist_spread
 
+                # centered centroid
+                centered_centroid = centered_output.mean(axis=0)
+                centered_preds[idx] = centered_centroid
+                centered_locs[idx] = centered_location
+                errs[idx] = np.linalg.norm(centered_centroid - centered_location)
+
+                # get the confidence set
+                grid_edges_shape = np.array(smoothed_output[0].shape) + 1
+                edge_xgrid, edge_ygrid = make_xy_grids(
+                    arena_dims_cm,
+                    shape=grid_edges_shape
+                    )
+                cal_set = confidence_set(smoothed_output, 0.95)
+                loc_bin = assign_to_bin_2d(
+                    centered_location.reshape(1, 2),
+                    edge_xgrid,
+                    edge_ygrid
+                    )
+                loc_bins.append(loc_bin)
+
+                loc_in_calib_set[idx] = loc_bin in cal_set
+
+                total_area = arena_dims_cm[0] * arena_dims_cm[1]
+
+                cal_set_area = (len(cal_set) / smoothed_output[0].size) * total_area
+                cal_set_areas.append(cal_set_area)
+
+                # store the distance between the true location and the furthest
+                # point contained in the confidence set
+                center_xgrid, center_ygrid = make_xy_grids(
+                    arena_dims_cm,
+                    shape=smoothed_output[0].shape,
+                    return_center_pts=True
+                )
+                coords = np.dstack((center_xgrid, center_ygrid))
+                distances = np.linalg.norm(coords - centered_location, axis=-1)
+                max_dist = distances.flatten()[cal_set].max()
+                distances_to_furthest_point[idx] = max_dist
+
+                idxs = np.unravel_index(cal_set, smoothed_output[0].shape)
+                confid_set = np.zeros(smoothed_output[0].shape)
+                confid_set[idxs] = 1
+                cal_sets.append(confid_set)
+                distances_in_set = np.where(confid_set == 1, distances, 0)
+                furthest_points.append(distances_in_set.argmax())
+
         # calculate the calibration curves + errors
         ca.calculate_curves_and_error(h5_file=dest)
         # plot the figures
         fig_path = Path(dest_path).parent
         ca.plot_results(fig_path)
 
+        r = dest.create_group('results')
+
+        r.create_dataset(
+            'centered_preds', data=centered_preds
+        )
+        r.create_dataset(
+            'centered_locs', data=centered_locs
+        )
+        r.create_dataset(
+            'loc_bins', data=np.array(loc_bins)
+        )
+        r.create_dataset(
+            'loc_in_calib_set', data=loc_in_calib_set
+        )
+        r.create_dataset(
+            'errs', data=errs
+        )
+        r.create_dataset(
+            'cal_set_areas', data=np.array(cal_set_areas)
+        )
+        r.create_dataset(
+            'cal_sets', data=np.array(cal_sets)
+        )
+        r.create_dataset(
+            'dists_to_furthest_point', data=distances_to_furthest_point
+        )
+        r.create_dataset(
+            'furthest_point_idxs', data=np.array(furthest_points)
+        )
 
 if __name__ == '__main__':
     run()

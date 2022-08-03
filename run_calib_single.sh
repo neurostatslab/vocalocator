@@ -6,7 +6,7 @@
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
 #SBATCH --time=2:00:00
-#SBATCH -o slurm_logs/eval_model_%j.log
+#SBATCH -o slurm_logs/tune_model_%j.log
 pwd; hostname; date;
 
 ##################################################
@@ -20,40 +20,9 @@ pwd; hostname; date;
 # If a config name is provided in place of a file, a job ID must also be provided
 ##################################################
 
-# Expects the data dir as first positional argument
-# config path/name as second argument
-DATA_FILE=$1
-CONFIG=$2
+# Expects the config path/name as second argument
+CONFIG=$1
 
-if [[ -d $3 ]]; then
-    OUTDIR=$3
-else
-    JOB_ID=$3
-    OUTDIR=$4
-fi
-
-if [ -z $DATA_FILE ]; then
-    echo "Path to dataset should be provided as the first positional argument"
-    exit 1
-fi
-
-if [ -z $CONFIG ]; then
-    echo "Config name or path to config JSON should be provided as second positional argument"
-    exit 1
-fi
-
-if [ -z $JOB_ID ]; then
-    pipenv run python training/eval.py \
-        $DATA_FILE \
-        --config $CONFIG \
-        --outdir $OUTDIR
-else
-    pipenv run python training/eval.py \
-        $DATA_FILE \
-        --config $CONFIG \
-        --job_id $JOB_ID \
-        --outdir $OUTDIR
-fi
-
+pipenv run python training/eval_calib.py $CONFIG
 
 date;
