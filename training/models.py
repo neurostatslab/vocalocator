@@ -61,8 +61,15 @@ def build_model(CONFIG):
     elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleWithCovariance":
         model = GerbilizerSimpleWithCovariance(CONFIG)
         loss_fn = conditional_gaussian_loss_fn
-        if mode := CONFIG.get('GAUSSIAN_LOSS_MODE'):
-            loss_fn = partial(loss_fn, mode=mode)
+        if CONFIG.get('GAUSSIAN_LOSS_MODE') == 'map':
+            scale_matrix = CONFIG.get('WISHART_SCALE')
+            deg_freedom = CONFIG.get('WISHART_DEG_FREEDOM')
+            loss_fn = partial(
+                loss_fn,
+                mode='map',
+                scale_matrix=scale_matrix,
+                deg_freedom=deg_freedom
+                )
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -101,7 +108,13 @@ def wass_loss_fn(pred, target):
     error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
     return torch.logsumexp(error_map, dim=1)
 
-def conditional_gaussian_loss_fn(pred, target, mode='mle'):
+def conditional_gaussian_loss_fn(
+    pred,
+    target,
+    mode='mle',
+    scale_matrix: torch.Tensor = None,
+    deg_freedom: torch.Tensor = None,
+    ):
     """
     Gaussian MLE/MAP loss function as described in [Russell and Reale, 2021]. Assumes
     that the true conditional distribution of a label :math: `y \in \R^2` given
@@ -135,9 +148,17 @@ def conditional_gaussian_loss_fn(pred, target, mode='mle'):
         raise ValueError(
             f"Invalid value for `mode` passed: {mode}. Valid values are: 'mle', 'map'."
             )
+    if mode == 'mle' and (scale_matrix or deg_freedom):
+        logger.warning(
+            'Given that loss function in mode MLE, expected `scale_matrix`'
+            'and `deg_freedom` to be None. Ignoring arguments: '
+            f'`scale_matrix`: {scale_matrix} and `deg_freedom`: '
+            f'{deg_freedom}'
+        )
     # assume that preds has shape: (B, 3, 2) where B is the batch size
     y_hat = pred[:, 0]  # shape: (B, 2)
     S = pred[:, 1:]  # shape: (B, 2, 2)
+    logger.debug(f'covariance matrices: {S}')
     # # for now, print out the eigenvalues
     # eigvals = torch.linalg.eigvalsh(S)
     # determinants = eigvals.prod(1)
@@ -153,34 +174,49 @@ def conditional_gaussian_loss_fn(pred, target, mode='mle'):
     logger.debug(f'logdet shape = {logdet.shape}, logdet = {logdet}')
     # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
     diff = (target - y_hat).unsqueeze(-1)  # shape (B, 2, 1)
+    logger.debug(f'absolute error: {diff}')
     # use torch.linalg.solve(S, diff) instead of
     # torch.matmul(torch.inverse(S), diff), since it's faster and more
     # stable according to the docs for torch.linalg.inv
     right_hand_term = torch.linalg.solve(S, diff)
     
-    quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term) # (B, 1, 1) by default
-    quadratic_form = quadratic_form.squeeze() # (B,)
-    logger.debug(f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}')
+    quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term)  # (B, 1, 1) by default
+    quadratic_form = quadratic_form.squeeze()  # (B,)
+    logger.debug(
+        f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}'
+        )
     loss = quadratic_form + logdet
 
     if mode == 'map':
+        if scale_matrix is None or deg_freedom is None:
+            raise ValueError(
+                'In MAP inference mode, you must specify the '
+                'parameters for the Wishart prior!'
+                )
+
         # add in a wishart prior on sigma
         # negative log density:
-        # tr(V^{-1}X) - (n - p - 1) ln|X|
-        # where X = S^{-1}
-        epsilon = 1
-        V = epsilon * torch.eye(2)
-        n = 2
-        p = 2
-        # V^{-1}X = V^{-1}S^{-1} = (SV)^{-1}
-        lhs = torch.inverse(torch.matmul(S, V))
-        # now take the trace
-        lhs = lhs.diagonal(dim1=-2, dim2=-1).sum(-1)
-        # the right hand term is much easier, following from our
-        # previous computation of the log determinant:
-        # ln|X| = ln |S^{-1}| = ln (1 / |S|) = -ln|S|
-        rhs = (n - p - 1) * logdet
-        prior_term = lhs + rhs
-        loss += prior_term
-        
+        # tr(V^{-1}S) - (deg_freedom - p - 1) ln|S|
+        # where V is a pxp positive definite matrix        
+        V = torch.tensor(scale_matrix, device=loss.device)
+
+        # assume V is positive definite so we don't
+        # have to do something like a cholesky factorization
+        # for each time we call the function.
+
+        # repeat V if necessary
+        if V.dim != 3:
+            V = V[None].repeat(len(pred), 1, 1)
+
+        V_inv_S = torch.linalg.solve(V, S)
+        # and take the trace
+        lhs = V_inv_S.diagonal(dim1=-2, dim2=-1).sum(-1)
+        # log determinant term
+        rhs = (deg_freedom - V.shape[-1] - 1) * logdet
+        prior_term = lhs - rhs
+        logger.debug(f'prior term: {prior_term}')
+        loss = loss + prior_term
+
+    logger.debug(f'LOSS: {loss}')
+
     return loss
