@@ -109,8 +109,8 @@ def wass_loss_fn(pred, target):
     return torch.logsumexp(error_map, dim=1)
 
 def conditional_gaussian_loss_fn(
-    pred,
-    target,
+    pred: torch.Tensor,
+    target: torch.Tensor,
     mode='mle',
     scale_matrix: torch.Tensor = None,
     deg_freedom: torch.Tensor = None,
@@ -148,16 +148,23 @@ def conditional_gaussian_loss_fn(
         raise ValueError(
             f"Invalid value for `mode` passed: {mode}. Valid values are: 'mle', 'map'."
             )
-    if mode == 'mle' and (scale_matrix or deg_freedom):
+    
+    # assume that preds has shape: (B, 3, 2) where B is the batch size
+    y_hat = pred[:, 0]  # output, shape: (B, 2)
+    L = pred[:, 1:]  # cholesky factor of covariance, shape: (B, 2, 2)
+
+    # calculate covariance matrix
+    S = torch.matmul(L, L.transpose(-2, -1))
+
+    if mode == 'mle' and (scale_matrix is not None) or (deg_freedom is not None):
         logger.warning(
             'Given that loss function in mode MLE, expected `scale_matrix`'
             'and `deg_freedom` to be None. Ignoring arguments: '
             f'`scale_matrix`: {scale_matrix} and `deg_freedom`: '
             f'{deg_freedom}'
         )
-    # assume that preds has shape: (B, 3, 2) where B is the batch size
-    y_hat = pred[:, 0]  # shape: (B, 2)
-    S = pred[:, 1:]  # shape: (B, 2, 2)
+    # calculate covariance matrix
+    # S = torch.matmul(L, L.transpose(-2, -1))
     logger.debug(f'covariance matrices: {S}')
     # # for now, print out the eigenvalues
     # eigvals = torch.linalg.eigvalsh(S)
@@ -170,22 +177,30 @@ def conditional_gaussian_loss_fn(
     # logger.debug(f'gaussian_mle_loss_fn | product of log eigenvalues: {torch.log(determinants)}')
     # compute the loss
     # first term: `\ln |\hat{Sigma}|`
-    _, logdet = torch.linalg.slogdet(S)
-    logger.debug(f'logdet shape = {logdet.shape}, logdet = {logdet}')
-    # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
-    diff = (target - y_hat).unsqueeze(-1)  # shape (B, 2, 1)
-    logger.debug(f'absolute error: {diff}')
-    # use torch.linalg.solve(S, diff) instead of
-    # torch.matmul(torch.inverse(S), diff), since it's faster and more
-    # stable according to the docs for torch.linalg.inv
-    right_hand_term = torch.linalg.solve(S, diff)
-    
-    quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term)  # (B, 1, 1) by default
-    quadratic_form = quadratic_form.squeeze()  # (B,)
-    logger.debug(
-        f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}'
-        )
-    loss = quadratic_form + logdet
+
+    multivariate_normal = torch.distributions.multivariate_normal.MultivariateNormal(
+        loc=y_hat,
+        scale_tril=L
+    )
+
+    loss = multivariate_normal.log_prob(target)
+
+    # _, logdet = torch.linalg.slogdet(S)
+    # logger.debug(f'logdet shape = {logdet.shape}, logdet = {logdet}')
+    # # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
+    # diff = (target - y_hat).unsqueeze(-1)  # shape (B, 2, 1)
+    # logger.debug(f'absolute error: {diff}')
+    # # use torch.linalg.solve(S, diff) instead of
+    # # torch.matmul(torch.inverse(S), diff), since it's faster and more
+    # # stable according to the docs for torch.linalg.inv
+    # right_hand_term = torch.linalg.solve(S, diff)
+
+    # quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term)  # (B, 1, 1) by default
+    # quadratic_form = quadratic_form.squeeze()  # (B,)
+    # logger.debug(
+    #     f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}'
+    #     )
+    # loss = quadratic_form + logdet
 
     if mode == 'map':
         if scale_matrix is None or deg_freedom is None:
@@ -193,27 +208,33 @@ def conditional_gaussian_loss_fn(
                 'In MAP inference mode, you must specify the '
                 'parameters for the Wishart prior!'
                 )
+        
+        wishart = torch.distributions.wishart.Wishart(
+            df=deg_freedom, covariance_matrix=scale_matrix
+        )
 
-        # add in a wishart prior on sigma
-        # negative log density:
-        # tr(V^{-1}S) - (deg_freedom - p - 1) ln|S|
-        # where V is a pxp positive definite matrix        
-        V = torch.tensor(scale_matrix, device=loss.device)
+        prior_term = wishart.log_prob(S)
 
-        # assume V is positive definite so we don't
-        # have to do something like a cholesky factorization
-        # for each time we call the function.
+        # # add in a wishart prior on sigma
+        # # negative log density:
+        # # tr(V^{-1}S) - (deg_freedom - p - 1) ln|S|
+        # # where V is a pxp positive definite matrix        
+        # V = torch.tensor(scale_matrix, device=loss.device)
 
-        # repeat V if necessary
-        if V.dim != 3:
-            V = V[None].repeat(len(pred), 1, 1)
+        # # assume V is positive definite so we don't
+        # # have to do something like a cholesky factorization
+        # # for each time we call the function.
 
-        V_inv_S = torch.linalg.solve(V, S)
-        # and take the trace
-        lhs = V_inv_S.diagonal(dim1=-2, dim2=-1).sum(-1)
-        # log determinant term
-        rhs = (deg_freedom - V.shape[-1] - 1) * logdet
-        prior_term = lhs - rhs
+        # # repeat V if necessary
+        # if V.dim != 3:
+        #     V = V[None].repeat(len(pred), 1, 1)
+
+        # V_inv_S = torch.linalg.solve(V, S)
+        # # and take the trace
+        # lhs = V_inv_S.diagonal(dim1=-2, dim2=-1).sum(-1)
+        # # log determinant term
+        # rhs = (deg_freedom - V.shape[-1] - 1) * logdet
+        # prior_term = lhs - rhs
         logger.debug(f'prior term: {prior_term}')
         loss = loss + prior_term
 
