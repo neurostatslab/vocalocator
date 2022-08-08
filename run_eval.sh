@@ -5,7 +5,7 @@
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
-#SBATCH --time=0:15:00
+#SBATCH --time=2:00:00
 #SBATCH -o slurm_logs/eval_model_%j.log
 pwd; hostname; date;
 

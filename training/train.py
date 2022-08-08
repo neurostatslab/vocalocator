@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import pathlib
 from typing import NewType, Optional
 import pprint
 
@@ -21,9 +22,6 @@ logger.setLevel(logging.DEBUG)
 
 
 JSON = NewType('JSON', dict)
-base_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..")
-)
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -61,6 +59,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--save_path",
+        type=str,
+        required=False,
+        default=os.path.abspath('~/ceph/gerbilizer'),
+        help='Directory for trained models\' weights'
+    )
+
+    parser.add_argument(
         '--pretrained',
         required=False,
         action='store_true',
@@ -72,9 +78,9 @@ def get_args():
     return args
 
 
-def find_next_job_id(model_name):
+def find_next_job_id(model_name, model_dir):
     job_dir = os.path.join(
-        base_dir,
+        model_dir,
         "trained_models",
         model_name
     )
@@ -119,14 +125,17 @@ def validate_args(args):
 class Trainer():
     def __init__(self,
         datafile: str,
+        model_dir: str,
         config_data: JSON,
         job_id: int, *,
         eval_mode: bool=False
     ):
         self._eval = eval_mode
         self._datafile = datafile
+        self._model_dir = model_dir
         self._config = config_data
         self._job_id = job_id
+
         
         if not self._eval:
             self._setup_dataloaders()
@@ -146,6 +155,13 @@ class Trainer():
             self._best_loss = float('inf')
             self.last_completed_epoch = 0
             self.loss_history = list()
+        
+        
+        if 'WEIGHTS_PATH' in self._config:
+            weight_file = self._config['WEIGHTS_PATH']
+            device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+            weights = torch.load(weight_file, map_location=device)
+            self.model.load_state_dict(weights, strict=False)
 
     def train_epoch(self, epoch_num):
         # Set the learning rate using cosine annealing.
@@ -267,7 +283,7 @@ class Trainer():
     def _setup_output_dirs(self):
         # Save results to `../../trained_models/{config}/{job_id}` directory.
         self.output_dir = os.path.join(
-            base_dir,
+            self._model_dir,
             "trained_models",
             self._config['CONFIG_NAME'],
             "{0:05g}".format(self._job_id)
@@ -424,22 +440,21 @@ class Trainer():
             config['JOB_ID'] = find_next_job_id(config['CONFIG_NAME'])
         
         device = 'cuda:0' if device == 'gpu' else 'cpu'
-
-        # Use new ID to create model folder
-        trainer = cls(finetune_data, config, config['JOB_ID'], eval_mode=(finetune_data is None))
-
+        
         if 'WEIGHTS_PATH' in config:
             weight_file = config['WEIGHTS_PATH']
         else:
-            weight_file = os.path.join(
-                base_dir,
-                "trained_models",
-                model_name,
-                "{0:05g}".format(job_id),  # Use the old ID to load weghhts
-                "best_weights.pt"
-            )
+            raise ValueError("Config should include WEIGHTS_PATH key pointing toward model weights")
+        try:
+            weights = torch.load(weight_file, map_location=device)
+        except:
+            raise ValueError(f"Failed to load WEIGHTS_PATH: {weight_file}")
 
-        weights = torch.load(weight_file, map_location=device)
+        model_dir = pathlib.Path(weight_file).parent
+        # Use new ID to create model folder
+        trainer = cls(finetune_data, model_dir, config, config['JOB_ID'], eval_mode=(finetune_data is None))
+
+
         trainer.model.load_state_dict(weights, strict=False)
 
         return trainer
@@ -454,7 +469,7 @@ def run():
             finetune_data=args.datafile
         )
     else:
-        trainer = Trainer(args.datafile, args.config_data, args.job_id)
+        trainer = Trainer(args.datafile, args.save_path, args.config_data, args.job_id)
 
     num_epochs = args.config_data['NUM_EPOCHS']
     for epoch in range(num_epochs):
