@@ -11,6 +11,7 @@ from typing import Optional, Tuple
 import h5py
 import numpy as np
 from scipy.signal import correlate
+import torch
 from torch import randint
 from torch.utils.data import Dataset, DataLoader
 
@@ -172,7 +173,7 @@ class GerbilVocalizationDataset(Dataset):
             else:
                 lmin = labels.min(axis=(-1, -2), keepdims=True)
                 lmax = labels.max(axis=(-1, -2), keepdims=True)
-                scaled_labels = (labels - lmin) / (lmax - lmin)
+                scaled_labels = (labels - lmin) / (lmax - lmin)  # Scales between 0 and 1
         else:
             scaled_labels = None
 
@@ -190,8 +191,8 @@ class GerbilVocalizationDataset(Dataset):
         
         return scaled_audio, scaled_labels
 
-    @classmethod
-    def unscale_features(cls, labels, arena_dims):
+    @staticmethod
+    def unscale_features(labels, arena_dims):
         """ Changes the units of `labels` from arb. scaled unit (in range [0, 1]) to
         centimeters.
         """
@@ -202,8 +203,8 @@ class GerbilVocalizationDataset(Dataset):
         scaled_labels[..., 1] = labels[..., 1] * y_scale / 10
         return scaled_labels
     
-    @classmethod
-    def gaussian_location_map(cls, map_dim, location, sigma, arena_dims):
+    @staticmethod
+    def gaussian_location_map(map_dim, location, sigma, arena_dims):
         """ Converts a single location to a confidence map.
         Params:
         loc (ndarray): A location. Should have shape (2,). Expected to have units of mm.
@@ -241,8 +242,8 @@ class GerbilVocalizationDataset(Dataset):
         gaussian = np.exp(exponent).astype(np.float32)
         return gaussian.reshape(target_dims[::-1])
 
-    @classmethod
-    def wass_location_map(cls, map_dim, loc, arena_dims, *, use_squared_dist=False):
+    @staticmethod
+    def wass_location_map(map_dim, loc, arena_dims, *, use_squared_dist=False):
         """ Creates a confidence map in which every pixel holds its distance (L2)
         from the pixel containing the true location.
         Params:
@@ -366,6 +367,30 @@ class GerbilVocalizationDataset(Dataset):
 
         return sound.astype("float32"), location_map.astype("float32")
 
+    @staticmethod
+    def location_map_centroid(location_map):
+        if isinstance(location_map, np.ndarray):
+            location_map = torch.from_numpy(location_map)
+        location_map = location_map.detach()
+        net_mass = location_map.sum(dim=(-1, -2))
+        # x varies along the second dimension (third if batched). Matrix convention
+        x = torch.arange(location_map.shape[-1], device=location_map.device).reshape(1, -1).expand(location_map.shape)
+        y = torch.arange(location_map.shape[-2], device=location_map.device).reshape(-1, 1).expand(location_map.shape)
+        x_moment = (x * location_map).sum(dim=(-1, -2))
+        y_moment = (y * location_map).sum(dim=(-1, -2))
+        return torch.stack([x_moment / net_mass, y_moment / net_mass], dim=-1)
+    
+    @staticmethod
+    def map_to_cm(map_coords, map_dims, arena_dims):
+        # Map coords should be a set of x,y pairs, like those output by location_map_centroid
+        # map_dims is an int
+        # arena_dims is a tuple of (arena_width, arena_height) in mm
+        arena_dims_cm = np.array(arena_dims) / 10
+        if isinstance(map_coords, torch.Tensor):
+            arena_dims_cm = torch.from_numpy(arena_dims_cm)
+        scale_factor = arena_dims_cm / map_dims
+        return map_coords * scale_factor.expand(map_coords.shape)
+
 
 def build_dataloaders(path_to_data, CONFIG):
 
@@ -379,7 +404,6 @@ def build_dataloaders(path_to_data, CONFIG):
         map_size=CONFIG['LOCATION_MAP_DIM'] if ('USE_LOCATION_MAP' in CONFIG) and CONFIG['USE_LOCATION_MAP'] else None,
         make_xcorrs=CONFIG['COMPUTE_XCORRS']
     )
-    # TODO -- make new validation and test set files!
     valdata = GerbilVocalizationDataset(
         os.path.join(path_to_data, "val_set.h5"),
         flip_vert=False, flip_horiz=False,

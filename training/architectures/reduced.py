@@ -2,6 +2,7 @@ from math import comb
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from .encodings import LearnedEncoding, FixedEncoding
 from .sparse_attn import SparseTransformerEncoder, SparseTransformerEncoderLayer
@@ -79,3 +80,79 @@ class GerbilizerReducedAttentionNet(nn.Module):
     
     def trainable_params(self):
         return self.parameters()
+
+
+
+class GerbilizerAttentionHourglassNet(GerbilizerReducedAttentionNet):
+    def __init__(self, config):
+        super(GerbilizerAttentionHourglassNet, self).__init__(config)
+
+        del self.coord_readout
+        
+        self.upscale = nn.Sequential(
+            nn.Linear(self.linear_dim, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, 4096),
+            nn.ReLU(),
+            nn.Linear(4096, 8192)
+        )
+
+        self.resize_height = 16
+        self.resize_width = 16
+        self.resize_channels = 32
+
+        # Create a set of TransposeConv2d layers to upsample the reshaped vector
+        self.tc_layers = nn.ModuleList()
+        tc_dilations = config[f'TCONV_DILATIONS']
+        tc_strides = config[f'TCONV_STRIDES']
+        tc_kernel_sizes = config[f'TCONV_FILTER_SIZES']
+        tc_paddings = config[f'TCONV_PADDINGS']
+        tc_out_paddings = config[f'TCONV_OUTPUT_PADDINGS']
+
+        n_tc_channels = config[f'TCONV_NUM_CHANNELS']
+        n_tc_channels.insert(0, self.resize_channels)
+        n_tc_channels[0] *= 4
+        # Each entry is a tuple of the form (in_channels, out_channels)
+        in_out_channels = zip(n_tc_channels[:-1], n_tc_channels[1:])
+        
+        for in_out, k_size, dilation, stride, padding, output_padding in zip(in_out_channels, tc_kernel_sizes, tc_dilations, tc_strides, tc_paddings, tc_out_paddings):
+            in_channels, out_channels = in_out
+            self.tc_layers.append(
+                nn.Conv2d(
+                    in_channels=in_channels // 4,
+                    out_channels=out_channels,
+                    kernel_size=k_size,
+                    dilation=dilation,
+                    stride=stride,
+                    padding='same'
+                )
+            )
+        
+        self.tc_b_norms = nn.ModuleList()
+        for n_features in n_tc_channels[:-1]:
+            # I found that adding batchnorm helps the transpose convolutions a lot
+            self.tc_b_norms.append(
+                nn.BatchNorm2d(n_features // 4) if config['USE_BATCH_NORM']
+                else nn.Identity()
+            )
+    
+    def trainable_params(self):
+        # Pytorch expects a list containing a dict in which the key 'params' is assigned to a list of tensors
+        return self.parameters()
+        return [{'params': list(chain(
+            self.upscale.parameters(),
+            self.tc_layers.parameters(),
+            self.tc_b_norms.parameters()
+        ))}]
+
+    def forward(self, x):
+        linear_out = self.upscale(super().embed(x))
+        tc_output = linear_out.reshape((-1, self.resize_channels, self.resize_height, self.resize_width))
+
+        for n, (tc_layer, b_norm) in enumerate(zip(self.tc_layers, self.tc_b_norms)):
+            tc_output = b_norm(tc_output)
+            tc_output = tc_layer(tc_output)
+            tc_output = F.pixel_shuffle(tc_output, 2)
+            if n < len(self.tc_layers) - 1:
+                tc_output = F.relu(tc_output)
+        return tc_output.squeeze()

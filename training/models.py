@@ -3,9 +3,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet, GerbilizerSparseAttentionNet
+from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerSparseAttentionNet
 from architectures.densenet import GerbilizerDenseNet
-from architectures.reduced import GerbilizerReducedAttentionNet
+from architectures.reduced import GerbilizerReducedAttentionNet, GerbilizerAttentionHourglassNet
 from architectures.simplenet import GerbilizerSimpleNetwork
 
 
@@ -46,7 +46,7 @@ def build_model(CONFIG):
         loss_fn = se_loss_fn
     elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionHourglassNet":
         model = GerbilizerAttentionHourglassNet(CONFIG)
-        loss_fn = wass_loss_fn
+        loss_fn = map_se_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
@@ -68,7 +68,7 @@ def map_se_loss_fn(pred, target):
     """
     target = torch.flatten(target, start_dim=1)
     pred = torch.flatten(pred, start_dim=1)
-    return torch.mean(torch.square(target - pred).sum(dim=1))
+    return torch.mean(torch.square(target - pred).mean(dim=1))
 
 def wass_loss_fn(pred, target):
     """ Calculates the earth mover's distance between the target and predicted locations.
