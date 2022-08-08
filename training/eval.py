@@ -101,27 +101,6 @@ def validate_args(args):
         args.config_data = build_config_from_file(args.config, args.job_id)
 
 
-def load_calibration_config(config_path):
-    """
-    Load in the calibration config dictionary from the provided
-    path to a JSON file.
-    """
-    with open(config_path, 'r') as f:
-        calibration_config = json.load(f)
-
-    def convert_list_to_np(subdict) -> dict:
-        """Helper to convert list subentries to np.arrays."""
-        for k, v in subdict.items():
-            if type(v) == list:
-                subdict[k] = np.array(v)
-            elif type(v) == dict:
-                convert_list_to_np(v)
-    
-    convert_list_to_np(calibration_config)
-
-    return calibration_config     
-
-
 def run():
     args = get_args()
     device = 'gpu' if torch.cuda.is_available() else 'cpu'
@@ -180,13 +159,11 @@ def run():
         arena_dims_cm = np.array(arena_dims) * MM_TO_CM
 
         if args.calibration_config:
-            c_config = load_calibration_config(args.calibration_config)
-            logging.debug(f'calibration config: {c_config}')
-            ca = CalibrationAccumulator(
-                arena_dims_cm,
-                c_config 
+            ca = CalibrationAccumulator.from_JSON(
+                args.calibration_config,
+                arena_dims_cm
             )
-            OUTPUT_NAME = list(c_config.keys())[0]
+            OUTPUT_NAME = ca.output_names[0]
 
         with torch.no_grad():
             for idx, (audio, location) in enumerate(test_set_loader):
