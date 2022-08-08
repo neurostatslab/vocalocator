@@ -1,4 +1,4 @@
-"""Test calibration of various ways to smooth model predictions."""
+"""Evaluate a DNN on the provided dataset, optionally testing its calibration."""
 
 import argparse
 import json
@@ -234,9 +234,9 @@ def run():
                     )
 
                 centroid = centimeter_output.mean(axis=0)
-                distances = np.sqrt( ((centroid[None, ...] - centimeter_output)**2).sum(axis=-1) )  # Should have shape (30,)
+                # calculate distance from each estimate to the centroid
+                distances = np.linalg.norm(centroid[None] - centimeter_output, axis=-1)
                 dist_spread = distances.std()
-                # preds[idx:idx+n_added] = centimeter_output
                 preds[idx] = centroid
                 vars[idx] = dist_spread
 
