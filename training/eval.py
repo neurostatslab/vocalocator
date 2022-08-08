@@ -145,6 +145,11 @@ def run():
             shape=(n_vox,),
             dtype=np.float32
         )
+        errs = dest.create_dataset(
+            'errs',
+            shape=(n_vox,),
+            dtype=np.float32
+        )
 
         model = Trainer.from_trained_model(
             args.config_data,
@@ -216,6 +221,9 @@ def run():
                 dist_spread = distances.std()
                 preds[idx] = centroid
                 vars[idx] = dist_spread
+
+                # calculate error
+                errs[idx] = np.linalg.norm(centroid - centimeter_location)
 
         if args.calibration_config:
             # calculate the calibration curves + errors
