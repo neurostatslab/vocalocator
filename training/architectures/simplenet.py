@@ -97,7 +97,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         super().__init__(config)
 
         # replace the final coordinate readout with a block that outputs
-        # 6 numbers. Two are the coordinates, and then the
+        # 5 numbers. Two are the coordinates, and then the
         # remaining four determine the covariance matrix.
     
         # to guarantee that the resulting matrix will be symmetric positive
@@ -111,7 +111,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
 
         self.last_layer = torch.nn.Linear(
             self.n_channels[-1],
-            6
+            5
         )
 
     #     METHODS = {
@@ -190,9 +190,15 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         y_hat = output[:, :2]  # (batch, 2)
         # calculate the lower triangular Cholesky factor
         # of the covariance matrix
-        reshaped = output[:, 2:].reshape((-1, 2, 2))
-        L = reshaped.tril()
-        # apply the softplus to the diagonal entries
+        len_batch = output.shape[0]
+        # initialize an array of zeros into which we'll put
+        # the model output
+        L = torch.zeros(len_batch, 2, 2)
+        # embed the elements into the matrix
+        idxs = torch.tril_indices(2, 2)
+        L[:, idxs[0], idxs[1]] = output[:, 2:]
+        # apply softplus to the diagonal entries to guarantee the resulting
+        # matrix is positive definite
         new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
         L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
         # reshape y_hat so we can concatenate it to L
