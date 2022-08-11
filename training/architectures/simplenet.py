@@ -115,6 +115,14 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         )
 
     def forward(self, x):
+        """
+        Output parameters that define a predictive distribution p(location | audio),
+        which we assume to be normally distributed.
+
+        Specifically, output a (3, 2) torch.Tensor where the first row corresponds
+        to the mean of this Gaussian, and the remaining entries define the lower
+        triangular factor of the covariance matrix.
+        """
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         output = self.last_layer(h2)
