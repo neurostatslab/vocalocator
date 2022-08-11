@@ -9,7 +9,10 @@ import h5py
 import numpy as np
 import torch
 
-from calibrationtools import CalibrationAccumulator
+from calibrationtools.accumulator import (
+        CalibrationAccumulator,
+        InvalidSmoothingSpecError
+        )
 from torch.utils.data import DataLoader
 
 from configs import build_config_from_file, build_config_from_name
@@ -163,12 +166,19 @@ def run():
         MM_TO_CM = 0.1
         arena_dims_cm = np.array(arena_dims) * MM_TO_CM
 
-        if args.calibration_config:
+        calculate_calibration = args.calibration_config is not None
+
+        try:
             ca = CalibrationAccumulator.from_JSON(
                 args.calibration_config,
                 arena_dims_cm
             )
-            OUTPUT_NAME = ca.output_names[0]
+        except InvalidSmoothingSpecError as e:
+            logging.warning(
+                'Setting up calibration accumulator failed with the'
+                f'following error: {e}'
+                )
+            calculate_calibration = False
 
         with torch.no_grad():
             for idx, (audio, location) in enumerate(test_set_loader):
@@ -202,15 +212,16 @@ def run():
 
                 # if calibration config was passed,
                 # calculate one calibration step using those arguments
-                if args.calibration_config:
+                if calculate_calibration:
                     save_path = None
                     # occasionally visualize the pmfs
                     if idx % 500 == 0:
                         save_path = Path(args.outdir) / 'pmfs' / f'vox_{idx}'
                         save_path.mkdir(parents=True, exist_ok=True)
 
+                    output_name = ca.output_names[0]
                     ca.calculate_step(
-                        {OUTPUT_NAME: centered_output},
+                        {output_name: centered_output},
                         centered_location,
                         pmf_save_path=save_path,
                     )
