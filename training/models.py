@@ -1,11 +1,12 @@
 import logging
 
 from functools import partial
+from typing import Optional
 
-import numpy as np
 import torch
-from torch import nn
+
 from torch.nn import functional as F
+from torch.distributions import MultivariateNormal, Wishart
 
 from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet, GerbilizerSparseAttentionNet
 from architectures.densenet import GerbilizerDenseNet
@@ -112,8 +113,8 @@ def conditional_gaussian_loss_fn(
     pred: torch.Tensor,
     target: torch.Tensor,
     mode='mle',
-    scale_matrix: torch.Tensor = None,
-    deg_freedom: torch.Tensor = None,
+    scale_matrix: Optional[torch.Tensor] = None,
+    deg_freedom: Optional[torch.Tensor] = None,
     ):
     """
     Gaussian MLE/MAP loss function as described in [Russell and Reale, 2021]. Assumes
@@ -153,8 +154,8 @@ def conditional_gaussian_loss_fn(
     y_hat = pred[:, 0]  # output, shape: (B, 2)
     L = pred[:, 1:]  # cholesky factor of covariance, shape: (B, 2, 2)
 
-    # calculate covariance matrix
-    S = torch.matmul(L, L.transpose(-2, -1))
+    # calculate covariance matrices
+    S = torch.matmul(L, L.mT)
 
     if mode == 'mle' and (scale_matrix is not None) or (deg_freedom is not None):
         logger.warning(
@@ -164,7 +165,6 @@ def conditional_gaussian_loss_fn(
             f'{deg_freedom}'
         )
     # calculate covariance matrix
-    # S = torch.matmul(L, L.transpose(-2, -1))
     logger.debug(f'covariance matrices: {S}')
     # # for now, print out the eigenvalues
     # eigvals = torch.linalg.eigvalsh(S)
@@ -176,31 +176,17 @@ def conditional_gaussian_loss_fn(
     # # get the log determinant
     # logger.debug(f'gaussian_mle_loss_fn | product of log eigenvalues: {torch.log(determinants)}')
     # compute the loss
+
     # first term: `\ln |\hat{Sigma}|`
 
-    multivariate_normal = torch.distributions.multivariate_normal.MultivariateNormal(
+    # create the distribution corresponding to the outputted predictive
+    # density
+    multivariate_normal = MultivariateNormal(
         loc=y_hat,
         scale_tril=L
     )
 
-    loss = multivariate_normal.log_prob(target)
-
-    # _, logdet = torch.linalg.slogdet(S)
-    # logger.debug(f'logdet shape = {logdet.shape}, logdet = {logdet}')
-    # # second term: `(y - \hat{y})^T \hat{\Sigma}^{-1} (y - \hat{y})`
-    # diff = (target - y_hat).unsqueeze(-1)  # shape (B, 2, 1)
-    # logger.debug(f'absolute error: {diff}')
-    # # use torch.linalg.solve(S, diff) instead of
-    # # torch.matmul(torch.inverse(S), diff), since it's faster and more
-    # # stable according to the docs for torch.linalg.inv
-    # right_hand_term = torch.linalg.solve(S, diff)
-
-    # quadratic_form = torch.matmul(diff.transpose(1, 2), right_hand_term)  # (B, 1, 1) by default
-    # quadratic_form = quadratic_form.squeeze()  # (B,)
-    # logger.debug(
-    #     f'rh_term: {right_hand_term} | squeezed quadratic_form: {quadratic_form}'
-    #     )
-    # loss = quadratic_form + logdet
+    loss = -multivariate_normal.log_prob(target)
 
     if mode == 'map':
         if scale_matrix is None or deg_freedom is None:
@@ -209,32 +195,12 @@ def conditional_gaussian_loss_fn(
                 'parameters for the Wishart prior!'
                 )
         
-        wishart = torch.distributions.wishart.Wishart(
+        wishart = Wishart(
             df=deg_freedom, covariance_matrix=scale_matrix
         )
 
-        prior_term = wishart.log_prob(S)
+        prior_term = -wishart.log_prob(S)
 
-        # # add in a wishart prior on sigma
-        # # negative log density:
-        # # tr(V^{-1}S) - (deg_freedom - p - 1) ln|S|
-        # # where V is a pxp positive definite matrix        
-        # V = torch.tensor(scale_matrix, device=loss.device)
-
-        # # assume V is positive definite so we don't
-        # # have to do something like a cholesky factorization
-        # # for each time we call the function.
-
-        # # repeat V if necessary
-        # if V.dim != 3:
-        #     V = V[None].repeat(len(pred), 1, 1)
-
-        # V_inv_S = torch.linalg.solve(V, S)
-        # # and take the trace
-        # lhs = V_inv_S.diagonal(dim1=-2, dim2=-1).sum(-1)
-        # # log determinant term
-        # rhs = (deg_freedom - V.shape[-1] - 1) * logdet
-        # prior_term = lhs - rhs
         logger.debug(f'prior term: {prior_term}')
         loss = loss + prior_term
 
