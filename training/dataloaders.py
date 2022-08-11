@@ -6,7 +6,7 @@ objects and specify data augmentation.
 from itertools import combinations
 from math import comb
 import os
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -59,15 +59,15 @@ class GerbilVocalizationDataset(Dataset):
         self.make_xcorrs = make_xcorrs
         self.n_channels = None
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.dataset.close()
 
-    def __len__(self):
+    def __len__(self) -> int:
         if 'len_idx' in self.dataset:
             return len(self.dataset['len_idx']) - 1
         return len(self.dataset['vocalizations'])
 
-    def _crop_audio(self, audio):
+    def _crop_audio(self, audio) -> np.ndarray:
         # TODO: Delete this fn?
         pad_len = self.crop_audio
         n_samples = audio.shape[0]
@@ -81,7 +81,7 @@ class GerbilVocalizationDataset(Dataset):
         return zeros
     
     @classmethod
-    def sample_segment(cls, audio, section_len):
+    def sample_segment(cls, audio, section_len) -> np.ndarray:
         """ Samples a contiguous segment of length `section_len` from audio sample `audio` randomly
         within margins extending 10% of the total audio length from either end of the audio sample.
 
@@ -105,7 +105,7 @@ class GerbilVocalizationDataset(Dataset):
         end = start + section_len
         return audio[start:end, ...].T
 
-    def _append_xcorr(self, audio, *, is_batch=False):
+    def _append_xcorr(self, audio, *, is_batch=False) -> np.ndarray:
         # Assumes the audio has shape (n_channels, n_samples), which is true
         # after sample_segment has been called
         # Assumes unbatched input
@@ -133,7 +133,7 @@ class GerbilVocalizationDataset(Dataset):
         return audio_with_corr
         
     
-    def _audio_for_index(self, dataset, idx):
+    def _audio_for_index(self, dataset, idx) -> np.ndarray:
         """ Gets an audio sample from the dataset. Will determine the format
         of the dataset and handle it appropriately.
         """
@@ -146,7 +146,7 @@ class GerbilVocalizationDataset(Dataset):
         else:
             return dataset['vocalizations'][idx]
 
-    def _label_for_index(self, dataset, idx):
+    def _label_for_index(self, dataset, idx) -> np.ndarray:
         location_map = dataset['locations'][idx]
         if self.map_dim is not None:
             # location_map = GerbilVocalizationDataset.gaussian_location_map(self.map_dim, location_map, 5)
@@ -154,8 +154,16 @@ class GerbilVocalizationDataset(Dataset):
         return location_map
     
     @classmethod
-    def scale_features(cls, inputs, labels, arena_dims, is_batch=False, n_mics=4):
-        """ Scales the inputs to have zero mean and unit variance. Labels are scaled
+    def scale_features(
+        cls,
+        inputs,
+        labels,
+        arena_dims,
+        is_batch=False,
+        n_mics=4
+        ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
+        """
+        Scales the inputs to have zero mean and unit variance. Labels are scaled
         from millimeter units to an arbitrary unit with range [0, 1].
         """
 
@@ -191,7 +199,7 @@ class GerbilVocalizationDataset(Dataset):
         return scaled_audio, scaled_labels
 
     @classmethod
-    def unscale_features(cls, labels, arena_dims):
+    def unscale_features(cls, labels, arena_dims) -> np.ndarray:
         """ Changes the units of `labels` from arb. scaled unit (in range [0, 1]) to
         centimeters.
         """
@@ -203,7 +211,7 @@ class GerbilVocalizationDataset(Dataset):
         return scaled_labels
     
     @classmethod
-    def gaussian_location_map(cls, map_dim, location, sigma, arena_dims):
+    def gaussian_location_map(cls, map_dim, location, sigma, arena_dims) -> np.ndarray:
         """ Converts a single location to a confidence map.
         Params:
         loc (ndarray): A location. Should have shape (2,). Expected to have units of mm.
@@ -242,7 +250,7 @@ class GerbilVocalizationDataset(Dataset):
         return gaussian.reshape(target_dims[::-1])
 
     @classmethod
-    def wass_location_map(cls, map_dim, loc, arena_dims, *, use_squared_dist=False):
+    def wass_location_map(cls, map_dim, loc, arena_dims, *, use_squared_dist=False) -> np.ndarray:
         """ Creates a confidence map in which every pixel holds its distance (L2)
         from the pixel containing the true location.
         Params:
@@ -277,7 +285,7 @@ class GerbilVocalizationDataset(Dataset):
             coord_grid = np.sqrt(coord_grid)
         return coord_grid
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> Tuple[np.ndarray, np.ndarray]:
         
         # Load audio waveforms in time domain. Each sample is held
         # in a matrix with dimensions (10, num_audio_samples)
@@ -367,7 +375,7 @@ class GerbilVocalizationDataset(Dataset):
         return sound.astype("float32"), location_map.astype("float32")
 
 
-def build_dataloaders(path_to_data, CONFIG):
+def build_dataloaders(path_to_data, CONFIG) -> Tuple[DataLoader, DataLoader, DataLoader]:
 
     # Construct Dataset objects.
     traindata = GerbilVocalizationDataset(
