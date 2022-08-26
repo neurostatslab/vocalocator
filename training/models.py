@@ -195,8 +195,10 @@ def conditional_gaussian_loss_fn(
                 'parameters for the Wishart prior!'
                 )
         
+        device = pred.device
         wishart = Wishart(
-            df=torch.tensor(deg_freedom), covariance_matrix=torch.tensor(scale_matrix)
+            df=torch.tensor(deg_freedom, device=device),
+            covariance_matrix=torch.tensor(scale_matrix, device=device)
         )
 
         prior_term = -wishart.log_prob(S)
