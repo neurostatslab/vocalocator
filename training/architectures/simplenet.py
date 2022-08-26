@@ -114,7 +114,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
             5
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         """
         Output parameters that define a predictive distribution p(location | audio),
         which we assume to be normally distributed.
@@ -134,7 +134,8 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         len_batch = output.shape[0]
         # initialize an array of zeros into which we'll put
         # the model output
-        L = torch.zeros(len_batch, 2, 2)
+        device = x.device
+        L = torch.zeros(len_batch, 2, 2, device=device)
         # embed the elements into the matrix
         idxs = torch.tril_indices(2, 2)
         L[:, idxs[0], idxs[1]] = output[:, 2:]
