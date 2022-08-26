@@ -157,7 +157,7 @@ def conditional_gaussian_loss_fn(
     # calculate covariance matrices
     S = torch.matmul(L, L.mT)
 
-    if mode == 'mle' and (scale_matrix is not None) or (deg_freedom is not None):
+    if mode == 'mle' and ((scale_matrix is not None) or (deg_freedom is not None)):
         logger.warning(
             'Given that loss function in mode MLE, expected `scale_matrix`'
             'and `deg_freedom` to be None. Ignoring arguments: '
@@ -196,7 +196,7 @@ def conditional_gaussian_loss_fn(
                 )
         
         wishart = Wishart(
-            df=deg_freedom, covariance_matrix=scale_matrix
+            df=torch.tensor(deg_freedom), covariance_matrix=torch.tensor(scale_matrix)
         )
 
         prior_term = -wishart.log_prob(S)
