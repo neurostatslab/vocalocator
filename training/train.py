@@ -115,7 +115,7 @@ def validate_args(args):
         else:
             args.datafile = args.config_data['DATAFILE_PATH']
     
-    args.job_id = find_next_job_id(args.config_data['CONFIG_NAME'])
+    args.job_id = find_next_job_id(args.config_data['CONFIG_NAME'], args.save_path)
     if 'JOB_ID' in args.config_data:
         args.job_id = args.config_data['JOB_ID']
     else:
