@@ -186,28 +186,55 @@ def run():
                 if device == 'gpu':
                     audio = audio.cuda()
                 # output = model.model(audio)
-                output = model.model(audio)
-                # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
-                centimeter_output = GerbilVocalizationDataset.unscale_features(
-                    output.cpu().numpy(), arena_dims=arena_dims
-                    )
-                centimeter_location = GerbilVocalizationDataset.unscale_features(
-                    location.cpu().numpy(), arena_dims=arena_dims
-                    )
+                output: torch.Tensor = model.model(audio)
 
-                # move origin from center of room to bottom left corner
-                centered_output = centimeter_output + (arena_dims_cm / 2)
-                centered_location = centimeter_location + (arena_dims_cm / 2)
+                def _unscale_helper(arbitrary_scaled: torch.Tensor):
+                    """
+                    Helper function that calls GerbilVocalizationDataset.unscale_features
+                    with the correct arguments.
+                    """
+                    return GerbilVocalizationDataset.unscale_features(
+                        arbitrary_scaled.cpu().numpy(), arena_dims=arena_dims
+                        ) + (arena_dims_cm / 2)
+
+
+                len_batch = output.shape[0]
+                cm_location = np.zeros((len_batch, 2))
+                # if the model is outputting a location and a covariance matrix,
+                # the output shape will be (BATCH, 3, 2)
+                if output.shape[1:] == (3, 2):
+                    # shape: (batch, 1, 2)
+                    # where v[..., 0] is the x coord and v[..., 1] is the y coord
+                    predicted_location = output[:, 0]
+                    # transpose each cov matrix to match this expected convention
+                    # from unscale_features
+                    transposed_cov = output[:, 1:].transpose(dim0=-2, dim1=-1)
+                    cm_predicted_location = _unscale_helper(predicted_location)
+                    cm_predicted_cov = _unscale_helper(transposed_cov).transpose([0, 2, 1])
+                    
+                    cm_output = np.concatenate(
+                        (cm_predicted_location[:, None], cm_predicted_cov),
+                        axis=1
+                        )
+
+                elif output.shape[1:] == 2:
+                    # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
+                    cm_output = _unscale_helper(output)
+                    cm_predicted_location = cm_output
+                    cm_location = _unscale_helper(location)
+
+                else:
+                    raise ValueError("Expected model output to be either of shape (BATCH, 3, 2)"
+                                     f"or (BATCH, 2). Encountered: {output.shape}"
+                                     )
 
                 # occasionally log progress
                 if idx % 10 == 0:
                     logging.info(f'Reached vocalization {idx}.')
                     if idx % 100 == 0:
                         logging.debug(
-                            f'Vox {idx} -- centimeter_output: {centimeter_output} '
-                            f'| centimeter_location: {centimeter_location} '
-                            f'| centered_output: {centered_output}'
-                            f'| centered_location: {centered_location}'
+                            f'Vox {idx} -- cm_predicted_location: {cm_predicted_location} '
+                            f'| cm_location: {cm_location} '
                             )
 
                 # if calibration config was passed,
@@ -221,20 +248,20 @@ def run():
 
                     output_name = ca.output_names[0]
                     ca.calculate_step(
-                        {output_name: centered_output},
-                        centered_location,
+                        {output_name: cm_output},
+                        cm_location,
                         pmf_save_path=save_path,
                     )
 
-                centroid = centimeter_output.mean(axis=0)
+                centroid = cm_predicted_location.mean(axis=0)
                 # calculate distance from each estimate to the centroid
-                distances = np.linalg.norm(centroid[None] - centimeter_output, axis=-1)
+                distances = np.linalg.norm(centroid[None] - cm_predicted_location, axis=-1)
                 dist_spread = distances.std()
                 preds[idx] = centroid
                 vars[idx] = dist_spread
 
                 # calculate error
-                errs[idx] = np.linalg.norm(centroid - centimeter_location)
+                errs[idx] = np.linalg.norm(centroid - cm_location)
 
         if args.calibration_config:
             # calculate the calibration curves + errors
