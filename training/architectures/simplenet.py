@@ -127,7 +127,6 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         output = self.last_layer(h2)
         # extract the location estimate
-        logging.debug(f'output shape: {output.shape}')
         y_hat = output[:, :2]  # (batch, 2)
         # calculate the lower triangular Cholesky factor
         # of the covariance matrix
