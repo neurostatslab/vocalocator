@@ -150,7 +150,14 @@ def conditional_gaussian_loss_fn(
             f"Invalid value for `mode` passed: {mode}. Valid values are: 'mle', 'map'."
             )
     
-    # assume that preds has shape: (B, 3, 2) where B is the batch size
+
+    # make sure that preds has shape: (B, 3, 2) where B is the batch size
+    if pred.ndim != 3:
+        raise ValueError(
+            'Expected `pred` to have shape (B, 3, 2) where B is the batch size, '
+            f'but encountered shape: {pred.shape}'
+            )
+
     y_hat = pred[:, 0]  # output, shape: (B, 2)
     L = pred[:, 1:]  # cholesky factor of covariance, shape: (B, 2, 2)
 
