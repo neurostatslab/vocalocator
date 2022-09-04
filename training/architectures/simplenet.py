@@ -151,3 +151,49 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
 
+
+class GerbilizerSimpleIsotropicCovariance(GerbilizerSimpleNetwork):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # replace the final coordinate readout with a block that outputs
+        # 3 numbers. Two are the coordinates, and then the
+        # remaining one, lambda, determines the isotropic covariance matrix:
+        # \Sigma = \lambda * I
+    
+        del self.coord_readout
+
+        self.last_layer = torch.nn.Linear(
+            self.n_channels[-1],
+            3
+        )
+
+    def forward(self, x: torch.Tensor):
+        """
+        Output parameters that define a predictive distribution p(location | audio),
+        which we assume to be normally distributed.
+
+        Specifically, output a (3, 2) torch.Tensor where the first row corresponds
+        to the mean of this Gaussian, and the remaining entries define the lower
+        triangular factor of the covariance matrix.
+
+        The lower triangular factor of Sigma is returned instead of the actual
+        covariance matrix for consistency with the `GerbilizerSimpleWithCovariance` class.
+        """
+        h1 = self.conv_layers(x)
+        h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
+        output = self.last_layer(h2)
+        # extract the location estimate
+        y_hat = output[:, :2]  # (batch, 2)
+        # construct the triangular factor
+        lambda_ = output[:, 2] # (batch,)
+        L = torch.eye(2, device=x.device)[None] * lambda_[:, None, None]
+        # reshape y_hat so we can concatenate it to L
+        y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
+        # concat the two to make a (batch, 3, 2) tensor
+        concatenated = torch.cat((y_hat, L), dim=-2)
+        return concatenated
+
+    def _clip_grads(self):
+        nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
+
