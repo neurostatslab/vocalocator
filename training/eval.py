@@ -193,24 +193,19 @@ def run():
                     Helper function that calls GerbilVocalizationDataset.unscale_features
                     with the correct arguments.
                     """
-                    return GerbilVocalizationDataset.unscale_features(
+                    unscaled = GerbilVocalizationDataset.unscale_features(
                         arbitrary_scaled.cpu().numpy(), arena_dims=arena_dims
-                        ) + (arena_dims_cm / 2)
+                        )
+                    centered = unscaled + (arena_dims_cm / 2)
+                    return centered
 
-
-                len_batch = output.shape[0]
-                cm_location = np.zeros((len_batch, 2))
+                cm_location = _unscale_helper(location)
                 # if the model is outputting a location and a covariance matrix,
                 # the output shape will be (BATCH, 3, 2)
                 if output.shape[1:] == (3, 2):
-                    # shape: (batch, 1, 2)
                     # where v[..., 0] is the x coord and v[..., 1] is the y coord
-                    predicted_location = output[:, 0]
-                    # transpose each cov matrix to match this expected convention
-                    # from unscale_features
-                    transposed_cov = output[:, 1:].transpose(dim0=-2, dim1=-1)
-                    cm_predicted_location = _unscale_helper(predicted_location)
-                    cm_predicted_cov = _unscale_helper(transposed_cov).transpose([0, 2, 1])
+                    cm_predicted_location = _unscale_helper(output[:, 0])
+                    cm_predicted_cov = _unscale_helper(output[:, 1:])
                     
                     cm_output = np.concatenate(
                         (cm_predicted_location[:, None], cm_predicted_cov),
@@ -221,7 +216,6 @@ def run():
                     # output = output.mean(dim=0, keepdims=True)  # Output should have shape (30, 2)
                     cm_output = _unscale_helper(output)
                     cm_predicted_location = cm_output
-                    cm_location = _unscale_helper(location)
 
                 else:
                     raise ValueError("Expected model output to be either of shape (BATCH, 3, 2)"
