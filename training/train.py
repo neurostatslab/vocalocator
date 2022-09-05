@@ -226,14 +226,26 @@ class Trainer():
                 # Forward pass.
                 outputs = self.model(sounds).cpu()
 
+                def _mean_err(preds: np.ndarray, labels: np.ndarray):
+                    """
+                    Unscale predictions and locations, then return the mean error
+                    across the batch in centimeters.
+                    """
+                    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
+                    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
+                    return np.linalg.norm(pred_cm - label_cm, axis=-1).mean()
+
                 # Convert outputs and labels to centimeters from arb. unit
                 # But only if the outputs are x,y coordinate pairs
                 if outputs.dim() == 2 and outputs.shape[1] == 2:
-                    pred_cm = GerbilVocalizationDataset.unscale_features(outputs, arena_dims)
-                    label_cm = GerbilVocalizationDataset.unscale_features(locations, arena_dims)
-
-                    # Bypass the mse loss in favor of mean error
-                    mean_loss = np.sqrt(((label_cm - pred_cm) ** 2).sum(axis=-1)).mean()
+                    mean_loss = _mean_err(outputs, locations)
+                # If the model outputs a mean + covariance matrix,
+                # Report only the mean error from the predicted locations
+                # and the true locations.
+                elif outputs.dim() == 3 and outputs.shape[1:] == (3, 2):
+                    predicted_locations = outputs[:, 0]
+                    mean_loss = _mean_err(predicted_locations, locations)
+                # Otherwise, just use the loss function specified by the model
                 else:
                     losses = self._loss_fn(outputs, locations)
                     mean_loss = torch.mean(losses).item()
