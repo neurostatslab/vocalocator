@@ -11,7 +11,11 @@ from torch.distributions import MultivariateNormal, Wishart
 from architectures.attentionnet import GerbilizerAttentionNet, GerbilizerAttentionHourglassNet, GerbilizerSparseAttentionNet
 from architectures.densenet import GerbilizerDenseNet
 from architectures.reduced import GerbilizerReducedAttentionNet
-from architectures.simplenet import GerbilizerSimpleNetwork, GerbilizerSimpleWithCovariance
+from architectures.simplenet import (
+    GerbilizerSimpleNetwork,
+    GerbilizerSimpleWithCovariance,
+    GerbilizerSimpleIsotropicCovariance
+    )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -71,6 +75,9 @@ def build_model(CONFIG):
                 scale_matrix=scale_matrix,
                 deg_freedom=deg_freedom
                 )
+    elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleIsotropicCovariance":
+        model = GerbilizerSimpleIsotropicCovariance(CONFIG)
+        loss_fn = conditional_gaussian_loss_fn
     else:
         raise ValueError("ARCHITECTURE not recognized.")
 
