@@ -6,7 +6,7 @@
 #SBATCH --gpus=1
 #SBATCH --mem=32768mb
 #SBATCH --time=2:00:00
-#SBATCH --array=1-100%4
+#SBATCH --array=1-20%5
 #SBATCH -o slurm_logs/train_model_%a.log
 pwd; hostname; date;
 
@@ -21,6 +21,8 @@ pwd; hostname; date;
 
 # Expects the batch dir as first positional argument
 BATCH_DIR=$1
+# And the output dir as the second argument
+OUTPUT_DIR=$2
 
 if [ -z $BATCH_DIR ]; then
     echo "Path to directory containing config files should be provided as the second positional argument"
@@ -31,7 +33,8 @@ FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/scripts/pad_integer.py 4 ${SLURM_ARRA
 
 # Note, config file should include path to data file under DATAFILE_PATH key
 # Else this will crash
-pipenv run python training/train.py \
+python training/train.py \
     --config_file $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
+    --save_path $OUTPUT_DIR
 
 date;
