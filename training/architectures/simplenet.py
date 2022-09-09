@@ -186,7 +186,7 @@ class GerbilizerSimpleIsotropicCovariance(GerbilizerSimpleNetwork):
         # extract the location estimate
         y_hat = output[:, :2]  # (batch, 2)
         # construct the triangular factor
-        lambda_ = output[:, 2] # (batch,)
+        lambda_ = F.softplus(output[:, 2]) # (batch,)
         L = torch.eye(2, device=x.device)[None] * lambda_[:, None, None]
         # reshape y_hat so we can concatenate it to L
         y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
