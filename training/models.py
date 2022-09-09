@@ -1,7 +1,7 @@
 import logging
 
 from functools import partial
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import torch
 
@@ -25,7 +25,7 @@ fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
 
-def build_model(CONFIG):
+def build_model(CONFIG: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     """
     Specifies model and loss funciton.
 
@@ -47,39 +47,55 @@ def build_model(CONFIG):
         and map it to a shape of (batch_size,) holding
         losses.
     """
+    architecture = CONFIG['ARCHITECTURE']
 
-    if CONFIG["ARCHITECTURE"] == "GerbilizerDenseNet":
-        model = GerbilizerDenseNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerSimpleNetwork":
-        model = GerbilizerSimpleNetwork(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerSparseAttentionNet":
-        model = GerbilizerSparseAttentionNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerReducedSparseAttentionNet":
-        model = GerbilizerReducedAttentionNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerAttentionHourglassNet":
-        model = GerbilizerAttentionHourglassNet(CONFIG)
-        loss_fn = wass_loss_fn
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleWithCovariance":
-        model = GerbilizerSimpleWithCovariance(CONFIG)
-        loss_fn = conditional_gaussian_loss_fn
-        if CONFIG.get('GAUSSIAN_LOSS_MODE') == 'map':
-            scale_matrix = CONFIG.get('WISHART_SCALE')
-            deg_freedom = CONFIG.get('WISHART_DEG_FREEDOM')
-            loss_fn = partial(
-                loss_fn,
-                mode='map',
-                scale_matrix=scale_matrix,
-                deg_freedom=deg_freedom
-                )
-    elif CONFIG['ARCHITECTURE'] == "GerbilizerSimpleIsotropicCovariance":
-        model = GerbilizerSimpleIsotropicCovariance(CONFIG)
-        loss_fn = conditional_gaussian_loss_fn
+    basic_configs = {
+        'GerbilizerDenseNet': {
+            'model': GerbilizerDenseNet,
+            'loss_fn': se_loss_fn
+        },
+        'GerbilizerSimpleNetwork': {
+            'model': GerbilizerSimpleNetwork,
+            'loss_fn': se_loss_fn
+        },
+        'GerbilizerSparseAttentionNet': {
+            'model': GerbilizerSparseAttentionNet,
+            'loss_fn': se_loss_fn
+        },
+        'GerbilizerReducedSparseAttentionNet': {
+            'model': GerbilizerReducedAttentionNet,
+            'loss_fn': se_loss_fn
+        },
+        'GerbilizerAttentionHourglassNet': {
+            'model': GerbilizerAttentionHourglassNet,
+            'loss_fn': wass_loss_fn
+        },
+        'GerbilizerSimpleWithCovariance': {
+            'model': GerbilizerSimpleWithCovariance,
+            'loss_fn': conditional_gaussian_loss_fn
+        },
+        'GerbilizerSimpleIsotropicCovariance': {
+            'model': GerbilizerSimpleIsotropicCovariance,
+            'loss_fn': conditional_gaussian_loss_fn
+        }
+    }
+    # Load in the model architecture
+    if architecture_config := basic_configs.get(architecture):
+        model = architecture_config['model']
+        loss_fn = architecture_config['loss_fn']
     else:
-        raise ValueError("ARCHITECTURE not recognized.")
+        raise ValueError('ARCHITECTURE not recognized.')
+
+    # make any necessary modifications
+    if architecture == 'GerbilizerSimpleWithCovariance' and CONFIG.get('GAUSSIAN_LOSS_MODE') == 'map':
+        scale_matrix = CONFIG.get('WISHART_SCALE')
+        deg_freedom = CONFIG.get('WISHART_DEG_FREEDOM')
+        loss_fn = partial(
+            conditional_gaussian_loss_fn,
+            mode='map',
+            scale_matrix=scale_matrix,
+            deg_freedom=deg_freedom
+            )
 
     if CONFIG['DEVICE'] == 'GPU':
         model.cuda()
@@ -154,7 +170,7 @@ def conditional_gaussian_loss_fn(
     """
     if mode not in ('mle', 'map'):
         raise ValueError(
-            f"Invalid value for `mode` passed: {mode}. Valid values are: 'mle', 'map'."
+            f'Invalid value for `mode` passed: {mode}. Valid values are: \'mle\', \'map\'.'
             )
     
 
