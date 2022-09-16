@@ -28,7 +28,6 @@ def format_seconds(seconds):
 
 
 class LossAccumulator:
-
     def log(self, loss, num_correct, batch_size, elapsed):
         self.imagecount += batch_size
         self.total_loss += loss * batch_size
@@ -55,11 +54,9 @@ class LossAccumulator:
 
 
 class ProgressLogger:
-
     def __init__(
-            self, num_epochs, traindata, valdata,
-            log_interval, output_dir, logger
-        ):
+        self, num_epochs, traindata, valdata, log_interval, output_dir, logger
+    ):
 
         self.num_epochs = num_epochs
         self.num_train_images = len(traindata.dataset)
@@ -99,16 +96,14 @@ class ProgressLogger:
 
         # Increment epochs.
         self.epochcount += 1
-        self.logger.info(
-            ">> STARTING EPOCH {}".format(self.epochcount)
-        )
+        self.logger.info(">> STARTING EPOCH {}".format(self.epochcount))
 
         # Print estimated overall time remaining.
         if self.epochcount > 1:
             epochs_left = 1 + self.num_epochs - self.epochcount
             time_remaining = epochs_left * (
-                self.train_accumulator.secs_per_image * self.num_train_images +
-                self.val_accumulator.secs_per_image * self.num_val_images
+                self.train_accumulator.secs_per_image * self.num_train_images
+                + self.val_accumulator.secs_per_image * self.num_val_images
             )
             self.logger.info(
                 ">> TIME ELAPSED SO FAR:\t" + self.print_time_since_initialization()
@@ -129,20 +124,17 @@ class ProgressLogger:
     def log_train_batch(self, loss, num_correct, batch_size):
 
         # Log training statistics.
-        self.train_accumulator.log(
-            loss, num_correct, batch_size, self.timer_split()
-        )
+        self.train_accumulator.log(loss, num_correct, batch_size, self.timer_split())
 
         # Output training progress.
         if self.require_log():
             self.logger.info(
-                "TRAINING. \t Epoch " +
-                "{} / {} ".format(self.epochcount, self.num_epochs) +
-                "[{}/{}]".format(
-                    self.train_accumulator.imagecount,
-                    self.num_train_images
-                ) + 
-                f"   minibatch loss: {loss:.5f}"
+                "TRAINING. \t Epoch "
+                + "{} / {} ".format(self.epochcount, self.num_epochs)
+                + "[{}/{}]".format(
+                    self.train_accumulator.imagecount, self.num_train_images
+                )
+                + f"   minibatch loss: {loss:.5f}"
             )
 
     def start_testing(self):
@@ -159,25 +151,19 @@ class ProgressLogger:
     def log_val_batch(self, loss, num_correct, batch_size):
 
         # Log testing statistics.
-        self.val_accumulator.log(
-            loss, num_correct, batch_size, self.timer_split()
-        )
+        self.val_accumulator.log(loss, num_correct, batch_size, self.timer_split())
         # Output training progress.
         if self.require_log():
             self.logger.info(
-                "TESTING VALIDATION SET. Epoch {} ".format(self.epochcount) +
-                "[{}/{}]".format(
-                    self.val_accumulator.imagecount,
-                    self.num_val_images
-                )
+                "TESTING VALIDATION SET. Epoch {} ".format(self.epochcount)
+                + "[{}/{}]".format(self.val_accumulator.imagecount, self.num_val_images)
             )
 
     def finish_epoch(self):
         """Log statistics on the test set."""
         self.logger.info(
-            ">> FINISHED EPOCH IN: " + format_seconds(
-            time() - self.epoch_start_time
-        ))
+            ">> FINISHED EPOCH IN: " + format_seconds(time() - self.epoch_start_time)
+        )
 
         train_loss = self.train_accumulator.mean_loss
         val_loss = self.val_accumulator.mean_loss
