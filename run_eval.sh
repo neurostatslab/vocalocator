@@ -23,12 +23,12 @@ if [ -z $CONFIG ]; then
 fi
 
 if [ -z $OUT_PATH ]; then
-    pipenv run python -u training/main.py \
+    pipenv run python -u -m gerbilizer.main \
         --eval \
         --data $DATA_FILE \
         --config $CONFIG
 else
-    pipenv run python -u training/main.py \
+    pipenv run python -u -m gerbilizer.main \
         --eval \
         --data $DATA_FILE \
         --config $CONFIG \

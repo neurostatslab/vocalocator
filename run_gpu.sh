@@ -33,7 +33,7 @@ if [ -z $CONFIG ]; then
 fi
 
 
-pipenv run python -u training/main.py \
+pipenv run python -u -m gerbliizer.main \
     --config $CONFIG \
     --data $DATA_DIR \
     --save_path /mnt/ceph/users/${USER}/gerbilizer

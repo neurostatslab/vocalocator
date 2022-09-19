@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from os import path
-from typing import Generator, NewType, Optional, Tuple, Union
+from typing import Generator, NewType, Tuple, Union
 
 import h5py
 import numpy as np
@@ -11,9 +11,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 # from augmentations import build_augmentations
-from dataloaders import build_dataloaders, GerbilVocalizationDataset
-from logger import ProgressLogger
-from models import build_model
+from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
+from ..training.logger import ProgressLogger
+from ..training.models import build_model
 
 
 JSON = NewType("JSON", dict)
@@ -295,7 +295,7 @@ class Trainer:
             datapath=dataset,
             segment_len=self.__config["SAMPLE_LEN"],
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
-            arena_dims=arena_dims
+            arena_dims=arena_dims,
         )
 
         dset.samp_size = samples_per_vocalization

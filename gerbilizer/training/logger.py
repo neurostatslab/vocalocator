@@ -4,7 +4,6 @@ training progress in a deep learning setting.
 """
 import os
 from time import time
-import logging
 import numpy as np
 
 

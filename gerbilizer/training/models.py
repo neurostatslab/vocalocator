@@ -3,16 +3,16 @@ from typing import NewType
 import torch
 from torch.nn import functional as F
 
-from architectures.attentionnet import GerbilizerSparseAttentionNet
-from architectures.densenet import GerbilizerDenseNet
-from architectures.reduced import (
+from ..architectures.attentionnet import GerbilizerSparseAttentionNet
+from ..architectures.densenet import GerbilizerDenseNet
+from ..architectures.reduced import (
     GerbilizerReducedAttentionNet,
     GerbilizerAttentionHourglassNet,
 )
-from architectures.simplenet import GerbilizerSimpleNetwork
+from ..architectures.simplenet import GerbilizerSimpleNetwork
 
 
-JSON = NewType('JSON', dict)
+JSON = NewType("JSON", dict)
 
 
 def build_model(CONFIG: JSON):

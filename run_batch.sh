@@ -20,7 +20,7 @@ FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/scripts/pad_integer.py 4 ${SLURM_ARRA
 
 # Note, config file should include path to data file under DATAFILE_PATH key
 # Else this will crash
-pipenv run python -u training/main.py \
+pipenv run python -u -m gerbilizer.main \
     --config $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
     --save_path /mnt/ceph/users/${USER}/gerbilizer
 

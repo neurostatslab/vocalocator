@@ -5,7 +5,7 @@ import math
 from itertools import combinations
 
 
-with h5py.File('preprocessed_vocalization_dataset.h5') as f_src:
+with h5py.File("preprocessed_vocalization_dataset.h5") as f_src:
 
     # All vocalizations.
     all_vocs = np.array(f_src["vocalizations"])
@@ -20,7 +20,6 @@ with h5py.File('preprocessed_vocalization_dataset.h5') as f_src:
             vocs_xcorr[s, k] = np.correlate(all_vocs[s, i], all_vocs[s, j], mode="same")
 
     # Save new datafile.
-    with h5py.File('preprocessed_vocalization_dataset_with_xcorrs.h5', 'w') as f_dest:
+    with h5py.File("preprocessed_vocalization_dataset_with_xcorrs.h5", "w") as f_dest:
         f_dest["vocalizations"] = np.concatenate((all_vocs, vocs_xcorr), axis=1)
         f_dest["locations"] = np.array(f_src["locations"])
-
