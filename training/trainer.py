@@ -276,7 +276,7 @@ class Trainer:
     def eval_on_dataset(
         self,
         dataset: Union[str, h5py.File],
-        arena_dims: Optional[Tuple[float, float]] = None,
+        arena_dims: Tuple[float, float],
         samples_per_vocalization: int = 1,
     ) -> Generator[np.ndarray, None, None]:
         """Creates an iterator to perform inference on a given dataset
@@ -293,8 +293,9 @@ class Trainer:
 
         dset = GerbilVocalizationDataset(
             datapath=dataset,
-            segment_len=self.__config["SAMPLE_LENGTH"],
+            segment_len=self.__config["SAMPLE_LEN"],
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
+            arena_dims=arena_dims
         )
 
         dset.samp_size = samples_per_vocalization
@@ -308,19 +309,17 @@ class Trainer:
             for batch in dloader:
                 # remove label, if any
                 if isinstance(batch, list) or isinstance(batch, tuple):
-                    if len(batch) == 2:
-                        data, _ = batch
+                    data = batch[0]
                 else:
                     data = batch
+                if samples_per_vocalization > 1:
+                    data = data.squeeze(0)
 
                 output = self.model(data.to(device)).cpu().numpy()
-                if arena_dims is None:
-                    yield output
-                else:
-                    scaled_output = GerbilVocalizationDataset.unscale_features(
-                        output, arena_dims=arena_dims
-                    )
-                    yield scaled_output
+                scaled_output = GerbilVocalizationDataset.unscale_features(
+                    output, arena_dims=arena_dims
+                )
+                yield scaled_output
 
         if should_close_file:
             dataset.close()

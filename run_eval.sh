@@ -24,10 +24,12 @@ fi
 
 if [ -z $OUT_PATH ]; then
     pipenv run python -u training/main.py \
+        --eval \
         --data $DATA_FILE \
         --config $CONFIG
 else
     pipenv run python -u training/main.py \
+        --eval \
         --data $DATA_FILE \
         --config $CONFIG \
         --output_path $OUT_PATH

@@ -33,7 +33,7 @@ def get_args():
         "--save_path",
         type=str,
         required=False,
-        default=path.abspath("~/ceph/gerbilizer"),
+        default=path.abspath("."),
         help="Directory for trained models' weights",
     )
 
@@ -106,8 +106,9 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
     # expects args.data to point toward a file rather than a directory
     # In this case, all three h5py.File objects held by the Trainer are None
     data_path = args.data
-    samps_per_vox = 10
-    if not (data_path.ends_with(".h5") or data_path.ends_with(".hdf5")):
+    samps_per_vox = 1
+    arena_dims = args.config_data['ARENA_WIDTH'], args.config_data['ARENA_LENGTH'] 
+    if not (data_path.endswith(".h5") or data_path.endswith(".hdf5")):
         raise ValueError(
             "--data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
         )
@@ -118,7 +119,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
 
     with h5py.File(dest_path, "w") as dest:
         # Copy true locations, if available
-        with h5py.File("data_path", "r") as source:
+        with h5py.File(data_path, "r") as source:
             n_vox = (
                 len(source["len_idx"]) - 1
                 if "len_idx" in source
@@ -131,16 +132,16 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         preds = dest.create_dataset("predictions", shape=shape, dtype=np.float32)
 
         start_time = time.time()
-        for n, result in enumerate(trainer.eval_on_dataset(source)):
+        for n, result in enumerate(trainer.eval_on_dataset(data_path, arena_dims=arena_dims, samples_per_vocalization=samps_per_vox)):
             preds[n] = result.squeeze()
             if (n + 1) % 100 == 0:
-                est_speed = (time.time() - start_time) / (n + 1)
+                est_speed = (n + 1) / (time.time() - start_time)
                 remaining_items = n_vox - n
                 remaining_time = remaining_items / est_speed
                 print(
-                    f"Evaluation progress: {n+1}/{n_vox}. Est. remaining time: {remaining_time:d}"
+                    f"Evaluation progress: {n+1}/{n_vox}. Est. remaining time: {int(remaining_time):d}s"
                 )
-                print("Done")
+        print("Done")
 
 
 def run():
