@@ -1,3 +1,4 @@
+from collections import namedtuple
 from typing import NewType
 
 import torch
@@ -13,53 +14,7 @@ from ..architectures.simplenet import GerbilizerSimpleNetwork
 
 
 JSON = NewType("JSON", dict)
-
-
-def build_model(CONFIG: JSON):
-    """
-    Specifies model and loss funciton.
-
-    Parameters
-    ----------
-    CONFIG : dict
-        Dictionary holding training hyperparameters.
-
-    Returns
-    -------
-    model : torch.nn.Module
-        Model instance with hyperparameters specified
-        in CONFIG.
-
-    loss_function : function
-        Loss function mapping network output to a
-        per-instance. That is, loss_function should
-        take a torch.Tensor with shape (batch_size, ...)
-        and map it to a shape of (batch_size,) holding
-        losses.
-    """
-
-    if CONFIG["ARCHITECTURE"] == "GerbilizerDenseNet":
-        model = GerbilizerDenseNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerSimpleNetwork":
-        model = GerbilizerSimpleNetwork(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerSparseAttentionNet":
-        model = GerbilizerSparseAttentionNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerReducedSparseAttentionNet":
-        model = GerbilizerReducedAttentionNet(CONFIG)
-        loss_fn = se_loss_fn
-    elif CONFIG["ARCHITECTURE"] == "GerbilizerAttentionHourglassNet":
-        model = GerbilizerAttentionHourglassNet(CONFIG)
-        loss_fn = map_se_loss_fn
-    else:
-        raise ValueError("ARCHITECTURE not recognized.")
-
-    if CONFIG["DEVICE"] == "GPU":
-        model.cuda()
-
-    return model, loss_fn
+model_type = namedtuple("Model", ("model", "loss_fn"))
 
 
 # MARK: Loss functions
@@ -91,3 +46,53 @@ def wass_loss_fn(pred: torch.Tensor, target: torch.Tensor):
     # Add 1 to target to make the smallest value 0
     error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
     return torch.logsumexp(error_map, dim=1)
+
+
+lookup_table = {
+    "GerbilizerDenseNet": model_type(GerbilizerDenseNet, se_loss_fn),
+    "GerbilizerSimpleNetwork": model_type(GerbilizerSimpleNetwork, se_loss_fn),
+    "GerbilizerSparseAttentionNet": model_type(
+        GerbilizerSparseAttentionNet, se_loss_fn
+    ),
+    "GerbilizerReducedSparseAttentionNet": model_type(
+        GerbilizerReducedAttentionNet, se_loss_fn
+    ),
+    "GerbilizerAttentionHourglassNet": model_type(
+        GerbilizerAttentionHourglassNet, map_se_loss_fn
+    ),
+}
+
+
+def build_model(CONFIG: JSON):
+    """
+    Specifies model and loss funciton.
+
+    Parameters
+    ----------
+    CONFIG : dict
+        Dictionary holding training hyperparameters.
+
+    Returns
+    -------
+    model : torch.nn.Module
+        Model instance with hyperparameters specified
+        in CONFIG.
+
+    loss_function : function
+        Loss function mapping network output to a
+        per-instance. That is, loss_function should
+        take a torch.Tensor with shape (batch_size, ...)
+        and map it to a shape of (batch_size,) holding
+        losses.
+    """
+    arch = CONFIG["ARCHITECTURE"]
+    if arch in lookup_table:
+        model, loss_fn = lookup_table[arch]
+        model = model(CONFIG)
+    else:
+        raise ValueError("ARCHITECTURE not recognized.")
+
+    if CONFIG["DEVICE"] == "GPU":
+        model.cuda()
+
+    return model, loss_fn
