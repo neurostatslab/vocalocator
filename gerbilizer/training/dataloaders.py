@@ -347,7 +347,9 @@ class GerbilVocalizationDataset(Dataset):
 
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
-        location_map = None if self.inference else self._label_for_index(self.dataset, idx)
+        location_map = (
+            None if self.inference else self._label_for_index(self.dataset, idx)
+        )
         sound, location_map = GerbilVocalizationDataset.scale_features(
             sound,
             location_map,
