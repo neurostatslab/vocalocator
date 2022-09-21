@@ -27,6 +27,7 @@ class GerbilVocalizationDataset(Dataset):
         map_size: Optional[int] = None,
         arena_dims: Optional[Tuple[float, float]] = None,
         make_xcorrs: bool = False,
+        inference: bool = False,
     ):
         """
         Args:
@@ -49,6 +50,9 @@ class GerbilVocalizationDataset(Dataset):
             make_xcorrs (bool):
                 When true, the dataset will compute pairwise cross correlations between
                 the traces of all provided microphones.
+            inference (bool):
+                When true, will not attempt to locate labels within dataset and will only
+                return sounds
         """
         if isinstance(datapath, str):
             self.dataset = h5py.File(datapath, "r")
@@ -61,6 +65,7 @@ class GerbilVocalizationDataset(Dataset):
         self.map_dim = map_size
         self.arena_dims = arena_dims
         self.make_xcorrs = make_xcorrs
+        self.inference = inference
         self.n_channels = None
 
     def __del__(self):
@@ -342,7 +347,7 @@ class GerbilVocalizationDataset(Dataset):
 
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
-        location_map = self._label_for_index(self.dataset, idx)
+        location_map = None if self.inference else self._label_for_index(self.dataset, idx)
         sound, location_map = GerbilVocalizationDataset.scale_features(
             sound,
             location_map,
@@ -350,6 +355,9 @@ class GerbilVocalizationDataset(Dataset):
             arena_dims=self.arena_dims,
             n_mics=self.n_channels,
         )
+
+        if self.inference:
+            return sound
 
         is_map = self.map_dim is not None
 
