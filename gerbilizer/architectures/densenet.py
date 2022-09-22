@@ -4,7 +4,6 @@ import torch
 
 
 class GerbilizerDenseNet(torch.nn.Module):
-
     def __init__(self, CONFIG):
         super(GerbilizerDenseNet, self).__init__()
 
@@ -21,7 +20,7 @@ class GerbilizerDenseNet(torch.nn.Module):
 
         # Initial number of audio channels.
         N = CONFIG["NUM_MICROPHONES"]
-        if CONFIG['COMPUTE_XCORRS']:
+        if CONFIG["COMPUTE_XCORRS"]:
             N += comb(N, 2)
 
         self.f_convs = torch.nn.ModuleList([])
@@ -32,12 +31,16 @@ class GerbilizerDenseNet(torch.nn.Module):
             n = CONFIG["CONV_NUM_CHANNELS"][i]
             fs = CONFIG["CONV_FILTER_SIZES"][i]
             d = CONFIG[f"CONV_DILATIONS"][i]
-            self.f_convs.append(torch.nn.Conv1d(
-                N, n, fs, stride=2, padding=((fs * d - 1) // 2), dilation=d
-            ))
-            self.g_convs.append(torch.nn.Conv1d(
-                N, n, fs, stride=2, padding=((fs * d - 1) // 2), dilation=d
-            ))
+            self.f_convs.append(
+                torch.nn.Conv1d(
+                    N, n, fs, stride=2, padding=((fs * d - 1) // 2), dilation=d
+                )
+            )
+            self.g_convs.append(
+                torch.nn.Conv1d(
+                    N, n, fs, stride=2, padding=((fs * d - 1) // 2), dilation=d
+                )
+            )
             if CONFIG["USE_BATCH_NORM"]:
                 self.norm_layers.append(torch.nn.BatchNorm1d(N + n))
             else:
@@ -46,14 +49,10 @@ class GerbilizerDenseNet(torch.nn.Module):
 
         # Final pooling layer, which takes a weighted average
         # over the time axis.
-        self.final_pooling = torch.nn.Conv1d(
-            N, N, kernel_size=10, groups=N, padding=0
-        )
+        self.final_pooling = torch.nn.Conv1d(N, N, kernel_size=10, groups=N, padding=0)
 
         # Final linear layer to reduce the number of channels.
-        self.coord_readout = torch.nn.Linear(
-            N, 2
-        )
+        self.coord_readout = torch.nn.Linear(N, 2)
         """
         self.x_coord_readout = torch.nn.Linear(
             N, CONFIG["NUM_SLEAP_KEYPOINTS"]
@@ -72,9 +71,7 @@ class GerbilizerDenseNet(torch.nn.Module):
 
     def forward(self, x):
 
-        for fc, gc, bnrm in zip(
-                self.f_convs, self.g_convs, self.norm_layers
-            ):
+        for fc, gc, bnrm in zip(self.f_convs, self.g_convs, self.norm_layers):
             h = torch.tanh(fc(x)) * torch.sigmoid(gc(x))
             xp = self.pooling(x)
             x = bnrm(torch.cat((xp, h), dim=1))

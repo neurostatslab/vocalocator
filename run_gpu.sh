@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p gpu
-#SBATCH -c 1
+#SBATCH -c 2
 #SBATCH --gpus=1
-#SBATCH --mem=32768mb
-#SBATCH --time=1:00:00
+#SBATCH --mem=64GB
+#SBATCH --time=2:00:00
 #SBATCH -o slurm_logs/train_model_%j.log
 pwd; hostname; date;
 
@@ -23,26 +23,19 @@ DATA_DIR=$1
 CONFIG=$2
 
 if [ -z $DATA_DIR ]; then
-    echo "Path to train/val/test datasets should be provided as the first positional argument"
+    echo "Path to directory containing train/val/test datasets should be provided as the first positional argument"
     exit 1
 fi
 
 if [ -z $CONFIG ]; then
-    echo "Config name or path to config JSON should be provided as second positional argument"
+    echo "Path to config JSON should be provided as second positional argument"
     exit 1
 fi
 
 
-if [ -f $CONFIG ]; then
-    pipenv run python training/train.py \
-        --config_file $CONFIG \
-        --datafile $DATA_DIR \
-        --save_path /mnt/ceph/users/${USER}/gerbilizer
-else
-    pipenv run python training/train.py \
-        --config $CONFIG \
-        --datafile $DATA_DIR \
-        --save_path /mnt/ceph/users/${USER}/gerbilizer
-fi
+pipenv run python -u -m gerbilizer.main \
+    --config $CONFIG \
+    --data $DATA_DIR \
+    --save_path /mnt/ceph/users/${USER}/gerbilizer
 
 date;
