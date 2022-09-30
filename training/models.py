@@ -81,7 +81,7 @@ def build_model(CONFIG: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     }
     # Load in the model architecture
     if architecture_config := basic_configs.get(architecture):
-        model = architecture_config['model']
+        model = architecture_config['model'](CONFIG)
         loss_fn = architecture_config['loss_fn']
     else:
         raise ValueError('ARCHITECTURE not recognized.')
@@ -195,7 +195,7 @@ def conditional_gaussian_loss_fn(
             f'{deg_freedom}'
         )
     # calculate covariance matrix
-    logger.debug(f'covariance matrices: {S}')
+ #    logger.debug(f'covariance matrices: {S}')
     # # for now, print out the eigenvalues
     # eigvals = torch.linalg.eigvalsh(S)
     # determinants = eigvals.prod(1)
@@ -236,6 +236,6 @@ def conditional_gaussian_loss_fn(
         logger.debug(f'prior term: {prior_term}')
         loss = loss + prior_term
 
-    logger.debug(f'LOSS: {loss}')
+#     logger.debug(f'LOSS: {loss}')
 
     return loss

@@ -17,8 +17,10 @@ from logger import ProgressLogger
 from models import build_model
 
 
-logger = logging.getLogger('no_spam')
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 
 JSON = NewType('JSON', dict)
@@ -121,6 +123,14 @@ def validate_args(args):
     else:
         args.config_data['JOB_ID'] = args.job_id
 
+def calculate_l2(preds: np.ndarray, labels: np.ndarray, arena_dims):
+    """
+    Unscale predictions and locations, then return the l2 distances 
+    across the batch in centimeters.
+    """
+    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
+    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
+    return np.linalg.norm(pred_cm - label_cm, axis=-1)
 
 class Trainer():
     def __init__(self,
@@ -172,7 +182,8 @@ class Trainer():
 
         self.progress_log.start_training()
         self.model.train()
-        for sounds, locations in self.traindata:
+        n_batches = len(self.traindata)
+        for i, (sounds, locations) in enumerate(self.traindata):
             # Don't process partial batches.
             if len(sounds) != self._config["TRAIN_BATCH_SIZE"]:
                 break
@@ -193,11 +204,29 @@ class Trainer():
             losses = self._loss_fn(outputs, locations)
             mean_loss = torch.mean(losses)
 
+            # output debug info 5 times per epoch
+            to_debug = [int(j * (n_batches / 5)) for j in range(5)]
+            if i in to_debug:
+                logger.debug(f'\nEPOCH {epoch_num} ---- EXAMPLE {i}')
+                logger.debug(f'raw model outputs:\n{outputs}')
+                logger.debug(f'locations:\n{locations}')
+                logger.debug(f'loss values:\n {losses}')
+                logger.debug(f'mean loss:\n {mean_loss}')
+                # if the model outputs mean + cov matrix, print l2 distance
+                # as well
+                if outputs.dim() == 3 and outputs.shape[1:] == (3, 2):
+                    arena_dims = (self._config['ARENA_WIDTH'], self._config['ARENA_LENGTH'])
+                    pred_locs = outputs[:, 0].detach().cpu().numpy()
+                    locs = locations.detach().cpu().numpy()
+                    logger.debug(f'unscaled predictions:\n{pred_locs}\nunscaled locations:\n{locs}')
+                    l2_distances = calculate_l2(pred_locs, locs, arena_dims)
+                    logger.debug(f'l2 distances:\n{l2_distances}')
+
             # Backwards pass.
             mean_loss.backward()
-            # temporarily print gradients
-            output = [(name, torch.norm(p.grad)) for name, p in self.model.named_parameters()]
-            logger.debug(pprint.pformat(output))
+#             # temporarily print gradients
+#             output = [(name, torch.norm(p.grad)) for name, p in self.model.named_parameters()]
+#             logger.debug(pprint.pformat(output))
             if self._config['CLIP_GRADIENTS']:
                 self.model._clip_grads()
             self.optim.step()
@@ -226,25 +255,17 @@ class Trainer():
                 # Forward pass.
                 outputs = self.model(sounds).cpu()
 
-                def _mean_err(preds: np.ndarray, labels: np.ndarray):
-                    """
-                    Unscale predictions and locations, then return the mean error
-                    across the batch in centimeters.
-                    """
-                    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
-                    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
-                    return np.linalg.norm(pred_cm - label_cm, axis=-1).mean()
 
                 # Convert outputs and labels to centimeters from arb. unit
                 # But only if the outputs are x,y coordinate pairs
                 if outputs.dim() == 2 and outputs.shape[1] == 2:
-                    mean_loss = _mean_err(outputs, locations)
+                    mean_loss = calculate_l2(outputs, locations, arena_dims).mean()
                 # If the model outputs a mean + covariance matrix,
                 # Report only the mean error from the predicted locations
                 # and the true locations.
                 elif outputs.dim() == 3 and outputs.shape[1:] == (3, 2):
                     predicted_locations = outputs[:, 0]
-                    mean_loss = _mean_err(predicted_locations, locations)
+                    mean_loss = calculate_l2(predicted_locations, locations, arena_dims).mean()
                 # Otherwise, just use the loss function specified by the model
                 else:
                     losses = self._loss_fn(outputs, locations)
