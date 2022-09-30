@@ -1,6 +1,7 @@
 import logging
 
 from math import comb
+from typing import NewType, Tuple
 
 import torch
 from torch import nn
@@ -92,6 +93,11 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         return coords
 
 
+# lower triangular factor of covariance matrix
+Mean = torch.Tensor
+CholeskyCov = NewType('CholeskyCov', torch.Tensor)
+CovNetOutput = Tuple[Mean, CholeskyCov]
+
 class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
     def __init__(self, config):
         super().__init__(config)
@@ -114,7 +120,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
             5
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> CovNetOutput:
         """
         Output parameters that define a predictive distribution p(location | audio),
         which we assume to be normally distributed.
@@ -168,7 +174,7 @@ class GerbilizerSimpleIsotropicCovariance(GerbilizerSimpleNetwork):
             3
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> CovNetOutput:
         """
         Output parameters that define a predictive distribution p(location | audio),
         which we assume to be normally distributed.
