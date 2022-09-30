@@ -200,8 +200,12 @@ class GerbilVocalizationDataset(Dataset):
 
     @classmethod
     def unscale_features(cls, labels, arena_dims) -> np.ndarray:
-        """ Changes the units of `labels` from arb. scaled unit (in range [0, 1]) to
+        """
+        Changes the units of `labels` from arb. scaled unit (in range [-1, 1]) to
         centimeters.
+
+        Expects `labels` to be a tensor of shape (..., 2) where labels[..., 0]
+        represents the x coordinate and labels[..., 1] represents the y coordinate.
         """
         x_scale = arena_dims[0] / 2
         y_scale = arena_dims[1] / 2
