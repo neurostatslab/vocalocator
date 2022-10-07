@@ -101,8 +101,11 @@ def validate_args(args):
         f"{args.job_id:0>5d}",
     )
 
-
 def run_eval(args: argparse.Namespace, trainer: Trainer):
+    """
+    Run the model from `trainer` on the dataset at `args.data`, storing
+    the predictions and true locations to an h5 file.
+    """
     # expects args.data to point toward a file rather than a directory
     # In this case, all three h5py.File objects held by the Trainer are None
     data_path = args.data
@@ -130,6 +133,8 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
 
         shape = (n_vox, 2) if samps_per_vox == 1 else (n_vox, samps_per_vox, 2)
         preds = dest.create_dataset("predictions", shape=shape, dtype=np.float32)
+        cov_shape = (n_vox, 2, 2) if samps_per_vox == 1 else (n_vox, samps_per_vox, 2, 2)
+        cov_preds = dest.create_dataset("cov_predictions", shape=cov_shape, dtype=np.float32)
 
         start_time = time.time()
         for n, result in enumerate(
@@ -137,7 +142,16 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
                 data_path, arena_dims=arena_dims, samples_per_vocalization=samps_per_vox
             )
         ):
-            preds[n] = result.squeeze()
+            # if the model is outputting a mean and a covariance matrix
+            # add the mean to preds and the cov to cov_preds
+            if result.shape[1:] == (3, 2):
+                pred = result[:, 0]
+                preds[n] = pred.squeeze()
+                cov = result[:, 1:]
+                cov_preds[n] = cov.squeeze()
+            # otherwise, add just the model output
+            else:
+                preds[n] = result.squeeze()
             if (n + 1) % 100 == 0:
                 est_speed = (n + 1) / (time.time() - start_time)
                 remaining_items = n_vox - n
