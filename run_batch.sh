@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p gpu
-#SBATCH --constraint=v100
-#SBATCH -c 1
+#SBATCH -c 2
 #SBATCH --gpus=1
+#SBATCH --mem=64GB
 #SBATCH --mem=32768mb
 #SBATCH --time=2:00:00
 #SBATCH --array=1-20%5
@@ -12,11 +12,7 @@ pwd; hostname; date;
 
 ##################################################
 # Usage:
-# sbatch run_gpu.sh ~/ceph/path_to_data ~/path/to/config.json
-# sbatch run_gpu.sh ~/ceph/path_to_data default
-# path_to_data/ should contain the files train_set.h5, val_set.h5, and test_set.h5
-# config.json should contain the CONFIG_NAME key
-# Alternatively, a string containing one of the configs listed in configs.py may be provided
+# sbatch run_batch.sh ~/path/to/batch/configs ~/optional/path/to/output/directory
 ##################################################
 
 # Expects the batch dir as first positional argument
@@ -25,15 +21,20 @@ BATCH_DIR=$1
 OUTPUT_DIR=$2
 
 if [ -z $BATCH_DIR ]; then
-    echo "Path to directory containing config files should be provided as the second positional argument"
+    echo "Path to directory containing config files should be provided as the first argument"
     exit 1
+fi
+
+if [-z $OUTPUT_DIR ]; then
+    echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/gerbilizer."
+    OUTPUT_DIR=/mnt/ceph/users/${USER}/gerbilizer
 fi
 
 FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/scripts/pad_integer.py 4 ${SLURM_ARRAY_TASK_ID})
 
 # Note, config file should include path to data file under DATAFILE_PATH key
 # Else this will crash
-python training/train.py \
+pipenv run python -u -m gerbilizer.main \
     --config_file $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
     --save_path $OUTPUT_DIR
 
