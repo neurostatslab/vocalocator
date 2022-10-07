@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 # from augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
-from ..training.models import build_model
+from ..training.models import build_model, unscale_output
 
 
 JSON = NewType("JSON", dict)
@@ -25,6 +25,14 @@ def make_logger(filepath: str) -> logging.Logger:
     logger.addHandler(logging.FileHandler(filepath))
     return logger
 
+def l2_distance(preds: np.ndarray, labels: np.ndarray, arena_dims) -> np.ndarray:
+    """
+    Unscale predictions and locations, then return the l2 distances 
+    across the batch in centimeters.
+    """
+    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
+    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
+    return np.linalg.norm(pred_cm - label_cm, axis=-1)
 
 class Trainer:
     """A helper class for training and performing inference with Gerbilizer models"""
@@ -240,17 +248,14 @@ class Trainer:
                     # Convert outputs and labels to centimeters from arb. unit
                     # But only if the outputs are x,y coordinate pairs
                     if outputs.dim() == 2 and outputs.shape[1] == 2:
-                        pred_cm = GerbilVocalizationDataset.unscale_features(
-                            outputs, arena_dims
-                        )
-                        label_cm = GerbilVocalizationDataset.unscale_features(
-                            locations, arena_dims
-                        )
-
-                        # Bypass the mse loss in favor of mean error
-                        mean_loss = np.sqrt(
-                            ((label_cm - pred_cm) ** 2).sum(axis=-1)
-                        ).mean()
+                        mean_loss = l2_distance(outputs, locations, arena_dims).mean()
+                    # If the model outputs a mean + covariance matrix,
+                    # Report only the mean error from the predicted locations
+                    # and the true locations.
+                    elif outputs.dim() == 3 and outputs.shape[1:] == (3, 2):
+                        predicted_locations = outputs[:, 0]
+                        mean_loss = l2_distance(predicted_locations, locations, arena_dims).mean()
+                    # Otherwise, just use the loss function specified by the model
                     else:
                         losses = self.__loss_fn(outputs, locations)
                         mean_loss = torch.mean(losses).item()
@@ -316,10 +321,8 @@ class Trainer:
                     data = data.squeeze(0)
 
                 output = self.model(data.to(device)).cpu().numpy()
-                scaled_output = GerbilVocalizationDataset.unscale_features(
-                    output, arena_dims=arena_dims
-                )
-                yield scaled_output
+
+                yield unscale_output(output, arena_dims)
 
         if should_close_file:
             dataset.close()
