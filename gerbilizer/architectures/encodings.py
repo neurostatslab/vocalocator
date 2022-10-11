@@ -20,9 +20,9 @@ class FixedEncoding(nn.Module):
         >>> pos_encoder = PositionalEncoding(d_model)
     """
 
-    def __init__(self, d_model, dropout=0, max_len=8192):
+    def __init__(self, d_model, max_len=8192, transpose=False):
         super(FixedEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.transpose = transpose
 
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -31,9 +31,8 @@ class FixedEncoding(nn.Module):
         )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(
-            0
-        )  # Modification: remove transpose so resulting shape is (1, seq, features)
+        if transpose:
+            pe = pe.T
         self.register_buffer("pe", pe)
 
     def forward(self, x):
@@ -47,16 +46,24 @@ class FixedEncoding(nn.Module):
             >>> output = pos_encoder(x)
         """
 
-        x = x + self.pe[:, : x.size(1), :]
-        return self.dropout(x)
+        if self.transpose:
+            x = x + self.pe[None, :, : x.shape[2]]
+        else:
+            x = x + self.pe[None, : x.shape[1], :]
+        return x
 
 
 class LearnedEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_len):
+    def __init__(self, d_model, max_seq_len, transpose=False):
         super().__init__()
         enc = torch.empty((max_seq_len, d_model))
+        if transpose:
+            enc = enc.T
+        self.transpose = transpose
         nn.init.uniform_(enc, -0.1, 0.1)
         self.encoding = nn.Parameter(enc, requires_grad=True)
 
     def forward(self, x):
+        if self.transpose:
+            return x + self.encoding[:, : x.shape[-1]].unsqueeze(0)
         return x + self.encoding[: x.shape[1], :].unsqueeze(0)

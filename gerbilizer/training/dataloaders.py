@@ -24,7 +24,6 @@ class GerbilVocalizationDataset(Dataset):
         flip_vert: bool = False,
         flip_horiz: bool = False,
         segment_len: int = 256,
-        map_size: Optional[int] = None,
         arena_dims: Optional[Tuple[float, float]] = None,
         make_xcorrs: bool = False,
         inference: bool = False,
@@ -62,7 +61,6 @@ class GerbilVocalizationDataset(Dataset):
         self.flip_horiz = flip_horiz
         self.segment_len = segment_len
         self.samp_size = 1
-        self.map_dim = map_size
         self.arena_dims = arena_dims
         self.make_xcorrs = make_xcorrs
         self.inference = inference
@@ -160,38 +158,22 @@ class GerbilVocalizationDataset(Dataset):
             return dataset["vocalizations"][idx]
 
     def _label_for_index(self, dataset, idx):
-        location_map = dataset["locations"][idx]
-        if self.map_dim is not None:
-            # location_map = GerbilVocalizationDataset.gaussian_location_map(self.map_dim, location_map, 5)
-            location_map = GerbilVocalizationDataset.wass_location_map(
-                self.map_dim, location_map, arena_dims=self.arena_dims
-            )
-        return location_map
+        return dataset["locations"][idx]
 
     @classmethod
-    def scale_features(cls, inputs, labels, arena_dims, is_batch=False, n_mics=4):
+    def scale_features(cls, inputs, labels, arena_dims, n_mics=4):
         """Scales the inputs to have zero mean and unit variance. Labels are scaled
         from millimeter units to an arbitrary unit with range [0, 1].
         """
 
-        if labels is not None:
+        scaled_labels = None
+        if labels is not None and arena_dims is not None:
             scaled_labels = np.empty_like(labels)
 
-            is_map = len(labels.shape) == (3 if is_batch else 2)
-            if not is_map:
-                # Shift range to [-1, 1]
-                x_scale = arena_dims[0] / 2  # Arena half-width (mm)
-                y_scale = arena_dims[1] / 2
-                scaled_labels[..., 0] = labels[..., 0] / x_scale
-                scaled_labels[..., 1] = labels[..., 1] / y_scale
-            else:
-                lmin = labels.min(axis=(-1, -2), keepdims=True)
-                lmax = labels.max(axis=(-1, -2), keepdims=True)
-                scaled_labels = (labels - lmin) / (
-                    lmax - lmin
-                )  # Scales between 0 and 1
-        else:
-            scaled_labels = None
+            # Shift range to [-1, 1]
+            x_scale = arena_dims[0] / 2  # Arena half-width (mm)
+            y_scale = arena_dims[1] / 2
+            scaled_labels = labels / np.array([x_scale, y_scale])
 
         scaled_audio = np.empty_like(inputs)
         # std scaling: I think it's ok to use sample statistics instead of population statistics
@@ -223,112 +205,8 @@ class GerbilVocalizationDataset(Dataset):
         scaled_labels[..., 1] = labels[..., 1] * y_scale / 10
         return scaled_labels
 
-    @staticmethod
-    def gaussian_location_map(map_dim, location, sigma, arena_dims):
-        """Converts a single location to a confidence map.
-        Params:
-        loc (ndarray): A location. Should have shape (2,). Expected to have units of mm.
-        sigma (float): Bandwidth of the gaussian kernel to use. Unit: pixels
-        target_dims (tuple): A tuple of the form (width, height) for the output shape
-        Returns: An ndarray of shape (height, width)
-        """
-        target_dims = (map_dim, map_dim)
-        # Dimensions of the enclosure in mm
-        # Also assumed to be the range of the input data
-        half_width, half_height = arena_dims[0] / 2, arena_dims[1] / 2
-
-        min_xy = np.array([-half_width, -half_height], dtype=np.float32)
-        max_xy = np.array([half_width, half_height], dtype=np.float32)
-        # The target reference frame starts at (0, 0)
-        # scaled_loc should be between 0 and 1
-        scaled_loc = (location - min_xy) / (max_xy - min_xy)
-
-        x_vals = np.linspace(0, 1, target_dims[0])
-        y_vals = np.linspace(0, 1, target_dims[1])
-        # A 1x2 row vector broadcasted across n points
-        coords = np.stack(np.meshgrid(x_vals, y_vals, indexing="xy"), axis=-1).reshape(
-            -1, 1, 2
-        )
-        # Mean subtraction -> (x - \mu)^T vector
-        coords -= scaled_loc.reshape((1, 1, 2))
-
-        # Inverse covariance matrix
-        sigma_x = sigma / (target_dims[1] ** 2)
-        sigma_y = sigma / (target_dims[0] ** 2)
-        inv_cov = np.diag([1 / sigma_y, 1 / sigma_x])
-
-        # Everything in the exponent of the (multivariate) Normal PDF
-        exponent = -0.5 * np.matmul(
-            np.matmul(coords, inv_cov), coords.transpose(0, 2, 1)
-        )
-        exponent = np.squeeze(exponent)
-
-        gaussian = np.exp(exponent).astype(np.float32)
-        return gaussian.reshape(target_dims[::-1])
-
-    @staticmethod
-    def wass_location_map(map_dim, loc, arena_dims, *, use_squared_dist=False):
-        """Creates a confidence map in which every pixel holds its distance (L2)
-        from the pixel containing the true location.
-        Params:
-        loc (ndarray): A location. Should have shape (2,). Expected to have units of mm.
-        target_dims (tuple): A tuple of the form (width, height) for the output shape
-        use_squared_dist (bool): If true, the pixels are populated with the squared distance
-        from the provided location
-        Returns: An ndarray of shape (height, width)
-        """
-        target_dims = map_dim, map_dim
-        # Dimensions of the enclosure in mm
-        # Also assumed to be the range of the input data
-        half_width, half_height = arena_dims[0] / 2, arena_dims[1] / 2
-        float_dims = np.array(target_dims, dtype=np.float32)
-
-        min_xy = np.array([-half_width, -half_height], dtype=np.float32)
-        max_xy = np.array([half_width, half_height], dtype=np.float32)
-        # The target reference frame starts at (0, 0)
-        # scaled_loc should be between 0 and 1
-        scaled_loc = (loc - min_xy) * float_dims / (max_xy - min_xy)
-        scaled_loc = scaled_loc.astype(int)
-
-        coord_grid = np.stack(
-            np.meshgrid(
-                np.arange(target_dims[0]), np.arange(target_dims[1]), indexing="xy"
-            ),
-            axis=-1,
-        ).astype(np.float32)
-
-        coord_grid -= scaled_loc.reshape((1, 1, 2))
-        coord_grid = (coord_grid**2).sum(axis=-1)
-        if not use_squared_dist:
-            coord_grid = np.sqrt(coord_grid)
-        return coord_grid
-
     def __getitem__(self, idx):
 
-        # Load audio waveforms in time domain. Each sample is held
-        # in a matrix with dimensions (10, num_audio_samples)
-        #
-        # The four microphones are arranged like this:
-        #
-        #           1-------------0
-        #           |             |
-        #           |             |
-        #           |             |
-        #           |             |
-        #           2-------------3
-        #
-        # The
-        # 0 - mic 0 trace
-        # 1 - mic 1 trace
-        # 2 - mic 2 trace
-        # 3 - mic 3 trace
-        # 4 - (0, 1) - cross-correlation of mic 0 and mic 1
-        # 5 - (0, 2) - cross-correlation of mic 0 and mic 2
-        # 6 - (0, 3) - cross-correlation of mic 0 and mic 3
-        # 7 - (1, 2) - cross-correlation of mic 1 and mic 2
-        # 8 - (1, 3) - cross-correlation of mic 1 and mic 3
-        # 9 - (2, 3) - cross-correlation of mic 2 and mic 3
-        #
         sound = self._audio_for_index(self.dataset, idx)
 
         if self.samp_size > 1:
@@ -350,96 +228,23 @@ class GerbilVocalizationDataset(Dataset):
         location_map = (
             None if self.inference else self._label_for_index(self.dataset, idx)
         )
+
+        arena_dims = (
+            self.dataset["room_dims"][idx][:2] * 1000
+            if "room_dims" in self.dataset
+            else self.arena_dims
+        )
         sound, location_map = GerbilVocalizationDataset.scale_features(
             sound,
             location_map,
-            is_batch=self.samp_size > 1,
             arena_dims=self.arena_dims,
             n_mics=self.n_channels,
         )
 
         if self.inference:
-            return sound
-
-        is_map = self.map_dim is not None
-
-        # With p = 0.5, flip vertically
-        if self.flip_vert and np.random.binomial(1, 0.5):
-            # Assumes the center of the enclosure is (0, 0)
-            if is_map:
-                location_map = location_map[::-1, :]
-            else:
-                location_map[1] *= -1
-            # mic 0 -> mic 3
-            # mic 1 -> mic 2
-            # mic 2 -> mic 1
-            # mic 3 -> mic 0
-            # (0, 1) -> (3, 2)  so  4 -> 9
-            # (0, 2) -> (3, 1)  so  5 -> 8
-            # (0, 3) -> (3, 0)  so  6 -> 6
-            # (1, 2) -> (2, 1)  so  7 -> 7
-            # (1, 3) -> (2, 0)  so  8 -> 5
-            # (2, 3) -> (1, 0)  so  9 -> 4
-            if sound.shape[0] == 10:
-                sound = sound[[3, 2, 1, 0, 9, 8, 6, 7, 5, 4]]
-            else:
-                sound = sound[[3, 2, 1, 0]]
-
-        # With p = 0.5, flip horizontally
-        if self.flip_horiz and np.random.binomial(1, 0.5):
-            # Assumes the center of the enclosure is (0, 0)
-            if is_map:
-                location_map = location_map[:, ::-1]
-            else:
-                location_map[0] *= -1
-            # mic 0 -> mic 1
-            # mic 1 -> mic 0
-            # mic 2 -> mic 3
-            # mic 3 -> mic 2
-            # (0, 1) -> (1, 0)  so  4 -> 4
-            # (0, 2) -> (1, 3)  so  5 -> 8
-            # (0, 3) -> (1, 2)  so  6 -> 7
-            # (1, 2) -> (0, 3)  so  7 -> 6
-            # (1, 3) -> (0, 2)  so  8 -> 5
-            # (2, 3) -> (3, 2)  so  9 -> 9
-            if sound.shape[0] == 10:
-                sound = sound[[1, 0, 3, 2, 4, 8, 7, 6, 5, 9]]
-            else:
-                sound = sound[[1, 0, 3, 2]]
+            return sound.astype("float32")
 
         return sound.astype("float32"), location_map.astype("float32")
-
-    @staticmethod
-    def location_map_centroid(location_map):
-        if isinstance(location_map, np.ndarray):
-            location_map = torch.from_numpy(location_map)
-        location_map = location_map.detach()
-        net_mass = location_map.sum(dim=(-1, -2))
-        # x varies along the second dimension (third if batched). Matrix convention
-        x = (
-            torch.arange(location_map.shape[-1], device=location_map.device)
-            .reshape(1, -1)
-            .expand(location_map.shape)
-        )
-        y = (
-            torch.arange(location_map.shape[-2], device=location_map.device)
-            .reshape(-1, 1)
-            .expand(location_map.shape)
-        )
-        x_moment = (x * location_map).sum(dim=(-1, -2))
-        y_moment = (y * location_map).sum(dim=(-1, -2))
-        return torch.stack([x_moment / net_mass, y_moment / net_mass], dim=-1)
-
-    @staticmethod
-    def map_to_cm(map_coords, map_dims, arena_dims):
-        # Map coords should be a set of x,y pairs, like those output by location_map_centroid
-        # map_dims is an int
-        # arena_dims is a tuple of (arena_width, arena_height) in mm
-        arena_dims_cm = np.array(arena_dims) / 10
-        if isinstance(map_coords, torch.Tensor):
-            arena_dims_cm = torch.from_numpy(arena_dims_cm)
-        scale_factor = arena_dims_cm / map_dims
-        return map_coords * scale_factor.expand(map_coords.shape)
 
 
 def build_dataloaders(path_to_data, CONFIG):
@@ -456,9 +261,6 @@ def build_dataloaders(path_to_data, CONFIG):
             flip_horiz=(CONFIG["AUGMENT_LABELS"] and CONFIG["AUGMENT_FLIP_HORIZ"]),
             segment_len=CONFIG["SAMPLE_LEN"],
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            map_size=CONFIG["LOCATION_MAP_DIM"]
-            if ("USE_LOCATION_MAP" in CONFIG) and CONFIG["USE_LOCATION_MAP"]
-            else None,
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
         )
         train_dataloader = DataLoader(
@@ -474,9 +276,6 @@ def build_dataloaders(path_to_data, CONFIG):
             flip_horiz=False,
             segment_len=CONFIG["SAMPLE_LEN"],
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            map_size=CONFIG["LOCATION_MAP_DIM"]
-            if ("USE_LOCATION_MAP" in CONFIG) and CONFIG["USE_LOCATION_MAP"]
-            else None,
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
         )
         val_dataloader = DataLoader(
@@ -492,9 +291,6 @@ def build_dataloaders(path_to_data, CONFIG):
             flip_horiz=False,
             segment_len=CONFIG["SAMPLE_LEN"],
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            map_size=CONFIG["LOCATION_MAP_DIM"]
-            if ("USE_LOCATION_MAP" in CONFIG) and CONFIG["USE_LOCATION_MAP"]
-            else None,
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
         )
         test_dataloader = DataLoader(

@@ -35,7 +35,7 @@ class Trainer:
             return ""
         used_gb = torch.cuda.max_memory_allocated() / (2**30)
         total_gb = torch.cuda.get_device_properties(0).total_memory / (2**30)
-        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
         return "Max mem. usage: {:.2f}/{:.2f}GiB".format(used_gb, total_gb)
 
     def __init__(
@@ -220,7 +220,6 @@ class Trainer:
 
             # Count batch as completed.
             self.__progress_log.log_train_batch(mean_loss.item(), np.nan, len(sounds))
-
         self.__scheduler.step()
 
     def eval_validation(self):
@@ -296,6 +295,7 @@ class Trainer:
             segment_len=self.__config["SAMPLE_LEN"],
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
             arena_dims=arena_dims,
+            inference=True,
         )
 
         dset.samp_size = samples_per_vocalization
@@ -307,19 +307,18 @@ class Trainer:
         self.model.to(device)
         with torch.no_grad():
             for batch in dloader:
-                # remove label, if any
-                if isinstance(batch, list) or isinstance(batch, tuple):
-                    data = batch[0]
-                else:
-                    data = batch
+                data = batch  # (1, channels, seq)
                 if samples_per_vocalization > 1:
-                    data = data.squeeze(0)
+                    data = data.squeeze(
+                        0
+                    )  # (1, batch, channels, seq) -> (batch, channels, seq)
 
                 output = self.model(data.to(device)).cpu().numpy()
-                scaled_output = GerbilVocalizationDataset.unscale_features(
-                    output, arena_dims=arena_dims
-                )
-                yield scaled_output
+                if arena_dims is not None:
+                    output = GerbilVocalizationDataset.unscale_features(
+                        output, arena_dims=arena_dims
+                    )
+                yield output
 
         if should_close_file:
             dataset.close()

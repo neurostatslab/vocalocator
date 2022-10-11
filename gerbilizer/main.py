@@ -127,6 +127,9 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
             )
             if "locations" in source:
                 source.copy(source["locations"], dest["/"], "locations")
+            if "room_dims" in source:
+                arena_dims = None
+                source.copy(source["room_dims"], dest["/"], "room_dims")
 
         shape = (n_vox, 2) if samps_per_vox == 1 else (n_vox, samps_per_vox, 2)
         preds = dest.create_dataset("predictions", shape=shape, dtype=np.float32)
@@ -148,8 +151,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         print("Done")
 
 
-def run():
-    args = get_args()
+def run(args):
     weights = (
         args.config_data["WEIGHTS_PATH"] if "WEIGHTS_PATH" in args.config_data else None
     )
@@ -176,4 +178,5 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    args = get_args()
+    run(args)

@@ -6,6 +6,7 @@ from torch.nn import functional as F
 
 from ..architectures.attentionnet import GerbilizerSparseAttentionNet
 from ..architectures.densenet import GerbilizerDenseNet
+from ..architectures.perceiver import GerbilizerPerceiver
 from ..architectures.reduced import (
     GerbilizerReducedAttentionNet,
     GerbilizerAttentionHourglassNet,
@@ -60,6 +61,7 @@ lookup_table = {
     "GerbilizerAttentionHourglassNet": model_type(
         GerbilizerAttentionHourglassNet, map_se_loss_fn
     ),
+    "GerbilizerPerceiver": model_type(GerbilizerPerceiver, se_loss_fn),
 }
 
 
