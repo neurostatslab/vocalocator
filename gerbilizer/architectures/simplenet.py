@@ -67,10 +67,10 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
             N += comb(N, 2)
 
         should_downsample = CONFIG["SHOULD_DOWNSAMPLE"]
-        n_channels = CONFIG[
+        self.n_channels = CONFIG[
             "CONV_NUM_CHANNELS"
         ]  # Converting this to a JSON array in the config for convenience
-        n_channels.insert(0, N)
+        self.n_channels.insert(0, N)
         filter_sizes = CONFIG[
             "CONV_FILTER_SIZES"
         ]  # Also making this an array, along with the others
@@ -87,8 +87,8 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
                 use_bn=use_batch_norm,
             )
             for in_channels, out_channels, filter_size, downsample, dilation in zip(
-                n_channels[:-1],
-                n_channels[1:],
+                self.n_channels[:-1],
+                self.n_channels[1:],
                 filter_sizes,
                 should_downsample,
                 dilations,
@@ -106,7 +106,7 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
         # Final linear layer to reduce the number of channels.
-        self.coord_readout = torch.nn.Linear(n_channels[-1], 2)
+        self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
 
     def forward(self, x):
 

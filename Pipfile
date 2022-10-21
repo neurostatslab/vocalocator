@@ -20,6 +20,7 @@ ipykernel = "*"
 
 [dev-packages]
 calibrationtools = {editable = true, path = "./../calibrationtools"}
+gerbilizer = {editable = true, path = "."}
 
 [requires]
 python_version = "3.9"

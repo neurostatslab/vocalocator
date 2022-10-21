@@ -1,12 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -p gpu
-<<<<<<< HEAD
 #SBATCH --constraint=v100
 #SBATCH -c 1
-=======
-#SBATCH -c 2
->>>>>>> main
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
 #SBATCH --time=2:00:00
@@ -26,6 +22,7 @@ pwd; hostname; date;
 # config path/name as second argument
 DATA_DIR=$1
 CONFIG=$2
+OUTPUT_DIR=$3
 
 if [ -z $DATA_DIR ]; then
     echo "Path to directory containing train/val/test datasets should be provided as the first positional argument"
@@ -37,10 +34,15 @@ if [ -z $CONFIG ]; then
     exit 1
 fi
 
+if [-z $OUTPUT_DIR ]; then
+    echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/gerbilizer."
+    OUTPUT_DIR=/mnt/ceph/users/${USER}/gerbilizer
+fi
+
 
 pipenv run python -u -m gerbilizer.main \
     --config $CONFIG \
     --data $DATA_DIR \
-    --save_path /mnt/ceph/users/${USER}/gerbilizer
+    --save_path $OUTPUT_DIR
 
 date;

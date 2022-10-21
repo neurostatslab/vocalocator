@@ -18,7 +18,7 @@ from ..architectures.simplenet import (
     GerbilizerSimpleWithCovariance,
     GerbilizerSimpleIsotropicCovariance
     )
-from losses import (
+from .losses import (
     se_loss_fn,
     map_se_loss_fn,
     # wass_loss_fn,

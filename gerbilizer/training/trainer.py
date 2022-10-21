@@ -223,7 +223,7 @@ class Trainer:
             # Backwards pass.
             mean_loss.backward()
             if self.__config["CLIP_GRADIENTS"]:
-                self.model.clip_grads()
+                self.model._clip_grads()
             self.__optim.step()
 
             # Count batch as completed.
