@@ -4,6 +4,8 @@ area of the 95% confidence set for each prediction
 and whether the true value was in that set, etc.
 """
 import argparse
+import logging
+
 from pathlib import Path
 from typing import Union
 
@@ -20,8 +22,46 @@ from gerbilizer.training.configs import build_config
 from gerbilizer.util import make_xy_grids, subplots
 from gerbilizer.training.models import build_model, unscale_output
 
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 FIRST_N_VOX_TO_PLOT = 16
+
+def plot_results(f: h5py.File):
+    """
+    Create and save plots of calibration curve, error distributions, etc.
+    """
+    print(f.keys())
+    errs = np.linalg.norm(f['means'][:] - f['scaled_locations'][:], axis=-1)
+    fig, axs = subplots(5, sharex=False, sharey=False)
+
+    axs[0].hist(errs)
+    axs[0].set_xlabel('errors (mm)')
+    axs[0].set_ylabel('counts')
+    axs[0].set_title('error distribution')
+
+    axs[1].plot(np.linspace(0, 1, 11), f.attrs['calibration_curve'][:], 'bo')
+    axs[1].set_xlabel('probability assigned to region')
+    axs[1].set_ylabel('proportion of locations in the region')
+    axs[1].set_title('calibration curve')
+
+    axs[2].hist(f['confidence_set_areas'][:])
+    axs[2].set_xlabel('confidence set area (mm^2)')
+    axs[2].set_ylabel('counts')
+    axs[2].set_title('confidence set area distribution')
+
+    axs[3].plot(np.sqrt(f['confidence_set_areas'][:]), errs, 'bo')
+    axs[3].set_xlabel('square root confidence set area (mm)')
+    axs[3].set_ylabel('error (mm)')
+    axs[3].set_title('sqrt confidence set area vs error')
+
+    axs[4].plot(f['distances_to_furthest_point'][:], errs, 'bo')
+    axs[4].set_xlabel('distance to furthest point in confidence set (mm)')
+    axs[4].set_ylabel('error (mm)')
+    axs[4].set_title('distance to furthest point vs error')
+
+
+    return fig, axs
+
 
 def assess_model(
     model,
@@ -112,6 +152,10 @@ def assess_model(
         OUTPUTS = ('confidence_sets', 'confidence_set_areas', 'location_in_confidence_set', 'distances_to_furthest_point')
         for output_name in OUTPUTS:
             f.create_dataset(output_name, data=results[output_name])
+
+        _, axs = plot_results(f)
+        plt.tight_layout()
+        plt.savefig(Path(outfile).parent / f'{Path(outfile).stem}_results.png')
 
     print(f'Model output saved to {outfile}')
 

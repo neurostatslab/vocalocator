@@ -37,7 +37,12 @@ def subplots(
         sharex=sharex, sharey=sharey,
         **kwargs
         )
-    flattened_axes = [ax for ax_row in axs for ax in ax_row]
+    flattened_axes = []
+    for ax_row in axs:
+        if isinstance(ax_row, list):
+            flattened_axes += ax_row
+        else:
+            flattened_axes.append(ax_row)
     return fig, flattened_axes
 
 def digitize(locations, bin_edges) -> np.ndarray:
