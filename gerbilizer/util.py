@@ -39,8 +39,8 @@ def subplots(
         )
     flattened_axes = []
     for ax_row in axs:
-        if isinstance(ax_row, list):
-            flattened_axes += ax_row
+        if isinstance(ax_row, np.ndarray):
+            flattened_axes += list(ax_row)
         else:
             flattened_axes.append(ax_row)
     return fig, flattened_axes
