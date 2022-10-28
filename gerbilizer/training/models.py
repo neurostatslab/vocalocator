@@ -136,7 +136,8 @@ def unscale_output(model_output: np.ndarray, arena_dims: Union[tuple[float, floa
     # (result from the transformation of a random variable)
     if model_output.ndim == 3 and model_output.shape[1:] == (3, 2):
         means = model_output[:, 0]  # shape: (len(model_output), 2)
-        covs = model_output[:, 1:]  # shape: (len(model_output), 2, 2)
+        cholesky = model_output[:, 1:]  # shape: (len(model_output), 2, 2)
+        covs = cholesky @ cholesky.swapaxes(-1, -2)
 
         unscaled[:, 0] = __apply_affine(means, A, b)
         unscaled[:, 1:] = A @ covs @ A.T
