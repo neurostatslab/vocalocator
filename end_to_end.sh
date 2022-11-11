@@ -40,7 +40,7 @@ if [ -z $FINETUNE_DIR ]; then
     exit 1
 fi
 
-if [-z $OUTPUT_BASE_DIR ]; then
+if [ -z $OUTPUT_BASE_DIR ]; then
     echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/end_to_end."
     OUTPUT_BASE_DIR=/mnt/ceph/users/${USER}/end_to_end
 fi
