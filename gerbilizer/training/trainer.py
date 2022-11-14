@@ -191,15 +191,10 @@ class Trainer:
         self.__progress_log.start_training()
         self.model.train()
         for sounds, locations in self.__traindata:
-            # Don't process partial batches.
-            if len(sounds) != self.__config["TRAIN_BATCH_SIZE"]:
-                break
-
             # Move data to gpu, if desired.
             if self.__config["DEVICE"] == "GPU":
                 sounds = sounds.cuda()
                 locations = locations.cuda()
-
             # Prepare optimizer.
             self.__optim.zero_grad()
 
@@ -219,7 +214,7 @@ class Trainer:
             self.__optim.step()
 
             # Count batch as completed.
-            self.__progress_log.log_train_batch(mean_loss.item(), np.nan, len(sounds))
+            self.__progress_log.log_train_batch(mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1])
         self.__scheduler.step()
 
     def eval_validation(self):
@@ -255,7 +250,7 @@ class Trainer:
                         mean_loss = torch.mean(losses).item()
 
                     # Log progress
-                    self.__progress_log.log_val_batch(mean_loss, np.nan, len(sounds))
+                    self.__progress_log.log_val_batch(mean_loss, np.nan, sounds.shape[0] * sounds.shape[1])
 
             # Done with epoch.
             val_loss = self.__progress_log.finish_epoch()
@@ -308,11 +303,6 @@ class Trainer:
         with torch.no_grad():
             for batch in dloader:
                 data = batch  # (1, channels, seq)
-                if samples_per_vocalization > 1:
-                    data = data.squeeze(
-                        0
-                    )  # (1, batch, channels, seq) -> (batch, channels, seq)
-
                 output = self.model(data.to(device)).cpu().numpy()
                 if arena_dims is not None:
                     output = GerbilVocalizationDataset.unscale_features(
