@@ -207,3 +207,36 @@ class GerbilizerPerceiver(nn.Module):
 
         output = self.linear(memory[:, 0])
         return output
+
+
+class GerbilizerCovPerceiver(GerbilizerPerceiver):
+    def __init__(self, config):
+        super(GerbilizerCovPerceiver, self).__init__(config)
+        
+        d_model = config[f"TRANSFORMER_D_MODEL"]
+        self.linear = nn.Sequential(
+            nn.Linear(d_model, 1024), nn.ReLU(), nn.Linear(1024, 5)
+        )
+    
+    def forward(self, x):
+        parent_output = super().forward(x)
+
+        # Code below mostly copied from Aman's output-cov branch
+        y_hat = parent_output[:, :2]
+        bsz = x.shape[0]
+        factory = {
+            'device': x.device,
+            'dtype': x.dtype
+        }
+
+        L = torch.zeros((bsz, 2, 2), **factory)
+        tri_idx = torch.tril_indices(2, 2)
+        L[:, tri_idx[0], tri_idx[1]] = parent_output[:, 2:]
+
+        new_diag = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(new_diag, dim1=-2, dim2=-1)
+
+        y_hat = y_hat.reshape((bsz, 1, 2))
+        concat = torch.cat([y_hat, L], dim=-2)
+        return concat
+

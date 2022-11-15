@@ -25,6 +25,14 @@ def make_logger(filepath: str) -> logging.Logger:
     logger.addHandler(logging.FileHandler(filepath))
     return logger
 
+def l2_distance(preds: np.ndarray, labels: np.ndarray, arena_dims) -> np.ndarray:
+    """
+    Unscale predictions and locations, then return the l2 distances 
+    across the batch in centimeters.
+    """
+    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
+    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
+    return np.linalg.norm(pred_cm - label_cm, axis=-1)
 
 class Trainer:
     """A helper class for training and performing inference with Gerbilizer models"""
@@ -226,31 +234,25 @@ class Trainer:
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
                     if self.__config["DEVICE"] == "GPU":
-                        sounds = sounds.cuda()
+                        sounds = sounds.unsqueeze(0).cuda()
+                    locations = locations.unsqueeze(0).numpy()
 
                     # Forward pass.
-                    outputs = self.model(sounds).cpu()
+                    outputs = self.model(sounds).cpu().numpy()
 
                     # Convert outputs and labels to centimeters from arb. unit
                     # But only if the outputs are x,y coordinate pairs
-                    if outputs.dim() == 2 and outputs.shape[1] == 2:
-                        pred_cm = GerbilVocalizationDataset.unscale_features(
-                            outputs, arena_dims
-                        )
-                        label_cm = GerbilVocalizationDataset.unscale_features(
-                            locations, arena_dims
-                        )
-
-                        # Bypass the mse loss in favor of mean error
-                        mean_loss = np.sqrt(
-                            ((label_cm - pred_cm) ** 2).sum(axis=-1)
-                        ).mean()
+                    if outputs.ndim == 2 and outputs.shape[1] == 2:
+                        mean_loss = l2_distance(outputs, locations, arena_dims).mean()
+                    elif outputs.ndim == 3 and outputs.shape[1:] == (3, 2):
+                        predicted_locations = outputs[:, 0]
+                        mean_loss = l2_distance(predicted_locations, locations, arena_dims).mean()
                     else:
                         losses = self.__loss_fn(outputs, locations)
                         mean_loss = torch.mean(losses).item()
 
                     # Log progress
-                    self.__progress_log.log_val_batch(mean_loss, np.nan, sounds.shape[0] * sounds.shape[1])
+                    self.__progress_log.log_val_batch(mean_loss / 10.0, np.nan, sounds.shape[0] * sounds.shape[1])
 
             # Done with epoch.
             val_loss = self.__progress_log.finish_epoch()
@@ -271,7 +273,6 @@ class Trainer:
         self,
         dataset: Union[str, h5py.File],
         arena_dims: Tuple[float, float],
-        samples_per_vocalization: int = 1,
     ) -> Generator[np.ndarray, None, None]:
         """Creates an iterator to perform inference on a given dataset
         Parameters:
@@ -287,15 +288,12 @@ class Trainer:
 
         dset = GerbilVocalizationDataset(
             datapath=dataset,
-            segment_len=self.__config["SAMPLE_LEN"],
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
             arena_dims=arena_dims,
             inference=True,
         )
 
-        dset.samp_size = samples_per_vocalization
-
-        dloader = DataLoader(dset, batch_size=1, shuffle=False)
+        dloader = DataLoader(dset)
 
         self.model.eval()
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -304,10 +302,6 @@ class Trainer:
             for batch in dloader:
                 data = batch  # (1, channels, seq)
                 output = self.model(data.to(device)).cpu().numpy()
-                if arena_dims is not None:
-                    output = GerbilVocalizationDataset.unscale_features(
-                        output, arena_dims=arena_dims
-                    )
                 yield output
 
         if should_close_file:

@@ -26,6 +26,7 @@ class GerbilVocalizationDataset(IterableDataset):
         arena_dims: Optional[Tuple[float, float]] = None,
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
+        augmentation_params: Optional[dict] = None,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
 
@@ -58,6 +59,8 @@ class GerbilVocalizationDataset(IterableDataset):
 
         self.returned_samples = 0
         self.max_returned_samples = self.dataset['len_idx'][-1]
+
+        self.augmentation_params = augmentation_params if augmentation_params is not None else dict()
     
     def __len__(self):
         return self.max_returned_samples
@@ -187,10 +190,32 @@ class GerbilVocalizationDataset(IterableDataset):
             scale = arena_dims / 2
         scaled_labels = labels * scale
         return scaled_labels
+    
+    @staticmethod
+    def add_noise(audio, snr_db):
+        # Expects audio to have shape (L, C)
+        noise = torch.randn_like(audio)
+
+        # Choose one microphone as a reference, so the strength of the noise is the same across all channels
+        audio_norm = torch.linalg.vector_norm(audio, dim=0)[0]
+        noise_norm = torch.linalg.vector_norm(noise, dim=0, keepdim=True)
+        
+        snr = 10 ** (snr_db / 20)
+        scale_factor = snr * noise_norm / audio_norm
+        return audio * scale_factor + noise
 
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx)
 
+        if self.augmentation_params and self.augmentation_params["AUGMENT_DATA"] and np.random.rand() < self.augmentation_params["AUGMENT_SNR_PROB"]:
+            sound = self.add_noise(
+                sound, 
+                np.random.uniform(
+                    self.augmentation_params["AUGMENT_SNR_MIN"],
+                    self.augmentation_params["AUGMENT_SNR_MAX"]
+                )
+            )
+        
         if self.make_xcorrs:
             sound = self.__append_xcorr(sound)
 
@@ -221,12 +246,15 @@ def build_dataloaders(path_to_data, CONFIG):
     test_path = os.path.join(path_to_data, "test_set.h5")
 
     collate_fn = lambda batch: batch[0]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
+    augment_params = {k: v for k,v in CONFIG.items() if k.startswith('AUGMENT')}
 
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
             train_path,
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
+            max_batch_size=CONFIG["TRAIN_BATCH_MAX_SAMPLES"],
+            augmentation_params=augment_params,
         )
         train_dataloader = DataLoader(traindata, collate_fn=collate_fn)
     else:
