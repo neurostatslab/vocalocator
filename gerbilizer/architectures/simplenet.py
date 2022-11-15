@@ -7,6 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from gerbilizer.architectures.util import build_cov_output
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -70,12 +71,19 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         self.n_channels = CONFIG[
             "CONV_NUM_CHANNELS"
         ]  # Converting this to a JSON array in the config for convenience
-        self.n_channels.insert(0, N)
         filter_sizes = CONFIG[
             "CONV_FILTER_SIZES"
         ]  # Also making this an array, along with the others
+
+        min_len = min(len(self.n_channels), len(filter_sizes))
+        self.n_channels = self.n_channels[:min_len]
+        filter_sizes = filter_sizes[:min_len]
+        should_downsample = should_downsample[:min_len]
+
         dilations = CONFIG["CONV_DILATIONS"]
         use_batch_norm = CONFIG["USE_BATCH_NORM"]
+
+        self.n_channels.insert(0, N)
 
         convolutions = [
             GerbilizerSimpleLayer(
@@ -106,20 +114,19 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
         # Final linear layer to reduce the number of channels.
-        self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
+        # self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
+        self.output_cov = bool(CONFIG.get('OUTPUT_COV'))
+        N_OUTPUTS = 5 if self.output_cov else 2
+
+        self.coord_readout = torch.nn.Linear(self.n_channels[-1], N_OUTPUTS)
 
     def forward(self, x):
 
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         coords = self.coord_readout(h2)
-        return coords
+        return build_cov_output(coords, x.device) if self.output_cov else coords
 
-
-# lower triangular factor of covariance matrix
-Mean = torch.Tensor
-CholeskyCov = NewType('CholeskyCov', torch.Tensor)
-CovNetOutput = Tuple[Mean, CholeskyCov]
 
 class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
     def __init__(self, config):
@@ -143,7 +150,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
             5
         )
 
-    def forward(self, x: torch.Tensor) -> CovNetOutput:
+    def forward(self, x: torch.Tensor):
         """
         Output parameters that define a predictive distribution p(location | audio),
         which we assume to be normally distributed.
@@ -155,74 +162,54 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         output = self.last_layer(h2)
-        # extract the location estimate
-        y_hat = output[:, :2]  # (batch, 2)
-        # calculate the lower triangular Cholesky factor
-        # of the covariance matrix
-        len_batch = output.shape[0]
-        # initialize an array of zeros into which we'll put
-        # the model output
-        device = x.device
-        L = torch.zeros(len_batch, 2, 2, device=device)
-        # embed the elements into the matrix
-        idxs = torch.tril_indices(2, 2)
-        L[:, idxs[0], idxs[1]] = output[:, 2:]
-        # apply softplus to the diagonal entries to guarantee the resulting
-        # matrix is positive definite
-        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
-        L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
-        # reshape y_hat so we can concatenate it to L
-        y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
-        # concat the two to make a (batch, 3, 2) tensor
-        concatenated = torch.cat((y_hat, L), dim=-2)
-        return concatenated
+        return build_cov_output(output, x.device)
 
     def _clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
 
 
-class GerbilizerSimpleIsotropicCovariance(GerbilizerSimpleNetwork):
-    def __init__(self, config):
-        super().__init__(config)
-
-        # replace the final coordinate readout with a block that outputs
-        # 3 numbers. Two are the coordinates, and then the
-        # remaining one, lambda, determines the isotropic covariance matrix:
-        # \Sigma = \lambda * I
-    
-        del self.coord_readout
-
-        self.last_layer = torch.nn.Linear(
-            self.n_channels[-1],
-            3
-        )
-
-    def forward(self, x: torch.Tensor) -> CovNetOutput:
-        """
-        Output parameters that define a predictive distribution p(location | audio),
-        which we assume to be normally distributed.
-
-        Specifically, output a (3, 2) torch.Tensor where the first row corresponds
-        to the mean of this Gaussian, and the remaining entries define the lower
-        triangular factor of the covariance matrix.
-
-        The lower triangular factor of Sigma is returned instead of the actual
-        covariance matrix for consistency with the `GerbilizerSimpleWithCovariance` class.
-        """
-        h1 = self.conv_layers(x)
-        h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
-        output = self.last_layer(h2)
-        # extract the location estimate
-        y_hat = output[:, :2]  # (batch, 2)
-        # construct the triangular factor
-        lambda_ = F.softplus(output[:, 2]) # (batch,)
-        L = torch.eye(2, device=x.device)[None] * lambda_[:, None, None]
-        # reshape y_hat so we can concatenate it to L
-        y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
-        # concat the two to make a (batch, 3, 2) tensor
-        concatenated = torch.cat((y_hat, L), dim=-2)
-        return concatenated
-
-    def _clip_grads(self):
-        nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
-
+# class GerbilizerSimpleIsotropicCovariance(GerbilizerSimpleNetwork):
+#     def __init__(self, config):
+#         super().__init__(config)
+#
+#         # replace the final coordinate readout with a block that outputs
+#         # 3 numbers. Two are the coordinates, and then the
+#         # remaining one, lambda, determines the isotropic covariance matrix:
+#         # \Sigma = \lambda * I
+#     
+#         del self.coord_readout
+#
+#         self.last_layer = torch.nn.Linear(
+#             self.n_channels[-1],
+#             3
+#         )
+#
+#     def forward(self, x: torch.Tensor):
+#         """
+#         Output parameters that define a predictive distribution p(location | audio),
+#         which we assume to be normally distributed.
+#
+#         Specifically, output a (3, 2) torch.Tensor where the first row corresponds
+#         to the mean of this Gaussian, and the remaining entries define the lower
+#         triangular factor of the covariance matrix.
+#
+#         The lower triangular factor of Sigma is returned instead of the actual
+#         covariance matrix for consistency with the `GerbilizerSimpleWithCovariance` class.
+#         """
+#         h1 = self.conv_layers(x)
+#         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
+#         output = self.last_layer(h2)
+#         # extract the location estimate
+#         y_hat = output[:, :2]  # (batch, 2)
+#         # construct the triangular factor
+#         lambda_ = F.softplus(output[:, 2]) # (batch,)
+#         L = torch.eye(2, device=x.device)[None] * lambda_[:, None, None]
+#         # reshape y_hat so we can concatenate it to L
+#         y_hat = y_hat.reshape((-1, 1, 2))  # (batch, 1, 2)
+#         # concat the two to make a (batch, 3, 2) tensor
+#         concatenated = torch.cat((y_hat, L), dim=-2)
+#         return concatenated
+#
+#     def _clip_grads(self):
+#         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
+#

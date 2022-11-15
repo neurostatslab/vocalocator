@@ -1,7 +1,6 @@
 """Initialize model and loss function from configuration."""
 
 from collections import namedtuple
-from functools import partial
 from typing import Any, Callable, Union
 
 import numpy as np
@@ -16,7 +15,7 @@ from ..architectures.reduced import (
 from ..architectures.simplenet import (
     GerbilizerSimpleNetwork,
     GerbilizerSimpleWithCovariance,
-    GerbilizerSimpleIsotropicCovariance
+    # GerbilizerSimpleIsotropicCovariance
     )
 from .losses import (
     se_loss_fn,
@@ -25,27 +24,24 @@ from .losses import (
     gaussian_NLL_loss
     )
 
-ModelType = namedtuple("ModelType", ("model", "loss_fn"))
+ModelType = namedtuple("ModelType", ("model", "loss_fn", "cov_loss_fn"))
 
 
 LOOKUP_TABLE = {
-    "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn),
-    "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn),
+    "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, gaussian_NLL_loss),
+    "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, gaussian_NLL_loss),
     "GerbilizerSparseAttentionNet": ModelType(
-        GerbilizerSparseAttentionNet, se_loss_fn
+        GerbilizerSparseAttentionNet, se_loss_fn, gaussian_NLL_loss
     ),
     "GerbilizerReducedSparseAttentionNet": ModelType(
-        GerbilizerReducedAttentionNet, se_loss_fn
+        GerbilizerReducedAttentionNet, se_loss_fn, gaussian_NLL_loss
     ),
     "GerbilizerAttentionHourglassNet": ModelType(
-        GerbilizerAttentionHourglassNet, map_se_loss_fn
+        GerbilizerAttentionHourglassNet, map_se_loss_fn, None
     ),
     'GerbilizerSimpleWithCovariance': ModelType( 
-        GerbilizerSimpleWithCovariance, gaussian_NLL_loss
+        GerbilizerSimpleWithCovariance, gaussian_NLL_loss, None
     ),
-    'GerbilizerSimpleIsotropicCovariance': ModelType(
-        GerbilizerSimpleIsotropicCovariance, gaussian_NLL_loss
-    )
 }
 
 
@@ -73,26 +69,29 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     """
     arch = config["ARCHITECTURE"]
     if arch in LOOKUP_TABLE:
-        model, loss_fn = LOOKUP_TABLE[arch]
+        model, loss_fn, cov_loss_fn = LOOKUP_TABLE[arch]
         model = model(config)
     else:
         raise ValueError(f'ARCHITECTURE {arch} not recognized.')
 
-    # make any necessary modifications
-    if arch == 'GerbilizerSimpleWithCovariance' and config.get('GAUSSIAN_LOSS_MODE') == 'map':
-        scale_matrix = config.get('WISHART_SCALE')
-        deg_freedom = config.get('WISHART_DEG_FREEDOM')
-        loss_fn = partial(
-            gaussian_NLL_loss,
-            mode='map',
-            scale_matrix=scale_matrix,
-            deg_freedom=deg_freedom
-            )
-
-    if config["DEVICE"] == "GPU":
+    if config["DEVICE"] == "GPU" and torch.cuda.is_available():
         model.cuda()
 
-    return model, loss_fn
+    loss = loss_fn
+
+    # change the loss function depending on whether a model outputting covariance
+    # was chosen
+    if config.get('OUTPUT_COV'):
+        # if the cov_loss_fn is None, the selected model architecture doesn't have an
+        # ability to output a cov matrix. for example, a model that outputs a 2d map
+        if cov_loss_fn is None:
+            raise ValueError(
+                f"Flag `OUTPUT_COV` was passed to a model architecture that can't output a covariance matrix ({arch})."
+                )
+        else:
+            loss = cov_loss_fn
+
+    return model, loss
 
 
 def __apply_affine(locations: np.ndarray, A: np.ndarray, b: np.ndarray):
