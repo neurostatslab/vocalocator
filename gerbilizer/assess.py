@@ -30,8 +30,24 @@ def plot_results(f: h5py.File):
     """
     Create and save plots of calibration curve, error distributions, etc.
     """
-    print(f.keys())
-    errs = np.linalg.norm(f['means'][:] - f['scaled_locations'][:], axis=-1)
+    output = f['scaled_output'][:]
+    means = np.zeros((f['scaled_output'][:].shape[0], 2))
+    # output is a mean and a cov
+    if output[0].shape == (3, 2):
+        means = output[:, 0]
+    # batch of means and covariances (like from an ensemble)
+    elif output[0].shape[1:] == (3, 2):
+        means = output[:, :, 0].mean(axis=-2)
+    # just a mean
+    elif output[0].shape == (2,):
+        means = output
+    else:
+        logging.warn(
+            'Automatically plotting results not supported for models that output a pmf! Skipping...'
+            )
+        return
+
+    errs = np.linalg.norm(means - f['scaled_locations'][:], axis=-1)
     fig, axs = subplots(5, sharex=False, sharey=False)
 
     axs[0].hist(errs)
@@ -81,16 +97,14 @@ def assess_model(
     outfile = Path(outfile)
 
     N = len(dataloader)
-    RAW_OUTPUT_SHAPE = (N, 3, 2)
     LOC_SHAPE = (N, 2)
-    COV_SHAPE = (N, 2, 2)
 
     with h5py.File(outfile, 'w') as f:
-        raw_outputs = f.create_dataset('raw_output', shape=RAW_OUTPUT_SHAPE)
         raw_locations = f.create_dataset('raw_locations', shape=LOC_SHAPE)
         scaled_locations = f.create_dataset('scaled_locations', shape=LOC_SHAPE)
-        means = f.create_dataset('means', shape=LOC_SHAPE)
-        covs = f.create_dataset('covs', shape=COV_SHAPE)
+
+        raw_output = []  # don't initialize a dataset bc we don't know model output shape
+        scaled_output = []
 
         ca = CalibrationAccumulator(arena_dims)
 
@@ -101,7 +115,7 @@ def assess_model(
                 output = model(audio)
                 np_output = output.cpu().numpy()
 
-                raw_outputs[idx] = np_output
+                raw_outputs.append(np_output)
                 raw_locations[idx] = location
 
                 # unscale location from [-1, 1] square to units in arena (in mm)
@@ -112,14 +126,11 @@ def assess_model(
 
                 # process mean + cov matrix from model output, unscaling to
                 # arena size from [-1, 1] square
-                unscaled = unscale_output(np_output, arena_dims).squeeze()
-                mean = unscaled[0]
-                cov = unscaled[1:]
-                means[idx] = mean
-                covs[idx] = cov
+                unscaled_output = unscale_output(np_output, arena_dims).squeeze()
+                scaled_output.append(unscaled_output)
                 
                 # other useful info
-                ca.calculate_step(mean, cov, scaled_location)
+                ca.calculate_step(unscaled_output, scaled_location)
 
                 if visualize and idx == FIRST_N_VOX_TO_PLOT:
                     # plot the densities
@@ -143,10 +154,11 @@ def assess_model(
                     plt.savefig(visualize_outfile)
                     print(f'Model output visualized at file {visualize_outfile}')
 
-        f.attrs['mean_error'] = np.linalg.norm(scaled_locations[:] - means[:], axis=-1).mean()
-
         results = ca.results()
         f.attrs['calibration_curve'] = results['calibration_curve']
+
+        f.create_dataset('raw_output', data=np.array(raw_output))
+        f.create_dataset('scaled_output', data=np.array(scaled_output))
 
         # array-like quantities outputted by the calibration accumulator
         OUTPUTS = ('confidence_sets', 'confidence_set_areas', 'location_in_confidence_set', 'distances_to_furthest_point')
