@@ -6,7 +6,8 @@ import logging
 from typing import Tuple, Union
 
 import numpy as np
-import scipy.stats
+
+from scipy.stats import multivariate_normal
 
 from gerbilizer.util import assign_to_bin_2d, digitize, make_xy_grids
 
@@ -182,7 +183,7 @@ class CalibrationAccumulator:
         self.distances_to_furthest_point = []
 
 
-    def calculate_step(self, mean: np.ndarray, cov: np.ndarray, true_location: np.ndarray):
+    def calculate_step(self, model_output: np.ndarray, true_location: np.ndarray):
         """
         Perform one step of the calibration process on `model_output`.
 
@@ -191,21 +192,46 @@ class CalibrationAccumulator:
         regions are defined by progressively taking the location bins to which
         the model assigns the highest probability mass.
         """
-        # create the grid
-        xdim = self.arena_dims[0]
-        ydim = self.arena_dims[1]
+        if model_output.shape == (2,):
+            raise ValueError(
+                f'Encountered output with shape {model_output.shape}. '
+                'Calibration only supported for models that output a mean and covariance '
+                'or a probability mass function.'
+                )
+        elif model_output.shape == (3, 2):
+            # assume model_output[0] is the mean
+            # and model_output[1:] is the Cholesky factor
+            # of the covariance matrix
+            coords = self._make_coord_array()
 
-        # change xgrid / ygrid size to preserve aspect ratio
-        ratio = ydim / xdim
-        desired_shape = (int(ratio * 100), 100)
-        xgrid, ygrid = make_xy_grids((xdim, ydim), shape=desired_shape, return_center_pts=True)
-        coords = np.dstack((xgrid, ygrid))
+            mean, cholesky_cov = model_output[0], model_output[1:]
+            cov = cholesky_cov @ cholesky_cov.T
 
-        # evaluate distribution at the gridpoints
-        distr = scipy.stats.multivariate_normal(mean=mean, cov=cov)
-        evaluated = distr.pdf(coords)
-        # and renormalize
-        pmf = evaluated / evaluated.sum()
+            # evaluate distribution at the gridpoints
+            pmf = multivariate_normal(mean=mean, cov=cov).pdf(coords)
+            # and renormalize
+            pmf /= pmf.sum()
+        elif model_output.shape[1:] == (3, 2):
+            # if we have a batch of means and covariance matrices
+            # make the mixture density pmf
+            coords = self._make_coord_array()
+
+            means, cholesky_covs = model_output[:, 0], model_output[:, 1:]
+            covs = cholesky_covs @ cholesky_covs.swapaxes(-2, -1)
+
+            gaussian_pmfs = [
+                multivariate_normal(mean=mean, cov=cov).pdf(coords)
+                for mean, cov in zip(means, covs)
+            ]
+            # average the pdfs with uniform weights to get the outputted density
+            pmf = np.mean(gaussian_pmfs, axis=0)
+            pmf /= pmf.sum()
+        elif model_output.ndim == 2:
+            # assume the model output is just a pmf
+            pmf = model_output
+            pmf /= pmf.sum()
+        else:
+            raise ValueError(f'Model output shape {model_output.shape} not understood!')
 
         # calculate the confidence set for this prediction
         # and store useful stats about it
@@ -225,7 +251,7 @@ class CalibrationAccumulator:
         # since the grids track the edge points, we should have
         # one more point in each coordinate direction.
         grid_shape = np.array(pmf.shape) + 1
-        xgrid, ygrid = make_xy_grids((xdim, ydim), shape=grid_shape)
+        xgrid, ygrid = make_xy_grids(self.arena_dims[:2], shape=grid_shape)
 
         # reshape location to (1, 2) if necessary
         # we do this so the repeat function works out correctly
@@ -257,20 +283,9 @@ class CalibrationAccumulator:
         # prepend a zero to the calibration curve so each value represents
         # the proportion of values whose min_mass is less than the bin
         calibration_curve = np.pad(calibration_curve, (1, 0), 'constant')
-        # next, calculate the errors
-        # get probabilities the model assigned to each region
-        # note: these are also the bucket edges in the histogram
-        # assigned_probabilities = np.arange(1, self.n_calibration_bins + 1) / self.n_calibration_bins
-        # get the sum of residuals between the assigned probabilities
-        # and the true observed proportions for each value of sigma
-        # residuals = calibration_curve - assigned_probabilities
-        # abs_err = np.abs(residuals).sum(axis=1)
-        # signed_err = residuals.sum(axis=1)
 
         results = {}
         results['calibration_curve'] = calibration_curve
-        # results['abs_err'] = abs_err
-        # results['signed_err'] = signed_err
 
         results['confidence_sets'] = self.confidence_sets
         results['confidence_set_areas'] = self.confidence_set_areas
@@ -279,3 +294,16 @@ class CalibrationAccumulator:
 
         return results
 
+    def _make_coord_array(self):
+        """
+        Return a grid of evenly spaced points on the arena floor.
+        """
+        xdim = self.arena_dims[0]
+        ydim = self.arena_dims[1]
+
+        # change xgrid / ygrid size to preserve aspect ratio
+        ratio = ydim / xdim
+        desired_shape = (int(ratio * 100), 100)
+        xgrid, ygrid = make_xy_grids((xdim, ydim), shape=desired_shape, return_center_pts=True)
+        coords = np.dstack((xgrid, ygrid))
+        return coords
