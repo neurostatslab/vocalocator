@@ -24,6 +24,8 @@ class GerbilizerEnsemble(nn.Module):
 
         self.models = nn.ModuleList(models)
 
+        self.average_outputs = bool(config.get('AVERAGE_OUTPUTS'))
+
     @classmethod
     def from_ensemble_dir(cls, ensemble_dir):
         """
@@ -48,22 +50,33 @@ class GerbilizerEnsemble(nn.Module):
         # return mean and cholesky covariance of gaussian mixture
         # created from the ensemble of models
         batch_size = x.shape[0]
-        means = torch.zeros(len(self.models), batch_size, 2)
-        cholesky_covs = torch.zeros(len(self.models), batch_size, 2, 2)
+        means = torch.zeros(batch_size, len(self.models), 2)
+        cholesky_covs = torch.zeros(batch_size, len(self.models), 2, 2)
         for i, model in enumerate(self.models):
             output = model(x)
-            means[i] = output[:, 0]
-            cholesky_covs[i] = output[:, 1:]
+            means[:, i] = output[:, 0]
+            cholesky_covs[:, i] = output[:, 1:]
+
+        # based on the model configuration we either just return these
+        # means and covs
+        if not self.average_outputs:
+            return torch.cat((means, cholesky_covs), dim=-2)
+
+        # or whether we make a "simplifying" assumption
+        # as in (Lakshminarayanan, 2017) and say the mixture density is just
+        # a Gaussian
+
         # calculate the mean and covariance matrix of the mixture density
-        # mean is easy, just the average of the means:
+        # mean is just the average of the means:
         mixture_means = means.mean(dim=0)
-        # covariance is harder. by introducing a new variable z representing the mixture
-        # assignment, we can use the law of total variance to decompose the resulting
-        # covariance as
-        # Var(Y) = E[Var(Y | Z = z)] + Var(E[Y | Z = z])
-        # the following is the Cholesky factor of E[Var(Y|Z=z)]
+
+        # by introducing a new variable z representing the mixture
+        # assignment, we can use the law of total variance to decompose the
+        # covariance matrix as Var(Y) = E[Var(Y | Z = z)] + Var(E[Y | Z = z])
+
+        # Cholesky factor of E[Var(Y|Z=z)]
         avg_cholesky_cov = cholesky_covs.mean(dim=0)
-        # this is Var(E[Y | Z = z])
+        # Var(E[Y | Z = z])
         cov_means_over_assigment = torch.zeros(batch_size, 2, 2)
         for i in range(batch_size):
             cov_means_over_assigment[i] = torch.cov(means[:, i])
