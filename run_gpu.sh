@@ -40,7 +40,7 @@ if [-z $OUTPUT_DIR ]; then
 fi
 
 
-pipenv run python -u -m gerbilizer.main \
+python -u -m gerbilizer.main \
     --config $CONFIG \
     --data $DATA_DIR \
     --save_path $OUTPUT_DIR

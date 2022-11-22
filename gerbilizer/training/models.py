@@ -36,7 +36,7 @@ LOOKUP_TABLE = {
     "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, gaussian_NLL_loss),
     "GerbilizerSparseAttentionNet": ModelType(
         GerbilizerSparseAttentionNet, se_loss_fn, gaussian_NLL_loss
-    ),
+   ),
     "GerbilizerReducedSparseAttentionNet": ModelType(
         GerbilizerReducedAttentionNet, se_loss_fn, gaussian_NLL_loss
     ),

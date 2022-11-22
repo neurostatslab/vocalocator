@@ -29,7 +29,8 @@ class GerbilizerSimpleLayer(torch.nn.Module):
             channels_in,
             channels_out,
             filter_size,
-            padding=(filter_size * dilation - 1) // 2,
+            #padding=(filter_size * dilation - 1) // 2,
+            padding=0,
             stride=(2 if downsample else 1),
             dilation=dilation,
         )
@@ -37,7 +38,8 @@ class GerbilizerSimpleLayer(torch.nn.Module):
             channels_in,
             channels_out,
             filter_size,
-            padding=(filter_size * dilation - 1) // 2,
+            # padding=(filter_size * dilation - 1) // 2,
+            padding=0,
             stride=(2 if downsample else 1),
             dilation=dilation,
         )
