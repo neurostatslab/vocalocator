@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 # from augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
-from ..training.models import build_model, unscale_output
+from ..training.models import build_model
 
 
 JSON = NewType("JSON", dict)
@@ -43,7 +43,7 @@ class Trainer:
             return ""
         used_gb = torch.cuda.max_memory_allocated() / (2**30)
         total_gb = torch.cuda.get_device_properties(0).total_memory / (2**30)
-        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
         return "Max mem. usage: {:.2f}/{:.2f}GiB".format(used_gb, total_gb)
 
     def __init__(
@@ -199,15 +199,10 @@ class Trainer:
         self.__progress_log.start_training()
         self.model.train()
         for sounds, locations in self.__traindata:
-            # Don't process partial batches.
-            if len(sounds) != self.__config["TRAIN_BATCH_SIZE"]:
-                break
-
             # Move data to gpu, if desired.
             if self.__config["DEVICE"] == "GPU":
                 sounds = sounds.cuda()
                 locations = locations.cuda()
-
             # Prepare optimizer.
             self.__optim.zero_grad()
 
@@ -223,12 +218,11 @@ class Trainer:
             # Backwards pass.
             mean_loss.backward()
             if self.__config["CLIP_GRADIENTS"]:
-                self.model._clip_grads()
+                self.model.clip_grads()
             self.__optim.step()
 
             # Count batch as completed.
-            self.__progress_log.log_train_batch(mean_loss.item(), np.nan, len(sounds))
-
+            self.__progress_log.log_train_batch(mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1])
         self.__scheduler.step()
 
     def eval_validation(self):
@@ -240,28 +234,25 @@ class Trainer:
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
                     if self.__config["DEVICE"] == "GPU":
-                        sounds = sounds.cuda()
+                        sounds = sounds.unsqueeze(0).cuda()
+                    locations = locations.unsqueeze(0).numpy()
 
                     # Forward pass.
-                    outputs = self.model(sounds).cpu()
+                    outputs = self.model(sounds).cpu().numpy()
 
                     # Convert outputs and labels to centimeters from arb. unit
                     # But only if the outputs are x,y coordinate pairs
-                    if outputs.dim() == 2 and outputs.shape[1] == 2:
+                    if outputs.ndim == 2 and outputs.shape[1] == 2:
                         mean_loss = l2_distance(outputs, locations, arena_dims).mean()
-                    # If the model outputs a mean + covariance matrix,
-                    # Report only the mean error from the predicted locations
-                    # and the true locations.
-                    elif outputs.dim() == 3 and outputs.shape[1:] == (3, 2):
+                    elif outputs.ndim == 3 and outputs.shape[1:] == (3, 2):
                         predicted_locations = outputs[:, 0]
                         mean_loss = l2_distance(predicted_locations, locations, arena_dims).mean()
-                    # Otherwise, just use the loss function specified by the model
                     else:
                         losses = self.__loss_fn(outputs, locations)
                         mean_loss = torch.mean(losses).item()
 
                     # Log progress
-                    self.__progress_log.log_val_batch(mean_loss, np.nan, len(sounds))
+                    self.__progress_log.log_val_batch(mean_loss / 10.0, np.nan, sounds.shape[0] * sounds.shape[1])
 
             # Done with epoch.
             val_loss = self.__progress_log.finish_epoch()
@@ -282,7 +273,6 @@ class Trainer:
         self,
         dataset: Union[str, h5py.File],
         arena_dims: Tuple[float, float],
-        samples_per_vocalization: int = 1,
     ) -> Generator[np.ndarray, None, None]:
         """Creates an iterator to perform inference on a given dataset
         Parameters:
@@ -298,31 +288,21 @@ class Trainer:
 
         dset = GerbilVocalizationDataset(
             datapath=dataset,
-            segment_len=self.__config["SAMPLE_LEN"],
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
             arena_dims=arena_dims,
+            inference=True,
         )
 
-        dset.samp_size = samples_per_vocalization
-
-        dloader = DataLoader(dset, batch_size=1, shuffle=False)
+        dloader = DataLoader(dset)
 
         self.model.eval()
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model.to(device)
         with torch.no_grad():
             for batch in dloader:
-                # remove label, if any
-                if isinstance(batch, list) or isinstance(batch, tuple):
-                    data = batch[0]
-                else:
-                    data = batch
-                if samples_per_vocalization > 1:
-                    data = data.squeeze(0)
-
+                data = batch  # (1, channels, seq)
                 output = self.model(data.to(device)).cpu().numpy()
-
-                yield unscale_output(output, arena_dims)
+                yield output
 
         if should_close_file:
             dataset.close()
