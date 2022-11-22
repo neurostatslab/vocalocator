@@ -8,6 +8,10 @@ import torch
 
 from ..architectures.attentionnet import GerbilizerSparseAttentionNet
 from ..architectures.densenet import GerbilizerDenseNet
+from ..architectures.perceiver import (
+    GerbilizerPerceiver,
+    GerbilizerCovPerceiver,
+)
 from ..architectures.reduced import (
     GerbilizerReducedAttentionNet,
     GerbilizerAttentionHourglassNet,
@@ -42,6 +46,8 @@ LOOKUP_TABLE = {
     'GerbilizerSimpleWithCovariance': ModelType( 
         GerbilizerSimpleWithCovariance, gaussian_NLL_loss, None
     ),
+    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, None),
+    "GerbilizerCovPerceiver": ModelType(GerbilizerCovPerceiver, gaussian_NLL_loss, None)
 }
 
 
