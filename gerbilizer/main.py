@@ -49,6 +49,17 @@ def get_args():
         help="When performing inference, location to store model output.",
     )
 
+    parser.add_argument(
+        "--bare",
+        action='store_true',
+        required=False,
+        help=(
+            "By default, this script creates a nested directory structure in "
+            "which to store model output. This flag overrides this behavior, placing "
+            "output like saved weights directly in the directory provided."
+            )
+    )
+
     args = parser.parse_args()
     validate_args(args)
     return args
@@ -77,9 +88,6 @@ def validate_args(args):
     if args.save_path is None:
         raise ValueError("No save path (trained model storage location) provided.")
 
-    if not path.exists(args.save_path):
-        os.makedirs(args.save_path)
-
     # Although it's somewhat inappropriate, I've elected to load config JSON here because a
     # thorough validation of the user input involves validating the presently unloaded JSON
     args.config_data = build_config(args.config)
@@ -94,13 +102,18 @@ def validate_args(args):
     if "JOB_ID" in args.config_data:
         args.job_id = args.config_data["JOB_ID"]
 
-    args.model_dir = path.join(
-        args.save_path,
-        "trained_models",
-        args.config_data["CONFIG_NAME"],
-        f"{args.job_id:0>5d}",
-    )
-
+    # place output directly into directory user provides if bare flag is enabled
+    if args.bare:
+        args.model_dir = args.save_path
+    else:
+        if not path.exists(args.save_path):
+            os.makedirs(args.save_path)
+        args.model_dir = path.join(
+            args.save_path,
+            "trained_models",
+            args.config_data["CONFIG_NAME"],
+            f"{args.job_id:0>5d}",
+        )
 
 def run_eval(args: argparse.Namespace, trainer: Trainer):
     # expects args.data to point toward a file rather than a directory
