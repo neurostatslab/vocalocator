@@ -123,7 +123,7 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         self.coord_readout = torch.nn.Linear(self.n_channels[-1], N_OUTPUTS)
 
     def forward(self, x):
-
+        x = x.transpose(-1, -2)  # (batch, seq_len, channels) -> (batch, channels, seq_len) needed by conv1d
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         coords = self.coord_readout(h2)
