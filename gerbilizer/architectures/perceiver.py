@@ -8,6 +8,7 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 
 from gerbilizer.architectures.simplenet import GerbilizerSimpleLayer
+from gerbilizer.architectures.util import build_cov_output
 
 from .encodings import FixedEncoding, LearnedEncoding
 
@@ -186,8 +187,11 @@ class GerbilizerPerceiver(nn.Module):
         )
         self.layers = nn.ModuleList(layers)
 
+        self.output_cov = bool(config.get('OUTPUT_COV'))
+        N_OUTPUTS = 5 if self.output_cov else 2
+
         self.linear = nn.Sequential(
-            nn.Linear(d_model, 1024), nn.ReLU(), nn.Linear(1024, 2)
+            nn.Linear(d_model, 1024), nn.ReLU(), nn.Linear(1024, N_OUTPUTS)
         )
 
     def clip_grads(self):
@@ -206,7 +210,8 @@ class GerbilizerPerceiver(nn.Module):
             memory, x = layer(memory, x)
 
         output = self.linear(memory[:, 0])
-        return output
+
+        return build_cov_output(output, x.device) if self.output_cov else output
 
 
 class GerbilizerCovPerceiver(GerbilizerPerceiver):

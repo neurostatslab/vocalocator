@@ -5,6 +5,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from gerbilizer.architectures.util import build_cov_output
+
 from .encodings import LearnedEncoding, FixedEncoding
 from .sparse_attn import SparseTransformerEncoder, SparseTransformerEncoderLayer
 
@@ -82,7 +84,8 @@ class GerbilizerAttentionNet(nn.Module):
 
         self.dense = nn.Sequential(nn.Linear(d_model, self.linear_dim), nn.ReLU())
 
-        N_OUTPUTS = 5 if config.get('OUTPUT_COV') else 2
+        self.output_cov = bool(config.get('OUTPUT_COV'))
+        N_OUTPUTS = 5 if self.output_cov else 2
 
         self.coord_readout = nn.Sequential(nn.Linear(self.linear_dim, N_OUTPUTS), nn.Tanh())
 
@@ -107,7 +110,8 @@ class GerbilizerAttentionNet(nn.Module):
 
     def forward(self, x):
         linear_out = self.embed(x)
-        return self.coord_readout(linear_out)
+        coords = self.coord_readout(linear_out)
+        return build_cov_output(coords, x.device) if self.output_cov else coords
 
     def trainable_params(self):
         return self.parameters()

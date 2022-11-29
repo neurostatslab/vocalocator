@@ -46,7 +46,7 @@ LOOKUP_TABLE = {
     'GerbilizerSimpleWithCovariance': ModelType( 
         GerbilizerSimpleWithCovariance, gaussian_NLL_loss, None
     ),
-    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, None),
+    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, gaussian_NLL_loss),
     "GerbilizerCovPerceiver": ModelType(GerbilizerCovPerceiver, gaussian_NLL_loss, None)
 }
 

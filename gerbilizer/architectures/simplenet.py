@@ -129,6 +129,9 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         coords = self.coord_readout(h2)
         return build_cov_output(coords, x.device) if self.output_cov else coords
 
+    def clip_grads(self):
+        nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
+
 
 class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
     def __init__(self, config):
@@ -166,7 +169,7 @@ class GerbilizerSimpleWithCovariance(GerbilizerSimpleNetwork):
         output = self.last_layer(h2)
         return build_cov_output(output, x.device)
 
-    def _clip_grads(self):
+    def clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
 
 
