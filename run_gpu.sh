@@ -36,7 +36,7 @@ fi
 
 if [-z $OUTPUT_DIR ]; then
     echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/gerbilizer."
-    OUTPUT_DIR=/mnt/ceph/users/${USER}/gerbilizer
+    OUTPUT_DIR=/mnt/home/${USER}/ceph/gerbilizer
 fi
 
 

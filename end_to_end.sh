@@ -41,8 +41,8 @@ if [ -z $FINETUNE_DIR ]; then
 fi
 
 if [ -z $OUTPUT_BASE_DIR ]; then
-    echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/end_to_end."
-    OUTPUT_BASE_DIR=/mnt/ceph/users/${USER}/end_to_end
+    echo "No output directory provided. Defaulting to /mnt/home/${USER}/ceph/end_to_end."
+    OUTPUT_BASE_DIR=/mnt/home/${USER}/ceph/end_to_end
 fi
 
 # if the output base directory doesn't exist, create it
