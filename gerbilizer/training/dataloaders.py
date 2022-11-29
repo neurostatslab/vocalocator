@@ -99,11 +99,19 @@ class GerbilVocalizationDataset(IterableDataset):
             batch = pad_sequence(batch, batch_first=True)  # Should return tensor of shape (batch, seq, num_channels)
             self.returned_samples += cur_batch_size
             yield batch, torch.stack(labels)
+
         self.returned_samples = 0  # Reset the count so epochs 2+ don't complete instantaneously
 
     @property
     def max_vocalization_length(self):
         return self.lengths.max()
+
+    @property
+    def n_vocalizations(self):
+        """
+        The number of vocalizations contained in this Dataset object.
+        """
+        return len(self.lengths)
 
     def __del__(self):
         self.dataset.close()
