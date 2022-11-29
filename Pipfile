@@ -15,11 +15,9 @@ tqdm = "*"
 torch-audiomentations = "*"
 ipython = "*"
 notebook = "*"
-calibrationtools = {editable = true, path = "./../calibrationtools"}
 ipykernel = "*"
 
 [dev-packages]
-calibrationtools = {editable = true, path = "./../calibrationtools"}
 gerbilizer = {editable = true, path = "."}
 
 [requires]
