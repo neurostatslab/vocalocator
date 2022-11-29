@@ -226,10 +226,11 @@ if __name__ == '__main__':
     arena_dims = (config_data["ARENA_WIDTH"], config_data["ARENA_LENGTH"])
     dataset = GerbilVocalizationDataset(
         str(args.data),
-        segment_len=config_data["SAMPLE_LEN"],
         arena_dims=arena_dims,
         make_xcorrs=config_data["COMPUTE_XCORRS"],
+        inference=True,
     )
+
     dataloader = DataLoader(
         dataset, batch_size=1, shuffle=False
     )
