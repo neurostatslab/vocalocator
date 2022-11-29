@@ -49,31 +49,32 @@ def plot_results(f: h5py.File):
 
     errs = np.linalg.norm(means - f['scaled_locations'][:], axis=-1)
     fig, axs = subplots(5, sharex=False, sharey=False)
+    (err_ax, calib_ax, cset_area_ax, cset_radius_ax, dist_ax) = axs
 
-    axs[0].hist(errs)
-    axs[0].set_xlabel('errors (mm)')
-    axs[0].set_ylabel('counts')
-    axs[0].set_title('error distribution')
+    err_ax.hist(errs)
+    err_ax.set_xlabel('errors (mm)')
+    err_ax.set_ylabel('counts')
+    err_ax.set_title('error distribution')
 
-    axs[1].plot(np.linspace(0, 1, 11), f.attrs['calibration_curve'][:], 'bo')
-    axs[1].set_xlabel('probability assigned to region')
-    axs[1].set_ylabel('proportion of locations in the region')
-    axs[1].set_title('calibration curve')
+    calib_ax.plot(np.linspace(0, 1, 11), f.attrs['calibration_curve'][:], 'bo')
+    calib_ax.set_xlabel('probability assigned to region')
+    calib_ax.set_ylabel('proportion of locations in the region')
+    calib_ax.set_title('calibration curve')
 
-    axs[2].hist(f['confidence_set_areas'][:])
-    axs[2].set_xlabel('confidence set area (mm^2)')
-    axs[2].set_ylabel('counts')
-    axs[2].set_title('confidence set area distribution')
+    cset_area_ax.hist(f['confidence_set_areas'][:])
+    cset_area_ax.set_xlabel('confidence set area (mm^2)')
+    cset_area_ax.set_ylabel('counts')
+    cset_area_ax.set_title('confidence set area distribution')
 
-    axs[3].plot(np.sqrt(f['confidence_set_areas'][:]), errs, 'bo')
-    axs[3].set_xlabel('square root confidence set area (mm)')
-    axs[3].set_ylabel('error (mm)')
-    axs[3].set_title('sqrt confidence set area vs error')
+    cset_radius_ax.plot(np.sqrt(f['confidence_set_areas'][:]), errs, 'bo')
+    cset_radius_ax.set_xlabel('square root confidence set area (mm)')
+    cset_radius_ax.set_ylabel('error (mm)')
+    cset_radius_ax.set_title('sqrt confidence set area vs error')
 
-    axs[4].plot(f['distances_to_furthest_point'][:], errs, 'bo')
-    axs[4].set_xlabel('distance to furthest point in confidence set (mm)')
-    axs[4].set_ylabel('error (mm)')
-    axs[4].set_title('distance to furthest point vs error')
+    dist_ax.plot(f['distances_to_furthest_point'][:], errs, 'bo')
+    dist_ax.set_xlabel('distance to furthest point in confidence set (mm)')
+    dist_ax.set_ylabel('error (mm)')
+    dist_ax.set_title('distance to furthest point vs error')
 
 
     return fig, axs
@@ -96,7 +97,7 @@ def assess_model(
     """
     outfile = Path(outfile)
 
-    N = len(dataloader)
+    N = dataloader.dataset.n_vocalizations
     LOC_SHAPE = (N, 2)
 
     with h5py.File(outfile, 'w') as f:
@@ -115,7 +116,7 @@ def assess_model(
                 output = model(audio)
                 np_output = output.cpu().numpy()
 
-                raw_outputs.append(np_output)
+                raw_output.append(np_output)
                 raw_locations[idx] = location
 
                 # unscale location from [-1, 1] square to units in arena (in mm)
@@ -228,7 +229,7 @@ if __name__ == '__main__':
         str(args.data),
         arena_dims=arena_dims,
         make_xcorrs=config_data["COMPUTE_XCORRS"],
-        inference=True,
+        sequential=True,
     )
 
     dataloader = DataLoader(
