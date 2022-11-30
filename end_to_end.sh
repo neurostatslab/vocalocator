@@ -106,7 +106,7 @@ echo "Finetuning model on data in directory ${FINETUNE_DIR}."
 
 # finetune the model
 python -u -m gerbilizer.main \
-    --config $CONFIG \
+    --config $PRETRAINED_CONFIG \
     --data $FINETUNE_DIR \
     --save_path $FINETUNE_RESULT_DIR \
     --bare
