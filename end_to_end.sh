@@ -111,7 +111,7 @@ echo "Finetuning model on data in directory ${FINETUNE_DIR}."
 CONFIG_FOR_FINETUNING=$PRETRAINED_CONFIG
 
 if [ ! -z $FINETUNE_CHANGES ]; then
-    CONFIG_FOR_FINETUNING=$PRETRAIN_DIR/config_for_finetuning.json
+    CONFIG_FOR_FINETUNING=$PRETRAIN_RESULT_DIR/config_for_finetuning.json
     python -m gerbilizer.update_json $PRETRAINED_CONFIG $FINETUNE_CHANGES $CONFIG_FOR_FINETUNING
 fi
 
