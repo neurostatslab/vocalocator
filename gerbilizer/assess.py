@@ -125,6 +125,10 @@ def assess_model(
                 scaled_location = A.dot(location.cpu().numpy().squeeze()) + b
                 scaled_locations[idx] = scaled_location
 
+                # some locations in the gpup finetune validation set
+                # have y-coordinates outside the arena. Here we clip them
+                scaled_location = np.minimum(scaled_location, arena_dims)
+
                 # process mean + cov matrix from model output, unscaling to
                 # arena size from [-1, 1] square
                 unscaled_output = unscale_output(np_output, arena_dims).squeeze()
