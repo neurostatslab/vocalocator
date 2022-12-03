@@ -201,6 +201,8 @@ class GerbilVocalizationDataset(IterableDataset):
     
     @staticmethod
     def add_noise(audio, snr_db):
+        if not isinstance(audio, torch.Tensor):
+            audio = torch.from_numpy(audio)
         # Expects audio to have shape (L, C)
         noise = torch.randn_like(audio)
 

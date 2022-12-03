@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 import torch
 from torch.nn import functional as F
-from torch.distributions import MultivariateNormal, Wishart
+from torch.distributions import MultivariateNormal
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -41,16 +41,9 @@ def wass_loss_fn(pred: torch.Tensor, target: torch.Tensor):
     error_map = F.log_softmax(flat_pred, dim=1) + torch.log(flat_target + 1)
     return torch.logsumexp(error_map, dim=1)
 
-def gaussian_NLL_loss(
-    pred: torch.Tensor,
-    target: torch.Tensor,
-    mode: Literal['mle', 'map'] = 'mle',
-    scale_matrix: Optional[torch.Tensor] = None,
-    deg_freedom: Optional[torch.Tensor] = None,
-    ):
+def gaussian_NLL(pred: torch.Tensor, target: torch.Tensor):
     """
-    Negative log likelihood of the Gaussian, optionally including an additive
-    prior term parameterized by `scale_matrix` and `deg_freedom`.
+    Negative log likelihood of the Gaussian parameterized by the model prediction.
 
     Assumes that the conditional distribution of a location y
     given an example x can be approximated by a multivariate gaussian
@@ -60,28 +53,11 @@ def gaussian_NLL_loss(
     where mu(x) and Sigma(x) are models of the mean and covariance as a
     function of the audio.
     
-    To train these models, we minimize the negative log of the above likelihood
-    function, optionally including a Wishart prior on the covariance matrix.
-    
-    Note: we expect pred to be a tensor of shape (B, 3, 2), where pred[i][0]
+    Expects pred to be a tensor of shape (B, 3, 2), where pred[i][0]
     represents the predicted mean for example i and the entries pred[i][1:]
     and the remaining entries represent a lower triangular matrix L such that
-
-        L @ L.T = Sigma(x)
-
-    The argument `mode` refers to whether we should return a loss function
-    for maximum likelihood estimation ('mle') or maximum a posteriori estimation
-    ('map'), where we use a Wishart prior.
+    L @ L.T = Sigma(x).
     """
-    MAP = 'map'
-    MLE = 'mle'
-
-    if mode not in (MLE, MAP):
-        raise ValueError(
-            f'Invalid value for `mode` passed: {mode}. Valid values are: \'mle\', \'map\'.'
-            )
-    
-
     # make sure that preds has shape: (B, 3, 2) where B is the batch size
     if pred.ndim != 3:
         raise ValueError(
@@ -92,32 +68,6 @@ def gaussian_NLL_loss(
     y_hat = pred[:, 0]  # output, shape: (B, 2)
     L = pred[:, 1:]  # cholesky factor of covariance, shape: (B, 2, 2)
 
-    # calculate covariance matrices
-    S = torch.matmul(L, L.mT)
-
-    # if in MLE mode but prior parameters provided, log a warning
-    if mode == MLE and ((scale_matrix is not None) or (deg_freedom is not None)):
-        logger.warning(
-            'Given that loss function in mode MLE, expected `scale_matrix`'
-            'and `deg_freedom` to be None. Ignoring arguments: '
-            f'`scale_matrix`: {scale_matrix} and `deg_freedom`: '
-            f'{deg_freedom}'
-        )
-    # calculate covariance matrix
- #    logger.debug(f'covariance matrices: {S}')
-    # # for now, print out the eigenvalues
-    # eigvals = torch.linalg.eigvalsh(S)
-    # determinants = eigvals.prod(1)
-    # if not (eigvals > 0).all():
-    #     logger.debug('EIGENVALUES NOT ALL POSITIVE')
-    #     logger.debug(f'eigenvalues: {eigvals}')
-    #     logger.debug(f'determinants: {determinants}')
-    # # get the log determinant
-    # logger.debug(f'gaussian_mle_loss_fn | product of log eigenvalues: {torch.log(determinants)}')
-    # compute the loss
-
-    # first term: `\ln |\hat{Sigma}|`
-
     # create the distribution corresponding to the outputted predictive
     # density
     multivariate_normal = MultivariateNormal(
@@ -127,25 +77,77 @@ def gaussian_NLL_loss(
 
     loss = -multivariate_normal.log_prob(target)
 
-    # add prior penalty if specified
-    if mode == MAP:
-        if scale_matrix is None or deg_freedom is None:
-            raise ValueError(
-                'In MAP inference mode, you must specify the '
-                'parameters for the Wishart prior!'
-                )
-        
-        device = pred.device
-        wishart = Wishart(
-            df=torch.tensor(deg_freedom, device=device),
-            covariance_matrix=torch.tensor(scale_matrix, device=device)
-        )
+    return loss
 
-        prior_term = -wishart.log_prob(S)
+def gaussian_NLL_half_normal_variances(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    arena_dims: tuple[float, float]
+    ):
+    """
+    Regularized version of the gaussian_NLL loss function. Specifically, this
+    is the negative log posterior p(mu, Sigma | x) where we place half-Normal
+    priors on the diagonal entries of the covariance matrix.
 
-        logger.debug(f'prior term: {prior_term}')
-        loss = loss + prior_term
+    Motivation: no prior belief about the skew direction of the model's
+    confidence ellipses, so we should have a uniform prior over the correlation
+    structure — reasonable choice is the LJK distribution with shape parameter
+    eta = 1. Technically, we also implicitly put a uniform prior over the
+    means, which are constrained to be on the unit square [-1, 1]^2. But since
+    these are uniform, they don't affect the negative log posterior. The only
+    thing that does is our half-Normal priors on the variances sigma^2_x and
+    sigma^2_y — after taking the negative log, this results in just adding
 
-#     logger.debug(f'LOSS: {loss}')
+        lambda_x sigma^2_x + lambda_y sigma^2_y
+
+    to the output of the gaussian_NLL function, where lambda_i is half the
+    squared scale paramater to the half-Normal. If we pick this scale parameter
+    to be half the arena dimension in each direction, we express the belief
+    that about 68% of the time, the variance in the x and y direction should be
+    less than half the arena size.
+    """
+    NLL_term = gaussian_NLL(pred, target)
+
+    cholesky_cov = pred[:, 1:]
+    cov = cholesky_cov @ cholesky_cov.swapaxes(-2, -1)
+
+    variance_x = cov[:, 0, 0]
+    variance_y = cov[:, 1, 1]
+
+    x_dim, y_dim = arena_dims
+
+    get_lambda = lambda dimension: 1 / 2 * (dimension ** 2)
+
+    lambda_x = get_lambda(x_dim)
+    lambda_y = get_lambda(y_dim)
+
+    return NLL_term + (lambda_x * variance_x) + (lambda_y * variance_y)
+
+def gaussian_NLL_entropy_penalty(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    penalty: float = 1.0,
+    ):
+    """
+    Regularized version of gaussian_NLL, with an entropy penalty.
+    """
+    # make sure that preds has shape: (B, 3, 2) where B is the batch size
+    if pred.ndim != 3:
+        raise ValueError(
+            'Expected `pred` to have shape (B, 3, 2) where B is the batch size, '
+            f'but encountered shape: {pred.shape}'
+            )
+
+    y_hat = pred[:, 0]  # output, shape: (B, 2)
+    L = pred[:, 1:]  # cholesky factor of covariance, shape: (B, 2, 2)
+
+    # create the distribution corresponding to the outputted predictive
+    # density
+    multivariate_normal = MultivariateNormal(
+        loc=y_hat,
+        scale_tril=L
+    )
+
+    loss = -multivariate_normal.log_prob(target) + (penalty * multivariate_normal.entropy())
 
     return loss

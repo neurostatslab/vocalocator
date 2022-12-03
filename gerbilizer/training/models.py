@@ -1,6 +1,7 @@
 """Initialize model and loss function from configuration."""
 
 from collections import namedtuple
+from functools import partial
 from typing import Any, Callable, Union
 
 import numpy as np
@@ -17,25 +18,26 @@ from ..architectures.simplenet import GerbilizerSimpleNetwork
 from .losses import (
     se_loss_fn,
     map_se_loss_fn,
-    gaussian_NLL_loss
+    gaussian_NLL,
+    gaussian_NLL_half_normal_variances,
+    gaussian_NLL_entropy_penalty
     )
 
-ModelType = namedtuple("ModelType", ("model", "loss_fn", "cov_loss_fn"))
-
+ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov"))
 
 LOOKUP_TABLE = {
-    "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, gaussian_NLL_loss),
-    "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, gaussian_NLL_loss),
+    "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, True),
+    "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
     "GerbilizerSparseAttentionNet": ModelType(
-        GerbilizerSparseAttentionNet, se_loss_fn, gaussian_NLL_loss
+        GerbilizerSparseAttentionNet, se_loss_fn, True
    ),
     "GerbilizerReducedSparseAttentionNet": ModelType(
-        GerbilizerReducedAttentionNet, se_loss_fn, gaussian_NLL_loss
+        GerbilizerReducedAttentionNet, se_loss_fn, True
     ),
     "GerbilizerAttentionHourglassNet": ModelType(
-        GerbilizerAttentionHourglassNet, map_se_loss_fn, None
+        GerbilizerAttentionHourglassNet, map_se_loss_fn, False
     ),
-    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, gaussian_NLL_loss),
+    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, True),
 }
 
 
@@ -63,7 +65,7 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     """
     arch = config["ARCHITECTURE"]
     if arch in LOOKUP_TABLE:
-        model, loss_fn, cov_loss_fn = LOOKUP_TABLE[arch]
+        model, loss_fn, can_output_cov = LOOKUP_TABLE[arch]
         model = model(config)
     else:
         raise ValueError(f'ARCHITECTURE {arch} not recognized.')
@@ -76,14 +78,28 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     # change the loss function depending on whether a model outputting covariance
     # was chosen
     if config.get('OUTPUT_COV'):
-        # if the cov_loss_fn is None, the selected model architecture doesn't have an
-        # ability to output a cov matrix. for example, a model that outputs a 2d map
-        if cov_loss_fn is None:
+        # some models, like a model that outputs a 2d map, don't have the ability to output a 
+        # cov matrix.
+        if not can_output_cov:
             raise ValueError(
                 f"Flag `OUTPUT_COV` was passed to a model architecture that can't output a covariance matrix ({arch})."
                 )
-        else:
-            loss = cov_loss_fn
+
+        loss = gaussian_NLL
+
+        # change the loss function depending on whether the "REGULARIZE_COV" parameter was provided
+        # in the JSON config.
+        if config.get('REGULARIZE_COV'):
+            reg = config['REGULARIZE_COV']
+            if reg == 'HALF_NORMAL':
+                arena_dims = (config["ARENA_WIDTH"], config["ARENA_LENGTH"])
+                loss = partial(gaussian_NLL_half_normal_variances, arena_dims=arena_dims)
+            elif reg == 'ENTROPY':
+                loss = gaussian_NLL_entropy_penalty
+            else:
+                raise ValueError(
+                    f'Unrecognized value {reg} passed as `REGULARIZE_COV` parameter in model config!'
+                    )
 
     return model, loss
 
