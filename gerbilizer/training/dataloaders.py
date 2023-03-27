@@ -19,7 +19,8 @@ from torch.utils.data import IterableDataset, DataLoader
 class GerbilVocalizationDataset(IterableDataset):
     def __init__(
         self,
-        datapath: str, *,
+        datapath: str,
+        *,
         make_xcorrs: bool = False,
         inference: bool = False,
         sequential: bool = False,
@@ -43,25 +44,27 @@ class GerbilVocalizationDataset(IterableDataset):
         else:
             self.dataset = datapath
 
-        if 'len_idx' not in self.dataset:
+        if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
-        
+
         self.make_xcorrs = make_xcorrs
         self.inference = inference
         self.sequential = sequential
         self.arena_dims = arena_dims
         self.n_channels = None
 
-        self.lengths = np.diff(self.dataset['len_idx'][:])
+        self.lengths = np.diff(self.dataset["len_idx"][:])
         self.len_idx = np.argsort(self.lengths)
         self.max_padding = max_padding
         self.max_batch_size = max_batch_size
 
         self.returned_samples = 0
-        self.max_returned_samples = self.dataset['len_idx'][-1]
+        self.max_returned_samples = self.dataset["len_idx"][-1]
 
-        self.augmentation_params = augmentation_params if augmentation_params is not None else dict()
-    
+        self.augmentation_params = (
+            augmentation_params if augmentation_params is not None else dict()
+        )
+
     def __len__(self):
         return self.max_returned_samples
 
@@ -70,19 +73,31 @@ class GerbilVocalizationDataset(IterableDataset):
             for idx in range(len(self.lengths)):
                 yield self.__processed_data_for_index__(idx)
             return
-        
+
         while self.returned_samples < self.max_returned_samples:
-            start_idx = np.random.choice(self.len_idx)  # randomly sample the shortest vocalization in the batch
+            start_idx = np.random.choice(
+                self.len_idx
+            )  # randomly sample the shortest vocalization in the batch
             end_idx = start_idx + 1
             cur_batch_size = self.lengths[self.len_idx[start_idx]]
 
             # Returns True if the requested audio sample isn't too long
-            valid_len = lambda i: (self.lengths[self.len_idx[i]] - self.lengths[self.len_idx[start_idx]]) < self.max_padding
+            valid_len = (
+                lambda i: (
+                    self.lengths[self.len_idx[i]]
+                    - self.lengths[self.len_idx[start_idx]]
+                )
+                < self.max_padding
+            )
 
-            while (cur_batch_size < self.max_batch_size) and (end_idx < len(self.lengths)) and (valid_len(end_idx)):
+            while (
+                (cur_batch_size < self.max_batch_size)
+                and (end_idx < len(self.lengths))
+                and (valid_len(end_idx))
+            ):
                 cur_batch_size += self.lengths[self.len_idx[end_idx]]
                 end_idx += 1  # sequentially append longer vocalizations to the batch
-            
+
             batch = []
             labels = []
             for i in range(start_idx, end_idx):
@@ -94,13 +109,17 @@ class GerbilVocalizationDataset(IterableDataset):
                     audio, label = self.__processed_data_for_index__(real_idx)
                     batch.append(audio)
                     labels.append(label)
-            
+
             # Requires individual elements to have shape (seq, ...)
-            batch = pad_sequence(batch, batch_first=True)  # Should return tensor of shape (batch, seq, num_channels)
+            batch = pad_sequence(
+                batch, batch_first=True
+            )  # Should return tensor of shape (batch, seq, num_channels)
             self.returned_samples += cur_batch_size
             yield batch, torch.stack(labels)
 
-        self.returned_samples = 0  # Reset the count so epochs 2+ don't complete instantaneously
+        self.returned_samples = (
+            0  # Reset the count so epochs 2+ don't complete instantaneously
+        )
 
     @property
     def max_vocalization_length(self):
@@ -119,7 +138,7 @@ class GerbilVocalizationDataset(IterableDataset):
     def __append_xcorr(self, audio: np.ndarray):
         is_batch = len(audio.shape) == 3
         n_channels = audio.shape[-1]
-        
+
         audio_with_corr = np.empty(
             (*audio.shape[:-1], n_channels + comb(n_channels, 2)),
             audio.dtype,
@@ -155,7 +174,13 @@ class GerbilVocalizationDataset(IterableDataset):
         return dataset["locations"][idx]
 
     @staticmethod
-    def scale_features(inputs: np.ndarray, labels: np.ndarray, arena_dims: Tuple[int, int], *,  n_mics: int=4):
+    def scale_features(
+        inputs: np.ndarray,
+        labels: np.ndarray,
+        arena_dims: Tuple[int, int],
+        *,
+        n_mics: int = 4,
+    ):
         """Scales the inputs to have zero mean and unit variance. Labels are scaled
         from millimeter units to an arbitrary unit with range [-1, 1].
         """
@@ -181,24 +206,27 @@ class GerbilVocalizationDataset(IterableDataset):
         if n_mics < inputs.shape[-1]:
             xcorr_mean = inputs[..., n_mics:].mean(axis=(-2, -1), keepdims=True)
             xcorr_std = inputs[..., n_mics:].std(axis=(-2, -1))
-            scaled_audio[..., n_mics:] = (
-                inputs[..., n_mics:] - xcorr_mean
-            ) / xcorr_std
+            scaled_audio[..., n_mics:] = (inputs[..., n_mics:] - xcorr_mean) / xcorr_std
 
         return scaled_audio, scaled_labels
 
     @staticmethod
-    def unscale_features(labels: Union[np.ndarray, torch.Tensor], arena_dims: Union[Tuple[int, int], np.ndarray, torch.Tensor]):
-        """ Changes the units of `labels` from arb. scaled unit (in range [-1, 1]) to
+    def unscale_features(
+        labels: Union[np.ndarray, torch.Tensor],
+        arena_dims: Union[Tuple[int, int], np.ndarray, torch.Tensor],
+    ):
+        """Changes the units of `labels` from arb. scaled unit (in range [-1, 1]) to
         centimeters.
         """
-        if not any([isinstance(arena_dims, torch.Tensor), isinstance(arena_dims, np.ndarray)]):
+        if not any(
+            [isinstance(arena_dims, torch.Tensor), isinstance(arena_dims, np.ndarray)]
+        ):
             scale = np.array(arena_dims) / 2
         else:
             scale = arena_dims / 2
         scaled_labels = labels * scale
         return scaled_labels
-    
+
     @staticmethod
     def add_noise(audio, snr_db):
         if not isinstance(audio, torch.Tensor):
@@ -209,7 +237,7 @@ class GerbilVocalizationDataset(IterableDataset):
         # Choose one microphone as a reference, so the strength of the noise is the same across all channels
         audio_norm = torch.linalg.vector_norm(audio, dim=0)[0]
         noise_norm = torch.linalg.vector_norm(noise, dim=0, keepdim=True)
-        
+
         snr = 10 ** (snr_db / 20)
         scale_factor = snr * noise_norm / audio_norm
         return audio * scale_factor + noise
@@ -217,15 +245,19 @@ class GerbilVocalizationDataset(IterableDataset):
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx)
 
-        if self.augmentation_params and self.augmentation_params["AUGMENT_DATA"] and np.random.rand() < self.augmentation_params["AUGMENT_SNR_PROB"]:
+        if (
+            self.augmentation_params
+            and self.augmentation_params["AUGMENT_DATA"]
+            and np.random.rand() < self.augmentation_params["AUGMENT_SNR_PROB"]
+        ):
             sound = self.add_noise(
-                sound, 
+                sound,
                 np.random.uniform(
                     self.augmentation_params["AUGMENT_SNR_MIN"],
-                    self.augmentation_params["AUGMENT_SNR_MAX"]
-                )
+                    self.augmentation_params["AUGMENT_SNR_MAX"],
+                ),
             )
-        
+
         if self.make_xcorrs:
             sound = self.__append_xcorr(sound)
 
@@ -246,7 +278,9 @@ class GerbilVocalizationDataset(IterableDataset):
         if self.inference:
             return torch.from_numpy(sound.astype("float32"))
 
-        return torch.from_numpy(sound.astype("float32")), torch.from_numpy(location_map.astype("float32"))
+        return torch.from_numpy(sound.astype("float32")), torch.from_numpy(
+            location_map.astype("float32")
+        )
 
 
 def build_dataloaders(path_to_data, CONFIG):
@@ -255,8 +289,10 @@ def build_dataloaders(path_to_data, CONFIG):
     val_path = os.path.join(path_to_data, "val_set.h5")
     test_path = os.path.join(path_to_data, "test_set.h5")
 
-    collate_fn = lambda batch: batch[0]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
-    augment_params = {k: v for k,v in CONFIG.items() if k.startswith('AUGMENT')}
+    collate_fn = lambda batch: batch[
+        0
+    ]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
+    augment_params = {k: v for k, v in CONFIG.items() if k.startswith("AUGMENT")}
 
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
