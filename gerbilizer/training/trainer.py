@@ -238,8 +238,8 @@ class Trainer:
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
                     if self.__config["DEVICE"] == "GPU":
-                        sounds = sounds.unsqueeze(0).cuda()
-                    locations = locations.unsqueeze(0).numpy()
+                        sounds = sounds.cuda()
+                    locations = locations.numpy()
 
                     # Forward pass.
                     outputs = self.model(sounds).cpu().numpy()
@@ -298,6 +298,7 @@ class Trainer:
             datapath=dataset,
             make_xcorrs=self.__config["COMPUTE_XCORRS"],
             arena_dims=arena_dims,
+            crop_length=self.__config.get("CROP_LENGTH", None),
             inference=True,
         )
 

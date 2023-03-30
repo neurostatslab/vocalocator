@@ -243,6 +243,7 @@ if __name__ == "__main__":
         str(args.data),
         arena_dims=arena_dims,
         make_xcorrs=config_data["COMPUTE_XCORRS"],
+        crop_length=config_data.get("CROP_LENGTH", None),
         sequential=True,
     )
 

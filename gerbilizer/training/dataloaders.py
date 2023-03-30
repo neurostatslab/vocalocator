@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 from scipy.signal import correlate
 import torch
+from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset, DataLoader
 
@@ -27,6 +28,7 @@ class GerbilVocalizationDataset(IterableDataset):
         arena_dims: Optional[Tuple[float, float]] = None,
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
+        crop_length: Optional[int] = None,
         augmentation_params: Optional[dict] = None,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
@@ -38,6 +40,7 @@ class GerbilVocalizationDataset(IterableDataset):
             sequential (bool, optional): When true, data will be yielded one-by-one in the order it appears in the dataset. Defaults to False.
             max_padding (int, optional): Maximum amount of padding that can be added to a vocalization
             max_batch_size (int, optional): Maximim number of samples returned (aggregate across batch)
+            crop_length (int, optional): When provided, will serve random crops of fixed length instead of full vocalizations
         """
         if isinstance(datapath, str):
             self.dataset = h5py.File(datapath, "r")
@@ -51,6 +54,7 @@ class GerbilVocalizationDataset(IterableDataset):
         self.inference = inference
         self.sequential = sequential
         self.arena_dims = arena_dims
+        self.crop_length = crop_length
         self.n_channels = None
 
         self.lengths = np.diff(self.dataset["len_idx"][:])
@@ -71,13 +75,35 @@ class GerbilVocalizationDataset(IterableDataset):
     def __iter__(self):
         if self.inference or self.sequential:
             for idx in range(len(self.lengths)):
-                yield self.__processed_data_for_index__(idx)
+                data = self.__processed_data_for_index__(idx)
+                if self.inference:
+                    yield data.unsqueeze(0)
+                else:
+                    yield data[0].unsqueeze(0), data[1].unsqueeze(0)
+            return
+
+        if self.crop_length is not None:
+            batch_size = self.max_batch_size // self.crop_length
+            rand_idx = np.arange(self.n_vocalizations)
+            np.random.shuffle(rand_idx)
+
+            batch = []
+            labels = []
+            for idx in rand_idx:
+                audio, label = self.__processed_data_for_index__(idx)
+                batch.append(audio)
+                labels.append(label)
+
+                if len(batch) == batch_size:
+                    self.returned_samples += self.max_batch_size
+                    yield torch.stack(batch), torch.stack(labels)
+                    batch, labels = [], []
+            self.returned_samples = 0
             return
 
         while self.returned_samples < self.max_returned_samples:
-            start_idx = np.random.choice(
-                self.len_idx
-            )  # randomly sample the shortest vocalization in the batch
+            # randomly sample the shortest vocalization in the batch
+            start_idx = np.random.choice(self.len_idx)
             end_idx = start_idx + 1
             cur_batch_size = self.lengths[self.len_idx[start_idx]]
 
@@ -102,13 +128,9 @@ class GerbilVocalizationDataset(IterableDataset):
             labels = []
             for i in range(start_idx, end_idx):
                 real_idx = self.len_idx[i]
-                if self.inference:
-                    audio = self.__processed_data_for_index__(real_idx)
-                    batch.append(audio)
-                else:
-                    audio, label = self.__processed_data_for_index__(real_idx)
-                    batch.append(audio)
-                    labels.append(label)
+                audio, label = self.__processed_data_for_index__(real_idx)
+                batch.append(audio)
+                labels.append(label)
 
             # Requires individual elements to have shape (seq, ...)
             batch = pad_sequence(
@@ -117,9 +139,8 @@ class GerbilVocalizationDataset(IterableDataset):
             self.returned_samples += cur_batch_size
             yield batch, torch.stack(labels)
 
-        self.returned_samples = (
-            0  # Reset the count so epochs 2+ don't complete instantaneously
-        )
+        # Reset the count so epochs 2+ don't complete instantaneously
+        self.returned_samples = 0
 
     @property
     def max_vocalization_length(self):
@@ -135,13 +156,30 @@ class GerbilVocalizationDataset(IterableDataset):
     def __del__(self):
         self.dataset.close()
 
-    def __append_xcorr(self, audio: np.ndarray):
+    @staticmethod
+    def __make_crop(audio: torch.Tensor, crop_length: int):
+        """Given an audio sample of shape (n_samples, n_channels), return a random crop
+        of shape (crop_length, n_channels)
+        """
+        audio_len, _ = audio.shape
+        if crop_length is None:
+            raise ValueError("Cannot take crop without crop length")
+        valid_range = audio_len - crop_length
+        if valid_range < 0:  # Audio is shorter than desired crop length, pad right
+            pad_size = crop_length - audio_len
+            return F.pad(audio, (0, 0, 0, pad_size))
+        range_start = np.random.randint(0, valid_range)
+        range_end = range_start + crop_length
+        return audio[range_start:range_end, :]
+
+    @staticmethod
+    def __append_xcorr(audio: Union[torch.Tensor, np.ndarray]):
         is_batch = len(audio.shape) == 3
         n_channels = audio.shape[-1]
 
-        audio_with_corr = np.empty(
+        audio_with_corr = torch.empty(
             (*audio.shape[:-1], n_channels + comb(n_channels, 2)),
-            audio.dtype,
+            dtype=audio.dtype,
         )
 
         audio_with_corr[..., :n_channels] = audio
@@ -150,12 +188,12 @@ class GerbilVocalizationDataset(IterableDataset):
             for batch in range(audio.shape[0]):
                 for n, (a, b) in enumerate(combinations(audio[batch].T, 2)):
                     # a and b are mic traces
-                    corr = correlate(a, b, "same")
+                    corr = torch.from_numpy(correlate(a, b, "same"))
                     audio_with_corr[batch, :, n + n_channels] = corr
         else:
             for n, (a, b) in enumerate(combinations(audio.T, 2)):
                 # a and b are mic traces
-                corr = correlate(a, b, "same")
+                corr = torch.from_numpy(correlate(a, b, "same"))
                 audio_with_corr[:, n + n_channels] = corr
 
         return audio_with_corr
@@ -228,9 +266,7 @@ class GerbilVocalizationDataset(IterableDataset):
         return scaled_labels
 
     @staticmethod
-    def add_noise(audio, snr_db):
-        if not isinstance(audio, torch.Tensor):
-            audio = torch.from_numpy(audio)
+    def add_noise(audio: torch.Tensor, snr_db: float):
         # Expects audio to have shape (L, C)
         noise = torch.randn_like(audio)
 
@@ -243,7 +279,11 @@ class GerbilVocalizationDataset(IterableDataset):
         return audio * scale_factor + noise
 
     def __processed_data_for_index__(self, idx: int):
-        sound = self.__audio_for_index(self.dataset, idx)
+        sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
+        sound = torch.from_numpy(sound)
+
+        if self.crop_length is not None:
+            sound = self.__make_crop(sound, self.crop_length)
 
         if (
             self.augmentation_params
@@ -259,7 +299,9 @@ class GerbilVocalizationDataset(IterableDataset):
             )
 
         if self.make_xcorrs:
-            sound = self.__append_xcorr(sound)
+            sound = self.__append_xcorr(
+                sound
+            )  # Verified that scipy.signal.correlate accepts torch.Tensor
 
         # Load animal location in the environment.
         # shape: (2 (x/y coordinates), )
@@ -300,6 +342,7 @@ def build_dataloaders(path_to_data, CONFIG):
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
             max_batch_size=CONFIG["TRAIN_BATCH_MAX_SAMPLES"],
+            crop_length=CONFIG.get("CROP_LENGTH", None),
             augmentation_params=augment_params,
         )
         train_dataloader = DataLoader(traindata, collate_fn=collate_fn)
@@ -311,6 +354,7 @@ def build_dataloaders(path_to_data, CONFIG):
             val_path,
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
+            crop_length=CONFIG.get("CROP_LENGTH", None),
             sequential=True,
         )
         val_dataloader = DataLoader(valdata, collate_fn=collate_fn)
@@ -321,6 +365,7 @@ def build_dataloaders(path_to_data, CONFIG):
         testdata = GerbilVocalizationDataset(
             test_path,
             arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
+            crop_length=CONFIG.get("CROP_LENGTH", None),
             make_xcorrs=CONFIG["COMPUTE_XCORRS"],
             inference=True,
         )
