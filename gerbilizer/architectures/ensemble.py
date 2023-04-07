@@ -2,6 +2,7 @@ import pathlib
 
 import torch
 from torch import nn
+
 # from torch.nn import functional as F
 from gerbilizer.training.configs import build_config
 
@@ -17,38 +18,41 @@ class GerbilizerEnsemble(nn.Module):
         """
         super().__init__()
 
-        # load in the models from config
-        for model_config in config['MODELS']:
-            if 'OUTPUT_COV' not in model_config:
-                raise ValueError('Ensembling not yet available for models without uncertainty estimates.')
+        for model_config in config["MODELS"]:
+            if "OUTPUT_COV" not in model_config:
+                raise ValueError(
+                    "Ensembling not yet available for models without uncertainty estimates."
+                )
 
-            if 'WEIGHTS_PATH' not in model_config:
-                raise ValueError('Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`.')
-
+            if "WEIGHTS_PATH" not in model_config:
+                raise ValueError(
+                    "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
+                    )
 
         self.models = nn.ModuleList(built_models)
-        self.average_outputs = bool(config.get('AVERAGE_OUTPUTS'))
+        self.average_outputs = bool(config.get("AVERAGE_OUTPUTS"))
 
-
-    @classmethod
-    def from_ensemble_dir(cls, ensemble_dir):
-        """
-        Load in an ensemble of models.
-        """
-        # load in jsons
-        config_paths = sorted(pathlib.Path(ensemble_dir).glob('*/config.json'))
-        # load in model weights
-        configs = []
-        for path in config_paths:
-            configs.append(build_config(str(path)))
-        # call regular constructor
-        ensemble = cls({'MODELS': configs})
-        # load state dict for each model
-        # for model, config in zip(ensemble.models, configs):
-        #     if 'WEIGHTS_PATH' not in config:
-        #         raise ValueError('Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`.')
-        #     model.load_state_dict(torch.load(config['WEIGHTS_PATH']))
-        return ensemble
+#     @classmethod
+#     def from_ensemble_dir(cls, ensemble_dir):
+#         """
+#         Load in an ensemble of models.
+#         """
+#         # load in jsons
+#         config_paths = sorted(pathlib.Path(ensemble_dir).glob("*/config.json"))
+#         # load in model weights
+#         configs = []
+#         for path in config_paths:
+#             configs.append(build_config(str(path)))
+#         # call regular constructor
+#         ensemble = cls({"MODELS": configs})
+#         # load state dict for each model
+#         # for model, config in zip(ensemble.models, configs):
+#         #     if "WEIGHTS_PATH" not in config:
+#         #         raise ValueError(
+#         #             "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
+#         #         )
+#         #     model.load_state_dict(torch.load(config["WEIGHTS_PATH"]))
+#         return ensemble
 
     def forward(self, x):
         # return mean and cholesky covariance of gaussian mixture

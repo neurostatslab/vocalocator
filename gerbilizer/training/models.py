@@ -21,8 +21,8 @@ from .losses import (
     map_se_loss_fn,
     gaussian_NLL,
     gaussian_NLL_half_normal_variances,
-    gaussian_NLL_entropy_penalty
-    )
+    gaussian_NLL_entropy_penalty,
+)
 
 ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov"))
 
@@ -31,7 +31,7 @@ LOOKUP_TABLE = {
     "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
     "GerbilizerSparseAttentionNet": ModelType(
         GerbilizerSparseAttentionNet, se_loss_fn, True
-   ),
+    ),
     "GerbilizerReducedSparseAttentionNet": ModelType(
         GerbilizerReducedAttentionNet, se_loss_fn, True
     ),
@@ -77,7 +77,7 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
             built_submodels.append(submodel)
         model = GerbilizerEnsemble(config, built_submodels)
     else:
-        raise ValueError(f'ARCHITECTURE {arch} not recognized.')
+        raise ValueError(f"ARCHITECTURE {arch} not recognized.")
 
     if config["DEVICE"] == "GPU" and torch.cuda.is_available():
         model.cuda()
@@ -86,28 +86,28 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
 
     # change the loss function depending on whether a model outputting covariance
     # was chosen
-    if config.get('OUTPUT_COV'):
-        # some models, like a model that outputs a 2d map, don't have the ability to output a 
+    if config.get("OUTPUT_COV"):
+        # some models, like a model that outputs a 2d map, don't have the ability to output a
         # cov matrix.
         if not can_output_cov:
             raise ValueError(
                 f"Flag `OUTPUT_COV` was passed to a model architecture that can't output a covariance matrix ({arch})."
-                )
+            )
 
         loss = gaussian_NLL
 
         # change the loss function depending on whether the "REGULARIZE_COV" parameter was provided
         # in the JSON config.
-        if config.get('REGULARIZE_COV'):
-            reg = config['REGULARIZE_COV']
-            if reg == 'HALF_NORMAL':
+        if config.get("REGULARIZE_COV"):
+            reg = config["REGULARIZE_COV"]
+            if reg == "HALF_NORMAL":
                 loss = gaussian_NLL_half_normal_variances
-            elif reg == 'ENTROPY':
+            elif reg == "ENTROPY":
                 loss = gaussian_NLL_entropy_penalty
             else:
                 raise ValueError(
-                    f'Unrecognized value {reg} passed as `REGULARIZE_COV` parameter in model config!'
-                    )
+                    f"Unrecognized value {reg} passed as `REGULARIZE_COV` parameter in model config!"
+                )
 
     return model, loss
 
@@ -124,7 +124,10 @@ def __apply_affine(locations: np.ndarray, A: np.ndarray, b: np.ndarray):
     """
     return (A @ locations[..., None]).squeeze() + b
 
-def unscale_output(model_output: np.ndarray, arena_dims: Union[tuple[float, float], np.ndarray]) -> np.ndarray:
+
+def unscale_output(
+    model_output: np.ndarray, arena_dims: Union[tuple[float, float], np.ndarray]
+) -> np.ndarray:
     """
     Transform model output from arbitrary units on the square [-1, 1]^2 to
     the size of the arena, accounting correctly for the shape of the input.
@@ -133,7 +136,7 @@ def unscale_output(model_output: np.ndarray, arena_dims: Union[tuple[float, floa
     samples per vocalization.
 
     This transformation and recentering is given by the affine transform
-    
+
         z_i = Ay_i + b,
 
     where z_i is the new location and
@@ -160,7 +163,7 @@ def unscale_output(model_output: np.ndarray, arena_dims: Union[tuple[float, floa
         unscaled[:, 1:] = A @ covs @ A.T
     # similar if model outputs a batch of means + cholesky covariances
     # this is the case for ensemble models
-    elif model_output.ndim == 4 and model_output.shape[2:] == (3,2):
+    elif model_output.ndim == 4 and model_output.shape[2:] == (3, 2):
         means = model_output[:, :, 0]  # shape: (len(model_output), 2)
         cholesky = model_output[:, :, 1:]  # shape: (len(model_output), 2, 2)
         covs = cholesky @ cholesky.swapaxes(-1, -2)
@@ -171,7 +174,9 @@ def unscale_output(model_output: np.ndarray, arena_dims: Union[tuple[float, floa
     elif model_output.ndim == 2 and model_output.shape[1] == 2:
         unscaled = __apply_affine(model_output, A, b)
     else:
-        raise ValueError(f'Unscaling not currently supported for output of shape {model_output.shape}!')
+        raise ValueError(
+            f"Unscaling not currently supported for output of shape {model_output.shape}!"
+        )
 
     return unscaled
 
