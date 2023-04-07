@@ -16,6 +16,7 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
+from gerbilizer.architectures.ensemble import GerbilizerEnsemble
 from gerbilizer.calibration import CalibrationAccumulator
 from gerbilizer.training.dataloaders import GerbilVocalizationDataset
 from gerbilizer.training.configs import build_config
@@ -217,16 +218,22 @@ if __name__ == '__main__':
 
     # load the model
     weights_path = config_data.get('WEIGHTS_PATH')
-    if not weights_path:
-        raise ValueError(
-            f"Cannot evaluate model as the config stored at {args.config} doesn't include path to weights."
-        )
+    # if not weights_path:
+    #     raise ValueError(
+    #         f"Cannot evaluate model as the config stored at {args.config} doesn't include path to weights."
+    #     )
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         config_data['DEVICE'] = 'cpu'
-    model, _ = build_model(config_data)
-    weights = torch.load(weights_path, map_location=device)
-    model.load_state_dict(weights, strict=False)
+    # if the config data describes a gerbilizerEnsemble,
+    # we can't use the build_model function currently due to my (Aman) bad
+    # coding creaing a circular import. whoops. this is a cheap workaround.
+    if config_data.get('MODELS'):
+        model = GerbilizerEnsemble(config_data)
+    else:
+        model, _ = build_model(config_data)
+    # weights = torch.load(weights_path, map_location=device)
+    # model.load_state_dict(weights, strict=False)
 
     arena_dims = (config_data["ARENA_WIDTH"], config_data["ARENA_LENGTH"])
     dataset = GerbilVocalizationDataset(
