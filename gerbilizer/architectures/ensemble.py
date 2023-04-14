@@ -6,8 +6,6 @@ from torch import nn
 # from torch.nn import functional as F
 from gerbilizer.training.configs import build_config
 
-from gerbilizer.training.models import build_model
-
 # inference only for now
 class GerbilizerEnsemble(nn.Module):
     # config should just tell us model architectures
