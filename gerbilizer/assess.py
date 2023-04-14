@@ -105,9 +105,8 @@ def assess_model(
         raw_locations = f.create_dataset("raw_locations", shape=LOC_SHAPE)
         scaled_locations = f.create_dataset("scaled_locations", shape=LOC_SHAPE)
 
-        raw_output = (
-            []
-        )  # don't initialize a dataset bc we don't know model output shape
+        # don't initialize a dataset bc we don't know model output shape
+        raw_output = []
         scaled_output = []
 
         ca = CalibrationAccumulator(arena_dims)
@@ -251,7 +250,11 @@ if __name__ == "__main__":
         sequential=True,
     )
 
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+    # function that torch dataloader uses to assemble batches.
+    # in our case, applying this is necessary because of the structure of the
+    # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
+    collate_fn = lambda x: x[0]
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent
