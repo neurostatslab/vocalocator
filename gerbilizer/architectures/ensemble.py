@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 # from torch.nn import functional as F
-from gerbilizer.training.configs import build_config
+# from gerbilizer.training.configs import build_config
 
 # inference only for now
 class GerbilizerEnsemble(nn.Module):
@@ -16,7 +16,7 @@ class GerbilizerEnsemble(nn.Module):
         """
         super().__init__()
 
-        for model_config in config["MODELS"]:
+        for model_config, model in zip(config["MODELS"], built_models):
             if "OUTPUT_COV" not in model_config:
                 raise ValueError(
                     "Ensembling not yet available for models without uncertainty estimates."
@@ -26,6 +26,10 @@ class GerbilizerEnsemble(nn.Module):
                 raise ValueError(
                     "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
                     )
+
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            weights = torch.load(model_config["WEIGHTS_PATH"], map_location=device)
+            model.load_state_dict(weights, strict=False)
 
         self.models = nn.ModuleList(built_models)
         self.average_outputs = bool(config.get("AVERAGE_OUTPUTS"))
