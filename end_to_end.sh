@@ -5,7 +5,7 @@
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH -o slurm_logs/end_to_end_%j.log
 pwd; hostname; date;
 

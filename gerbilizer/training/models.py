@@ -161,15 +161,17 @@ def unscale_output(
 
         unscaled[:, 0] = __apply_affine(means, A, b)
         unscaled[:, 1:] = A @ covs @ A.T
+
     # similar if model outputs a batch of means + cholesky covariances
     # this is the case for ensemble models
     elif model_output.ndim == 4 and model_output.shape[2:] == (3, 2):
-        means = model_output[:, :, 0]  # shape: (len(model_output), 2)
-        cholesky = model_output[:, :, 1:]  # shape: (len(model_output), 2, 2)
+        means = model_output[:, :, 0]  # shape: (batch_size, n_models, 2)
+        cholesky = model_output[:, :, 1:]  # shape: (batch_size, n_models, 2, 2)
         covs = cholesky @ cholesky.swapaxes(-1, -2)
 
         unscaled[:, :, 0] = __apply_affine(means, A, b)
         unscaled[:, :, 1:] = A @ covs @ A.T
+
     # otherwise, just apply the affine transformation
     elif model_output.ndim == 2 and model_output.shape[1] == 2:
         unscaled = __apply_affine(model_output, A, b)
