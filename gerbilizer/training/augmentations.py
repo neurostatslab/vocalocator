@@ -12,7 +12,7 @@ class AddGaussianNoise(torch.nn.Module):
 
 def build_augmentations(CONFIG):
 
-    if CONFIG["AUGMENT_DATA"]:
+    if CONFIG["AUGMENTATIONS"]["AUGMENT_DATA"]:
 
         return Compose(
             [
@@ -29,14 +29,14 @@ def build_augmentations(CONFIG):
                 #     mode="per_example",
                 # ),
                 Shift(
-                    min_shift=CONFIG["AUGMENT_SHIFT_MIN"],
-                    max_shift=CONFIG["AUGMENT_SHIFT_MAX"],
+                    min_shift=CONFIG["AUGMENTATIONS"]["AUGMENT_SHIFT_MIN"],
+                    max_shift=CONFIG["AUGMENTATIONS"]["AUGMENT_SHIFT_MAX"],
                     shift_unit="fraction",
-                    p=CONFIG["AUGMENT_SHIFT_PROB"],
+                    p=CONFIG["AUGMENTATIONS"]["AUGMENT_SHIFT_PROB"],
                     mode="per_example",
                 ),
                 PolarityInversion(
-                    p=CONFIG["AUGMENT_INVERSION_PROB"],
+                    p=CONFIG["AUGMENTATIONS"]["AUGMENT_INVERSION_PROB"],
                     mode="per_example",
                 ),
                 # AddGaussianNoise(CONFIG["AUGMENT_GAUSS_NOISE"])

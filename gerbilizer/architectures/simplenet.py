@@ -58,29 +58,40 @@ def ceiling_division(n, d):
 
 
 class GerbilizerSimpleNetwork(torch.nn.Module):
+    defaults = {
+        "USE_BATCH_NORM": True,
+        "SHOULD_DOWNSAMPLE": [ False, True, True, True, True, True, False ],
+        "CONV_FILTER_SIZES": [ 19, 7, 39, 41, 23, 29, 33 ],
+        "CONV_NUM_CHANNELS": [ 16, 16, 16, 32, 32, 32, 64 ],
+        "CONV_DILATIONS": [ 1, 1, 1, 1, 1, 1, 1 ],
+        "OUTPUT_COV": True,
+        "REGULARIZE_COV": False,
+    }
+
     def __init__(self, CONFIG):
         super(GerbilizerSimpleNetwork, self).__init__()
 
-        N = CONFIG["NUM_MICROPHONES"]
+        N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
-        if CONFIG["COMPUTE_XCORRS"]:
+        if CONFIG["DATA"].get("COMPUTE_XCORRS", False):
             N += comb(N, 2)
 
-        should_downsample = CONFIG["SHOULD_DOWNSAMPLE"]
-        self.n_channels = CONFIG[
-            "CONV_NUM_CHANNELS"
-        ]  # Converting this to a JSON array in the config for convenience
-        filter_sizes = CONFIG[
-            "CONV_FILTER_SIZES"
-        ]  # Also making this an array, along with the others
+        # Obtains model-specific parameters from the config file and fills in missing entries with defaults
+        model_config = GerbilizerSimpleNetwork.defaults.copy()
+        model_config.update(CONFIG.get("MODEL_PARAMS", {}))
 
-        min_len = min(len(self.n_channels), len(filter_sizes))
+        should_downsample = model_config["SHOULD_DOWNSAMPLE"]
+        self.n_channels = model_config["CONV_NUM_CHANNELS"]
+        filter_sizes = model_config["CONV_FILTER_SIZES"]
+        dilations = model_config["CONV_DILATIONS"]
+
+        min_len = min(len(self.n_channels), len(filter_sizes), len(should_downsample), len(dilations))
         self.n_channels = self.n_channels[:min_len]
         filter_sizes = filter_sizes[:min_len]
         should_downsample = should_downsample[:min_len]
+        dilations = dilations[:min_len]
 
-        dilations = CONFIG["CONV_DILATIONS"]
-        use_batch_norm = CONFIG["USE_BATCH_NORM"]
+        use_batch_norm = model_config["USE_BATCH_NORM"]
 
         self.n_channels.insert(0, N)
 
@@ -107,7 +118,7 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
 
         # Final linear layer to reduce the number of channels.
         # self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
-        self.output_cov = bool(CONFIG.get("OUTPUT_COV"))
+        self.output_cov = model_config["OUTPUT_COV"]
         N_OUTPUTS = 5 if self.output_cov else 2
 
         self.coord_readout = torch.nn.Linear(self.n_channels[-1], N_OUTPUTS)

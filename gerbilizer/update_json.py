@@ -3,7 +3,14 @@ Helper script to update parameters in a JSON file with new values from another.
 """
 
 import argparse
-import json
+from sys import stderr
+
+try:
+    # Attempt to use json5 if available
+    import pyjson5 as json
+except ImportError:
+    print("Warning: json5 not available, falling back to json.", file=stderr)
+    import json
 
 
 def read_json(path) -> dict:

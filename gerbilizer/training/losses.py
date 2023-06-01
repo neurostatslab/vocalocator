@@ -72,7 +72,6 @@ def gaussian_NLL(pred: torch.Tensor, target: torch.Tensor):
     # create the distribution corresponding to the outputted predictive
     # density
     multivariate_normal = MultivariateNormal(loc=y_hat, scale_tril=L)
-
     loss = -multivariate_normal.log_prob(target)
 
     return loss

@@ -334,15 +334,20 @@ def build_dataloaders(path_to_data, CONFIG):
     collate_fn = lambda batch: batch[
         0
     ]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
-    augment_params = {k: v for k, v in CONFIG.items() if k.startswith("AUGMENT")}
+    augment_params = CONFIG["AUGMENTATIONS"]
+
+    arena_dims = CONFIG["DATA"]["ARENA_DIMS"]
+    make_xcorrs = CONFIG["DATA"]["COMPUTE_XCORRS"]
+    max_batch_size = CONFIG["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
+    crop_length = CONFIG["DATA"].get("CROP_LENGTH", None)
 
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
             train_path,
-            arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            make_xcorrs=CONFIG["COMPUTE_XCORRS"],
-            max_batch_size=CONFIG["TRAIN_BATCH_MAX_SAMPLES"],
-            crop_length=CONFIG.get("CROP_LENGTH", None),
+            arena_dims=arena_dims,
+            make_xcorrs=make_xcorrs,
+            max_batch_size=max_batch_size,
+            crop_length=crop_length,
             augmentation_params=augment_params,
         )
         train_dataloader = DataLoader(traindata, collate_fn=collate_fn)
@@ -352,9 +357,9 @@ def build_dataloaders(path_to_data, CONFIG):
     if os.path.exists(val_path):
         valdata = GerbilVocalizationDataset(
             val_path,
-            arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            make_xcorrs=CONFIG["COMPUTE_XCORRS"],
-            crop_length=CONFIG.get("CROP_LENGTH", None),
+            arena_dims=arena_dims,
+            make_xcorrs=make_xcorrs,
+            crop_length=crop_length,
             sequential=True,
         )
         val_dataloader = DataLoader(valdata, collate_fn=collate_fn)
@@ -364,9 +369,9 @@ def build_dataloaders(path_to_data, CONFIG):
     if os.path.exists(test_path):
         testdata = GerbilVocalizationDataset(
             test_path,
-            arena_dims=(CONFIG["ARENA_WIDTH"], CONFIG["ARENA_LENGTH"]),
-            crop_length=CONFIG.get("CROP_LENGTH", None),
-            make_xcorrs=CONFIG["COMPUTE_XCORRS"],
+            arena_dims=arena_dims,
+            crop_length=crop_length,
+            make_xcorrs=make_xcorrs,
             inference=True,
         )
         test_dataloader = DataLoader(testdata, collate_fn=collate_fn)
