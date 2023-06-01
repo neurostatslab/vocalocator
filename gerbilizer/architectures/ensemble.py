@@ -1,5 +1,3 @@
-import pathlib
-
 import torch
 from torch import nn
 
@@ -8,7 +6,17 @@ from torch import nn
 
 # inference only for now
 class GerbilizerEnsemble(nn.Module):
-    # config should just tell us model architectures
+    """
+    Wrapper class to help assess ensembles of models.
+
+    The proper way to use this class currently involves training N
+    models and getting their final configs with weights paths in each
+    config file. Then assemble these configs into one ensemble
+    json file with key "MODELS" and value a list of json objects,
+    where each object is the config for one of the models in the ensemble.
+    Once this is complete, the ensemble config can be passed to the assess.py
+    script without issue.
+    """
     def __init__(self, config, built_models):
         """
         Inputs the loaded config dictionary object, as well as each submodel
@@ -32,28 +40,6 @@ class GerbilizerEnsemble(nn.Module):
             model.load_state_dict(weights, strict=False)
 
         self.models = nn.ModuleList(built_models)
-
-#     @classmethod
-#     def from_ensemble_dir(cls, ensemble_dir):
-#         """
-#         Load in an ensemble of models.
-#         """
-#         # load in jsons
-#         config_paths = sorted(pathlib.Path(ensemble_dir).glob("*/config.json"))
-#         # load in model weights
-#         configs = []
-#         for path in config_paths:
-#             configs.append(build_config(str(path)))
-#         # call regular constructor
-#         ensemble = cls({"MODELS": configs})
-#         # load state dict for each model
-#         # for model, config in zip(ensemble.models, configs):
-#         #     if "WEIGHTS_PATH" not in config:
-#         #         raise ValueError(
-#         #             "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
-#         #         )
-#         #     model.load_state_dict(torch.load(config["WEIGHTS_PATH"]))
-#         return ensemble
 
     def forward(self, x):
         # return mean and cholesky covariance of gaussian mixture
