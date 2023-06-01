@@ -70,6 +70,8 @@ class GerbilVocalizationDataset(IterableDataset):
         )
 
     def __len__(self):
+        if self.crop_length is not None:
+            return self.n_vocalizations * self.crop_length  # the expected number of samples processed within an epoch
         return self.max_returned_samples
 
     def __iter__(self):
@@ -165,7 +167,7 @@ class GerbilVocalizationDataset(IterableDataset):
         if crop_length is None:
             raise ValueError("Cannot take crop without crop length")
         valid_range = audio_len - crop_length
-        if valid_range < 0:  # Audio is shorter than desired crop length, pad right
+        if valid_range <= 0:  # Audio is shorter than desired crop length, pad right
             pad_size = crop_length - audio_len
             return F.pad(audio, (0, 0, 0, pad_size))
         range_start = np.random.randint(0, valid_range)

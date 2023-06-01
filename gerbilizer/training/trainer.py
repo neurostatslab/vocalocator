@@ -316,14 +316,14 @@ class Trainer:
             inference=True,
         )
 
-        dloader = DataLoader(dset)
+        dloader = DataLoader(dset, collate_fn=lambda batch: batch[0])
 
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
             for batch in dloader:
                 data = batch  # (1, channels, seq)
-                output = self.model(data.to(device)).cpu().numpy()
+                output = self.model(data.to(self.device)).cpu().numpy()
                 yield output
 
         if should_close_file:
