@@ -48,18 +48,26 @@ SIMPLENET_BASE = {
     "AUGMENT_FLIP_HORIZ": True,
     "AUGMENT_FLIP_VERT": True,
     "DATAFILE_PATH": "/mnt/home/atanelus/ceph/iteration/small_room_4/",
+    "WEIGHTS_PATH": "/mnt/home/achoudhri/ceph/end_to_end/speaker/attempt_1_2142023/2296261/pretrain/best_weights.pt"
 }
 
 SIMPLENET_COV = copy.deepcopy(SIMPLENET_BASE)
 SIMPLENET_COV["OUTPUT_COV"] = True
 
-ENSEMBLE = {"MODELS": [SIMPLENET_COV, SIMPLENET_COV, SIMPLENET_COV]}
-
-ENSEMBLE_AVG = {
+ENSEMBLE = {
     "MODELS": [SIMPLENET_COV, SIMPLENET_COV, SIMPLENET_COV],
-    "AVERAGE_OUTPUTS": True,
+    "ARCHITECTURE": "GerbilizerEnsemble",
+    "ARENA_WIDTH": 600,
+    "ARENA_LENGTH": 400,
+    "CONFIG_NAME": "simplenet_no_cov",
+    "DEVICE": "CPU",
 }
 
 ENSEMBLE_MISSING_COV = {
     "MODELS": [SIMPLENET_COV, SIMPLENET_BASE, SIMPLENET_COV],
+    "ARCHITECTURE": "GerbilizerEnsemble",
+    "ARENA_WIDTH": 600,
+    "ARENA_LENGTH": 400,
+    "CONFIG_NAME": "simplenet_no_cov",
+    "DEVICE": "CPU",
 }
