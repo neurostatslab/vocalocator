@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 
+
 # Positional Encoding module copied from https://github.com/pytorch/examples/blob/main/word_language_model/model.py
 # and modified slightly to accomodate a batch-first data shape
 class FixedEncoding(nn.Module):

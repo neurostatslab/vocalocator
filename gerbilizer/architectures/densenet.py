@@ -70,7 +70,6 @@ class GerbilizerDenseNet(torch.nn.Module):
         # self.y_coord_readout.weight.data.mul_(CONFIG["OUTPUT_SCALE_FACTOR"])
 
     def forward(self, x):
-
         for fc, gc, bnrm in zip(self.f_convs, self.g_convs, self.norm_layers):
             h = torch.tanh(fc(x)) * torch.sigmoid(gc(x))
             xp = self.pooling(x)

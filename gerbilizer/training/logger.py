@@ -56,7 +56,6 @@ class ProgressLogger:
     def __init__(
         self, num_epochs, traindata, valdata, log_interval, output_dir, logger
     ):
-
         self.num_epochs = num_epochs
         self.num_train_images = len(traindata.dataset)
         self.num_val_images = len(valdata.dataset)
@@ -92,7 +91,6 @@ class ProgressLogger:
         return split
 
     def start_training(self):
-
         # Increment epochs.
         self.epochcount += 1
         self.logger.info(">> STARTING EPOCH {}".format(self.epochcount))
@@ -121,7 +119,6 @@ class ProgressLogger:
         self.timer_split()
 
     def log_train_batch(self, loss, num_correct, batch_size):
-
         # Log training statistics.
         self.train_accumulator.log(loss, num_correct, batch_size, self.timer_split())
 
@@ -137,7 +134,6 @@ class ProgressLogger:
             )
 
     def start_testing(self):
-
         # Log progress.
         self.logger.info(">> DONE TRAINING, STARTING TESTING.")
 
@@ -148,7 +144,6 @@ class ProgressLogger:
         self.timer_split()
 
     def log_val_batch(self, loss, num_correct, batch_size):
-
         # Log testing statistics.
         self.val_accumulator.log(loss, num_correct, batch_size, self.timer_split())
         # Output training progress.

@@ -68,12 +68,12 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
     if arch in LOOKUP_TABLE:
         model, loss_fn, can_output_cov = LOOKUP_TABLE[arch]
         model = model(config)
-    elif arch == 'GerbilizerEnsemble':
+    elif arch == "GerbilizerEnsemble":
         # None out the other parameters
         loss_fn, can_output_cov = None, None
         built_submodels = []
-        for sub_model_config in config['MODELS']:
-            submodel, _  = build_model(sub_model_config)
+        for sub_model_config in config["MODELS"]:
+            submodel, _ = build_model(sub_model_config)
             built_submodels.append(submodel)
         model = GerbilizerEnsemble(config, built_submodels)
     else:
@@ -181,4 +181,3 @@ def unscale_output(
         )
 
     return unscaled
-

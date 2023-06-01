@@ -48,7 +48,7 @@ SIMPLENET_BASE = {
     "AUGMENT_FLIP_HORIZ": True,
     "AUGMENT_FLIP_VERT": True,
     "DATAFILE_PATH": "/mnt/home/atanelus/ceph/iteration/small_room_4/",
-    "WEIGHTS_PATH": "/mnt/home/achoudhri/ceph/end_to_end/speaker/attempt_1_2142023/2296261/pretrain/best_weights.pt"
+    "WEIGHTS_PATH": "/mnt/home/achoudhri/ceph/end_to_end/speaker/attempt_1_2142023/2296261/pretrain/best_weights.pt",
 }
 
 SIMPLENET_COV = copy.deepcopy(SIMPLENET_BASE)

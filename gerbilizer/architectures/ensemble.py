@@ -4,6 +4,7 @@ from torch import nn
 # from torch.nn import functional as F
 # from gerbilizer.training.configs import build_config
 
+
 # inference only for now
 class GerbilizerEnsemble(nn.Module):
     """
@@ -17,6 +18,7 @@ class GerbilizerEnsemble(nn.Module):
     Once this is complete, the ensemble config can be passed to the assess.py
     script without issue.
     """
+
     def __init__(self, config, built_models):
         """
         Inputs the loaded config dictionary object, as well as each submodel
@@ -33,7 +35,7 @@ class GerbilizerEnsemble(nn.Module):
             if "WEIGHTS_PATH" not in model_config:
                 raise ValueError(
                     "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
-                    )
+                )
 
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
             weights = torch.load(model_config["WEIGHTS_PATH"], map_location=device)
