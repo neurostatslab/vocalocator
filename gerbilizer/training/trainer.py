@@ -1,7 +1,6 @@
 import logging
 import os
 from os import path
-from sys import stderr
 from typing import Generator, NewType, Tuple, Union
 
 import h5py
@@ -18,9 +17,11 @@ from ..training.models import build_model
 try:
     # Attempt to use json5 if available
     import pyjson5 as json
+    using_json5 = True
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
+    using_json5 = False
 
 
 JSON = NewType("JSON", dict)
@@ -140,8 +141,9 @@ class Trainer:
         self.__config["WEIGHTS_PATH"] = self.__best_weights_file
         # Found that it's helpful to keep track of this
         self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
-        with open(os.path.join(self.__model_dir, "config.json"), "wb") as ctx:
-            print(self.__config)
+        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
+        filemode = 'wb' if using_json5 else 'w'
+        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
             json.dump(self.__config, ctx, indent=4)
 
         self.__init_logger()

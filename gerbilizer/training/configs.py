@@ -92,7 +92,12 @@ def update_recursively(dictionary: dict, defaults: dict) -> dict:
 
 def build_config(filepath: str) -> JSON:
     with open(filepath, "r") as ctx:
-        config = json.load(ctx)
+        try:
+            config = json.load(ctx)
+        except:
+            raise ValueError(
+                f"Could not parse JSON file at {filepath}. Perhaps a JSON5 file was provided without the necessary libraries installed?"
+            )
 
     if "CONFIG_NAME" not in config["GENERAL"]:
         raise ValueError(
