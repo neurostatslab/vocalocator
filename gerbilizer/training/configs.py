@@ -16,8 +16,8 @@ DEFAULT_CONFIG = {
     "COMPUTE_XCORRS": False,  # Append pair-wise cross-correlations of input audio. O(n^2) space requirement
     "NUM_AUDIO_SAMPLES": 10000,
     "AUDIO_SAMPLE_RATE": 125000,
-    "ARENA_WIDTH": 600,  # Size of enclosure along x axis
-    "ARENA_LENGTH": 400,  # Size of enclosure along y axis
+    "ARENA_WIDTH": 558.9,  # Size of enclosure along x axis
+    "ARENA_LENGTH": 355.6,  # Size of enclosure along y axis
     # Training hyperparameters.
     "NUM_EPOCHS": 20,
     "TRAIN_BATCH_SIZE": 64,
@@ -36,7 +36,9 @@ DEFAULT_CONFIG = {
     "AUGMENT_STRETCH_MIN": 0.95,
     "AUGMENT_STRETCH_MAX": 1.1,
     "AUGMENT_STRETCH_PROB": 1e-6,
-    "AUGMENT_GAUSS_NOISE": 0.005,
+    "AUGMENT_SNR_PROB": 0.5,
+    "AUGMENT_SNR_MIN": 5,
+    "AUGMENT_SNR_MAX": 45,
     "AUGMENT_PITCH_MIN": -1.0,
     "AUGMENT_PITCH_MAX": 1.0,
     "AUGMENT_PITCH_PROB": 1e-6,

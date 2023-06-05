@@ -8,6 +8,14 @@
 #SBATCH -o slurm_logs/eval_model_%j.log
 pwd; hostname; date;
 
+##################################################
+# Usage:
+# sbatch run_gpu.sh ~/ceph/path_to_data ~/path/to/config.json [~/path/to/outdir]
+# path_to_data/ should be a directory containing a file named 'test_set.h5'
+# config.json should contain the CONFIG_NAME key
+# ~/path/to/outdir is an optional path to a directory where the outputs should be stored.
+##################################################
+
 DATA_FILE=$1
 CONFIG=$2
 OUT_PATH=$3

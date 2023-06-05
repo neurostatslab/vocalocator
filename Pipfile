@@ -15,8 +15,10 @@ tqdm = "*"
 torch-audiomentations = "*"
 ipython = "*"
 notebook = "*"
+ipykernel = "*"
 
 [dev-packages]
+gerbilizer = {editable = true, path = "."}
 
 [requires]
 python_version = "3.9"

@@ -26,7 +26,7 @@ class GerbilizerReducedAttentionNet(nn.Module):
         n_random = config["TRANSFORMER_RANDOM_BLOCKS"]
         block_size = config["TRANSFORMER_BLOCK_SIZE"]
 
-        self.data_encoding = nn.Linear(n_mics * reduction, d_model)
+        self.data_encoding = nn.Conv1d(n_mics, d_model, 35, reduction)
 
         encoder_layer = SparseTransformerEncoderLayer(
             d_model,
@@ -65,14 +65,10 @@ class GerbilizerReducedAttentionNet(nn.Module):
         hourglass subclass.
         """
         # X initial shape: (batch, channels, seq)
-        x = x.view(x.shape[0], x.shape[1] * self.reduction, -1).transpose(-1, -2)
-        reduced_x = self.data_encoding(
-            x
+        reduced_x = self.data_encoding(x).transpose(
+            -1, -2
         )  # Should have shape (batch, seq // reduction, d_model)
-        cls_token = torch.zeros(
-            (reduced_x.shape[0], 1, reduced_x.shape[-1]), device=reduced_x.device
-        )
-        transformer_input = torch.cat([cls_token, reduced_x], dim=1)
+        transformer_input = reduced_x
         encoded = self.p_encoding(transformer_input)
         transformer_out = self.transformer(encoded)[:, 0, :]
         return self.dense(transformer_out)

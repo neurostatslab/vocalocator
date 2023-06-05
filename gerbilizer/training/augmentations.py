@@ -11,9 +11,7 @@ class AddGaussianNoise(torch.nn.Module):
 
 
 def build_augmentations(CONFIG):
-
     if CONFIG["AUGMENT_DATA"]:
-
         return Compose(
             [
                 # TimeStretch(
