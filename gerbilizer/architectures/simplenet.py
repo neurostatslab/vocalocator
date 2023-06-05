@@ -60,10 +60,10 @@ def ceiling_division(n, d):
 class GerbilizerSimpleNetwork(torch.nn.Module):
     defaults = {
         "USE_BATCH_NORM": True,
-        "SHOULD_DOWNSAMPLE": [ False, True, True, True, True, True, False ],
-        "CONV_FILTER_SIZES": [ 19, 7, 39, 41, 23, 29, 33 ],
-        "CONV_NUM_CHANNELS": [ 16, 16, 16, 32, 32, 32, 64 ],
-        "CONV_DILATIONS": [ 1, 1, 1, 1, 1, 1, 1 ],
+        "SHOULD_DOWNSAMPLE": [False, True, True, True, True, True, False],
+        "CONV_FILTER_SIZES": [19, 7, 39, 41, 23, 29, 33],
+        "CONV_NUM_CHANNELS": [16, 16, 16, 32, 32, 32, 64],
+        "CONV_DILATIONS": [1, 1, 1, 1, 1, 1, 1],
         "OUTPUT_COV": True,
         "REGULARIZE_COV": False,
     }
@@ -85,7 +85,12 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         filter_sizes = model_config["CONV_FILTER_SIZES"]
         dilations = model_config["CONV_DILATIONS"]
 
-        min_len = min(len(self.n_channels), len(filter_sizes), len(should_downsample), len(dilations))
+        min_len = min(
+            len(self.n_channels),
+            len(filter_sizes),
+            len(should_downsample),
+            len(dilations),
+        )
         self.n_channels = self.n_channels[:min_len]
         filter_sizes = filter_sizes[:min_len]
         should_downsample = should_downsample[:min_len]

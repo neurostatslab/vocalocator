@@ -71,7 +71,9 @@ class GerbilVocalizationDataset(IterableDataset):
 
     def __len__(self):
         if self.crop_length is not None:
-            return self.n_vocalizations * self.crop_length  # the expected number of samples processed within an epoch
+            return (
+                self.n_vocalizations * self.crop_length
+            )  # the expected number of samples processed within an epoch
         return self.max_returned_samples
 
     def __iter__(self):

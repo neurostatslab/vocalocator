@@ -98,9 +98,11 @@ def validate_args(args):
         else:
             args.data = args.config_data["DATA"]["DATAFILE_PATH"]
 
-    args.job_id = next_available_job_id(args.config_data["GENERAL"]["CONFIG_NAME"], args.save_path)
+    args.job_id = next_available_job_id(
+        args.config_data["GENERAL"]["CONFIG_NAME"], args.save_path
+    )
     # Useful for sweeps
-    if "JOB_ID" in args.config_data['GENERAL']:
+    if "JOB_ID" in args.config_data["GENERAL"]:
         args.job_id = args.config_data["GENERAL"]["JOB_ID"]
 
     # place output directly into directory user provides if bare flag is enabled
@@ -164,7 +166,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
 
 
 def run(args):
-    weights = args.config_data.get('WEIGHTS_PATH', None)
+    weights = args.config_data.get("WEIGHTS_PATH", None)
 
     # This modifies args.config_data['WEIGHTS_PATH']
     trainer = Trainer(
@@ -181,7 +183,7 @@ def run(args):
         run_eval(args, trainer)
     else:
         # Assume all keys with defualt entries in config.py are present
-        num_epochs = args.config_data['OPTIMIZATION']['NUM_EPOCHS']
+        num_epochs = args.config_data["OPTIMIZATION"]["NUM_EPOCHS"]
         for _ in range(num_epochs):
             trainer.train_epoch()
             trainer.eval_validation()

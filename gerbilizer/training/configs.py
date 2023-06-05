@@ -20,11 +20,9 @@ DEFAULT_CONFIG = {
         "MOMENTUM": 0.9,
         "MAX_LEARNING_RATE": 0.0005,
         "MIN_LEARNING_RATE": 0.0000,
-        "CLIP_GRADIENTS": False
+        "CLIP_GRADIENTS": False,
     },
-
     "ARCHITECTURE": "GerbilizerSimpleNetwork",
-
     "GENERAL": {
         "CONFIG_NAME": "simple_network",
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
@@ -34,7 +32,6 @@ DEFAULT_CONFIG = {
         "SAVE_SAMPLE_OUTPUT": False,
         "SAVE_LOSS_PLOT": False,
     },
-
     "DATA": {
         "NUM_MICROPHONES": 4,
         "AUDIO_SAMPLE_RATE": 125000,
@@ -49,7 +46,6 @@ DEFAULT_CONFIG = {
         "AUGMENT_DATA": True,  # controls noise addition
         "ARENA_DIMS": [558.9, 355.6],
     },
-
     "AUGMENTATIONS": {
         "AUGMENT_STRETCH_MIN": 0.95,  # currently unimpleemented
         "AUGMENT_STRETCH_MAX": 1.1,
@@ -90,8 +86,7 @@ def update_recursively(dictionary: dict, defualts: dict) -> dict:
         if key not in dictionary:
             dictionary[key] = defualt_value
         elif isinstance(dictionary[key], dict):
-            dictionary[key] = update_recursively(
-                dictionary[key], defualt_value)
+            dictionary[key] = update_recursively(dictionary[key], defualt_value)
     return dictionary
 
 
@@ -99,7 +94,7 @@ def build_config(filepath: str) -> JSON:
     with open(filepath, "r") as ctx:
         config = json.load(ctx)
 
-    if "CONFIG_NAME" not in config['GENERAL']:
+    if "CONFIG_NAME" not in config["GENERAL"]:
         raise ValueError(
             "Configurations provided as JSON files should include a 'CONFIG_NAME' string."
         )

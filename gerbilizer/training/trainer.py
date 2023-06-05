@@ -190,7 +190,10 @@ class Trainer:
             elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
                 optim_args = {
-                    "betas": (self.__config["OPTIMIZATION"]["ADAM_BETA1"], self.__config["OPTIMIZATION"]["ADAM_BETA2"])
+                    "betas": (
+                        self.__config["OPTIMIZATION"]["ADAM_BETA1"],
+                        self.__config["OPTIMIZATION"]["ADAM_BETA2"],
+                    )
                 }
             else:
                 raise NotImplementedError(
@@ -203,7 +206,9 @@ class Trainer:
                 else self.model.parameters()
             )
             self.__optim = base_optim(
-                params, lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"], **optim_args
+                params,
+                lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"],
+                **optim_args,
             )
             self.__scheduler = CosineAnnealingLR(
                 self.__optim,

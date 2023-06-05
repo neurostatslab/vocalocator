@@ -83,7 +83,7 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
 
     # change the loss function depending on whether a model outputting covariance
     # was chosen
-    if config.get('MODEL_PARAMS', {}).get("OUTPUT_COV", True):
+    if config.get("MODEL_PARAMS", {}).get("OUTPUT_COV", True):
         # some models, like a model that outputs a 2d map, don't have the ability to output a
         # cov matrix.
         if not can_output_cov:
@@ -95,7 +95,7 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
 
         # change the loss function depending on whether the "REGULARIZE_COV" parameter was provided
         # in the JSON config.
-        if config.get('MODEL_PARAMS', {}).get("REGULARIZE_COV", False):
+        if config.get("MODEL_PARAMS", {}).get("REGULARIZE_COV", False):
             reg = config["MODEL_PARAMS"]["REGULARIZE_COV"]
             if reg == "HALF_NORMAL":
                 loss = gaussian_NLL_half_normal_variances
