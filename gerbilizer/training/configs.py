@@ -80,13 +80,13 @@ def keys_to_uppercase(dictionary: dict) -> dict:
     return new_dict
 
 
-def update_recursively(dictionary: dict, defualts: dict) -> dict:
+def update_recursively(dictionary: dict, defaults: dict) -> dict:
     """Updates a dictionary with default values, recursing through subdictionaries"""
-    for key, defualt_value in defualts.items():
+    for key, default_value in defaults.items():
         if key not in dictionary:
-            dictionary[key] = defualt_value
+            dictionary[key] = default_value
         elif isinstance(dictionary[key], dict):
-            dictionary[key] = update_recursively(dictionary[key], defualt_value)
+            dictionary[key] = update_recursively(dictionary[key], default_value)
     return dictionary
 
 

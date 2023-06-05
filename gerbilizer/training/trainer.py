@@ -19,7 +19,7 @@ try:
     # Attempt to use json5 if available
     import pyjson5 as json
 except ImportError:
-    print("Warning: json5 not available, falling back to json.", file=stderr)
+    logging.warn("Warning: json5 not available, falling back to json.")
     import json
 
 
