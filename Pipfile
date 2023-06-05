@@ -7,18 +7,13 @@ name = "pypi"
 numpy = "*"
 torch = "*"
 torchaudio = "*"
-scipy = "*"
-h5py = "*"
 pyjson5 = "*"
 torch-audiomentations = "*"
 torch-optimizer = "*"
 
 [dev-packages]
 matplotlib = "*"
-ipython = "*"
-notebook = "*"
-ipykernel = "*"
-gerbilizer = {editable = true, path = "."}
+jupyter = "*"
 
 [requires]
 python_version = "3.9"

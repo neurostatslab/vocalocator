@@ -5,12 +5,8 @@ from typing import Any, Callable, Union
 import numpy as np
 import torch
 
-from gerbilizer.outputs import (
-    GaussianOutputFixedVariance,
-    ModelOutput,
-    ModelOutputFactory,
-    ProbabilisticOutput,
-)
+from gerbilizer.outputs import (GaussianOutputFixedVariance, ModelOutput,
+                                ModelOutputFactory, ProbabilisticOutput)
 from gerbilizer.outputs.base import BaseDistributionOutput, MDNOutput
 
 from ..architectures.base import GerbilizerArchitecture
