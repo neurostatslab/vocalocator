@@ -6,19 +6,18 @@ name = "pypi"
 [packages]
 numpy = "*"
 torch = "*"
-torchvision = "*"
 torchaudio = "*"
-scipy = "*"
-h5py = "*"
-matplotlib = "*"
-tqdm = "*"
+pyjson5 = "*"
 torch-audiomentations = "*"
-ipython = "*"
-notebook = "*"
-ipykernel = "*"
+h5py = "*"
+torchvision = "*"
 
 [dev-packages]
-gerbilizer = {editable = true, path = "."}
+matplotlib = "*"
+jupyter = "*"
 
 [requires]
 python_version = "3.9"
+
+[pipenv]
+allow_prereleases = true

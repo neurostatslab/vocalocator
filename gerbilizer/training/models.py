@@ -1,20 +1,15 @@
 """Initialize model and loss function from configuration."""
-
+import matplotlib.pyplot as plt
 from collections import namedtuple
 from functools import partial
-from typing import Any, Callable, Union
+from typing import Any, Callable, Tuple, Union
 
 import numpy as np
 import torch
 
-from ..architectures.attentionnet import GerbilizerSparseAttentionNet
+from ..architectures.attentionnet import GerbilizerTransformer
 from ..architectures.densenet import GerbilizerDenseNet
 from ..architectures.ensemble import GerbilizerEnsemble
-from ..architectures.perceiver import GerbilizerPerceiver
-from ..architectures.reduced import (
-    GerbilizerReducedAttentionNet,
-    GerbilizerAttentionHourglassNet,
-)
 from ..architectures.simplenet import GerbilizerSimpleNetwork
 from .losses import (
     se_loss_fn,
@@ -22,6 +17,7 @@ from .losses import (
     gaussian_NLL,
     gaussian_NLL_half_normal_variances,
     gaussian_NLL_entropy_penalty,
+    wass_loss_fn,
 )
 
 ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov"))
@@ -29,16 +25,7 @@ ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov
 LOOKUP_TABLE = {
     "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, True),
     "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
-    "GerbilizerSparseAttentionNet": ModelType(
-        GerbilizerSparseAttentionNet, se_loss_fn, True
-    ),
-    "GerbilizerReducedSparseAttentionNet": ModelType(
-        GerbilizerReducedAttentionNet, se_loss_fn, True
-    ),
-    "GerbilizerAttentionHourglassNet": ModelType(
-        GerbilizerAttentionHourglassNet, map_se_loss_fn, False
-    ),
-    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, True),
+    "GerbilizerTransformer": ModelType(GerbilizerTransformer, wass_loss_fn, True),
 }
 
 
@@ -81,6 +68,12 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
 
     loss = loss_fn
 
+    if loss == wass_loss_fn:
+        # Converted from mm to m for stability
+        arena_dims = np.array(config["DATA"]["ARENA_DIMS"]) / 1000
+        transport_cost = partial(transport_cost_fn, width=40, height=30)
+        loss = partial(wass_loss_fn, transport_cost=transport_cost)
+
     # change the loss function depending on whether a model outputting covariance
     # was chosen
     if config.get('MODEL_PARAMS', {}).get("OUTPUT_COV", True):
@@ -107,6 +100,24 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
                 )
 
     return model, loss
+
+
+def transport_cost_fn(target: torch.Tensor, width: int, height: int) -> torch.Tensor:
+    arena_dims = [2, 2]
+    spacing_x = arena_dims[0] / width
+    spacing_y = arena_dims[1] / height
+    x_points = np.linspace(-arena_dims[0] / 2 + spacing_x / 2, arena_dims[0] / 2 - spacing_x / 2, width, endpoint=True)  # evaluate at center of each grid cell
+    y_points = np.linspace(-arena_dims[1] / 2 + spacing_y / 2, arena_dims[1] / 2 - spacing_y / 2, height, endpoint=True)
+    x_grid, y_grid = np.meshgrid(x_points, y_points)
+    grid = np.stack([x_grid, y_grid], axis=-1).astype(np.float32)
+    grid = torch.from_numpy(grid).float().to(target.device)
+    # fill each cell with the distance between the cell center and the target
+    # grid is of shape (height, width, 2)
+    # target is of shape (n_samples, 2)
+    dists = torch.norm(target[:, None, None, :] - grid[None, :, :, :], dim=-1, p=2)  # yields shape (n_samples, height, width)
+
+    # warning: if displayed as an image, this will be upside down
+    return dists
 
 
 def __apply_affine(locations: np.ndarray, A: np.ndarray, b: np.ndarray):

@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import logging
 import os
 from os import path
@@ -82,9 +83,9 @@ class Trainer:
             self.__init_output_dir()
             self.__init_dataloaders()
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and self.__config["GENERAL"]["DEVICE"] == "GPU":
             self.device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
+        elif torch.backends.mps.is_available() and self.__config["GENERAL"]["DEVICE"] == "GPU":
             self.device = torch.device("mps")
         else:
             self.device = torch.device("cpu")
@@ -141,7 +142,6 @@ class Trainer:
         # Found that it's helpful to keep track of this
         self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
         with open(os.path.join(self.__model_dir, "config.json"), "wb") as ctx:
-            print(self.__config)
             json.dump(self.__config, ctx, indent=4)
 
         self.__init_logger()
@@ -176,7 +176,13 @@ class Trainer:
 
         # Specify network architecture and loss function.
         self.model, self.__loss_fn = build_model(self.__config)
-        self.model.to(self.device)
+        self.model = self.model.to(self.device)
+        print(f"Moving model to device: {self.device}")
+        print("SDP enabled: ")
+        print(torch.backends.cuda.flash_sdp_enabled())
+        print(torch.backends.cuda.mem_efficient_sdp_enabled())
+        print(torch.backends.cuda.math_sdp_enabled())
+
         # In inference mode, there is no logger
         if not self.__eval:
             self.__logger.info(self.model.__repr__())
@@ -257,7 +263,6 @@ class Trainer:
 
                     # Forward pass.
                     outputs = self.model(sounds).cpu().numpy()
-
                     # Convert outputs and labels to centimeters from arb. unit
                     # But only if the outputs are x,y coordinate pairs
                     if outputs.ndim == 2 and outputs.shape[1] == 2:
@@ -267,8 +272,20 @@ class Trainer:
                         mean_loss = l2_distance(
                             predicted_locations, locations, arena_dims
                         ).mean()
+                    elif outputs.ndim == 3:
+                        x_step  = 2 / outputs.shape[2]
+                        y_step  = 2 / outputs.shape[1]
+                        x_centers = np.linspace(-1 + x_step / 2, 1 - x_step / 2, outputs.shape[2], endpoint=True)
+                        y_centers = np.linspace(-1 + y_step / 2, 1 - y_step / 2, outputs.shape[1], endpoint=True)
+                        pred = np.unravel_index(np.argmax(outputs.reshape(outputs.shape[0], -1), axis=1), outputs.shape[1:])
+                        pred_x = x_centers[pred[1]]
+                        pred_y = y_centers[pred[0]]
+                        pred_locations = np.stack((pred_x, pred_y), axis=1)
+                        mean_loss = l2_distance(
+                            pred_locations, locations, arena_dims
+                        ).mean().item()
                     else:
-                        losses = self.__loss_fn(outputs, locations)
+                        losses = self.__loss_fn(torch.from_numpy(outputs), torch.from_numpy(locations))
                         mean_loss = torch.mean(losses).item()
 
                     # Log progress

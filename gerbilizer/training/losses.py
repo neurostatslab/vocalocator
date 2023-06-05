@@ -26,7 +26,7 @@ def map_se_loss_fn(pred: torch.Tensor, target: torch.Tensor):
     return torch.mean(torch.square(target - pred).mean(dim=1))
 
 
-def wass_loss_fn(pred: torch.Tensor, target: torch.Tensor):
+def wass_loss_fn(pred: torch.Tensor, target: torch.Tensor, transport_cost):
     """Calculates the earth mover's distance between the target and predicted locations.
     This is done by element-wise multiplying the prediction map by a (pre-computed) matrix
     of distances, in which each element contains the distance of that bin from the target
@@ -35,6 +35,7 @@ def wass_loss_fn(pred: torch.Tensor, target: torch.Tensor):
     What is returned is not the true distance, but a numerically stable analogue that shares
     minima with the true distance w.r.t model parameters.
     """
+    target = transport_cost(target)
     flat_pred = torch.flatten(pred, start_dim=1)
     flat_target = torch.flatten(target, start_dim=1)
     # Add 1 to target to make the smallest value 0
