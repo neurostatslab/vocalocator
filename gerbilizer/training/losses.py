@@ -11,6 +11,7 @@ from torch.distributions import MultivariateNormal
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 # MARK: Loss functions
 # All loss functions are expected to accept the prediction as the first argument
 # and the ground truth as the second argument
@@ -75,6 +76,7 @@ def gaussian_NLL(pred: torch.Tensor, target: torch.Tensor):
     loss = -multivariate_normal.log_prob(target)
 
     return loss
+
 
 def gaussian_NLL_half_normal_variances(pred: torch.Tensor, target: torch.Tensor):
     """
