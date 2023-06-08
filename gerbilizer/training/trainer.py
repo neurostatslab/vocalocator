@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from os import path
@@ -14,6 +13,15 @@ from torch.utils.data import DataLoader
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
+
+try:
+    # Attempt to use json5 if available
+    import pyjson5 as json
+    using_json5 = True
+except ImportError:
+    logging.warn("Warning: json5 not available, falling back to json.")
+    import json
+    using_json5 = False
 
 
 JSON = NewType("JSON", dict)
@@ -75,6 +83,13 @@ class Trainer:
             self.__init_output_dir()
             self.__init_dataloaders()
 
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+
         self.__init_model()
 
         if not self.__eval:
@@ -88,7 +103,7 @@ class Trainer:
             self.__best_loss = float("inf")
 
     def load_weights(self, weights: Union[dict, str]):
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        device = self.device
         if isinstance(weights, str):
             weights = torch.load(weights, map_location=device)
         self.model.load_state_dict(weights, strict=False)
@@ -124,11 +139,8 @@ class Trainer:
 
         # Write the active configuration to disk
         self.__config["WEIGHTS_PATH"] = self.__best_weights_file
-        self.__config[
-            "DATAFILE_PATH"
-        ] = self.__datafile  # Found that it's helpful to keep track of this
-        with open(os.path.join(self.__model_dir, "config.json"), "w") as ctx:
-            json.dump(self.__config, ctx, indent=4)
+        # Found that it's helpful to keep track of this
+        self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
 
         self.__init_logger()
 
@@ -141,10 +153,10 @@ class Trainer:
             self.__logger.info(f"Test set:\t{self.__testdata.dataset}")
 
         self.__progress_log = ProgressLogger(
-            self.__config["NUM_EPOCHS"],
+            self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
             self.__traindata,
             self.__valdata,
-            self.__config["LOG_INTERVAL"],
+            self.__config["GENERAL"]["LOG_INTERVAL"],
             self.__model_dir,
             self.__logger,
         )
@@ -157,29 +169,40 @@ class Trainer:
         """Creates the model, optimizer, and loss function."""
         # Set random seeds. Note that numpy random seed will affect
         # the data augmentation under the current implementation.
-        torch.manual_seed(self.__config["TORCH_SEED"])
-        np.random.seed(self.__config["NUMPY_SEED"])
+        torch.manual_seed(self.__config["GENERAL"]["TORCH_SEED"])
+        np.random.seed(self.__config["GENERAL"]["NUMPY_SEED"])
 
         # Specify network architecture and loss function.
         self.model, self.__loss_fn = build_model(self.__config)
+        self.model.to(self.device)
+
+        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
+        # Ensure this is written after the model has had the chance to update the config
+        filemode = 'wb' if using_json5 else 'w'
+        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
+            json.dump(self.__config, ctx, indent=4)
+
         # In inference mode, there is no logger
         if not self.__eval:
             self.__logger.info(self.model.__repr__())
 
-            if self.__config["OPTIMIZER"] == "SGD":
+            if self.__config["OPTIMIZATION"]["OPTIMIZER"] == "SGD":
                 base_optim = torch.optim.SGD
                 optim_args = {
-                    "momentum": self.__config["MOMENTUM"],
-                    "weight_decay": self.__config["WEIGHT_DECAY"],
+                    "momentum": self.__config["OPTIMIZATION"]["MOMENTUM"],
+                    "weight_decay": self.__config["OPTIMIZATION"]["WEIGHT_DECAY"],
                 }
-            elif self.__config["OPTIMIZER"] == "ADAM":
+            elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
                 optim_args = {
-                    "betas": (self.__config["ADAM_BETA1"], self.__config["ADAM_BETA2"])
+                    "betas": (
+                        self.__config["OPTIMIZATION"]["ADAM_BETA1"],
+                        self.__config["OPTIMIZATION"]["ADAM_BETA2"],
+                    )
                 }
             else:
                 raise NotImplementedError(
-                    f'Unrecognized optimizer "{self.__config["OPTIMIZER"]}"'
+                    f'Unrecognized optimizer "{self.__config["OPTIMIZATION"]["OPTIMIZER"]}"'
                 )
 
             params = (
@@ -188,23 +211,24 @@ class Trainer:
                 else self.model.parameters()
             )
             self.__optim = base_optim(
-                params, lr=self.__config["MAX_LEARNING_RATE"], **optim_args
+                params,
+                lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"],
+                **optim_args,
             )
             self.__scheduler = CosineAnnealingLR(
                 self.__optim,
-                T_max=self.__config["NUM_EPOCHS"],
-                eta_min=self.__config["MIN_LEARNING_RATE"],
+                T_max=self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
+                eta_min=self.__config["OPTIMIZATION"]["MIN_LEARNING_RATE"],
             )
 
     def train_epoch(self):
         # Set the learning rate using cosine annealing.
         self.__progress_log.start_training()
         self.model.train()
+
         for sounds, locations in self.__traindata:
-            # Move data to gpu, if desired.
-            if self.__config["DEVICE"] == "GPU":
-                sounds = sounds.cuda()
-                locations = locations.cuda()
+            sounds = sounds.to(self.device)
+            locations = locations.to(self.device)
             # Prepare optimizer.
             self.__optim.zero_grad()
 
@@ -219,7 +243,7 @@ class Trainer:
 
             # Backwards pass.
             mean_loss.backward()
-            if self.__config["CLIP_GRADIENTS"]:
+            if self.__config["OPTIMIZATION"]["CLIP_GRADIENTS"]:
                 self.model.clip_grads()
             self.__optim.step()
 
@@ -232,13 +256,13 @@ class Trainer:
     def eval_validation(self):
         self.__progress_log.start_testing()
         self.model.eval()
-        arena_dims = (self.__config["ARENA_WIDTH"], self.__config["ARENA_LENGTH"])
+        arena_dims = self.__config["DATA"]["ARENA_DIMS"]
         if self.__valdata is not None:
             with torch.no_grad():
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
-                    if self.__config["DEVICE"] == "GPU":
-                        sounds = sounds.cuda()
+                    if self.__config["GENERAL"]["DEVICE"] == "GPU":
+                        sounds = sounds.to(self.device)
                     locations = locations.numpy()
 
                     # Forward pass.
@@ -296,21 +320,20 @@ class Trainer:
 
         dset = GerbilVocalizationDataset(
             datapath=dataset,
-            make_xcorrs=self.__config["COMPUTE_XCORRS"],
+            make_xcorrs=self.__config["DATA"]["COMPUTE_XCORRS"],
             arena_dims=arena_dims,
-            crop_length=self.__config.get("CROP_LENGTH", None),
+            crop_length=self.__config["DATA"].get("CROP_LENGTH", None),
             inference=True,
         )
 
-        dloader = DataLoader(dset)
+        dloader = DataLoader(dset, collate_fn=lambda batch: batch[0])
 
         self.model.eval()
-        device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        self.model.to(device)
+        self.model.to(self.device)
         with torch.no_grad():
             for batch in dloader:
                 data = batch  # (1, channels, seq)
-                output = self.model(data.to(device)).cpu().numpy()
+                output = self.model(data.to(self.device)).cpu().numpy()
                 yield output
 
         if should_close_file:
