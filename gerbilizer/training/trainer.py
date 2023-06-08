@@ -141,10 +141,6 @@ class Trainer:
         self.__config["WEIGHTS_PATH"] = self.__best_weights_file
         # Found that it's helpful to keep track of this
         self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
-        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
-        filemode = 'wb' if using_json5 else 'w'
-        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
-            json.dump(self.__config, ctx, indent=4)
 
         self.__init_logger()
 
@@ -179,6 +175,13 @@ class Trainer:
         # Specify network architecture and loss function.
         self.model, self.__loss_fn = build_model(self.__config)
         self.model.to(self.device)
+
+        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
+        # Ensure this is written after the model has had the chance to update the config
+        filemode = 'wb' if using_json5 else 'w'
+        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
+            json.dump(self.__config, ctx, indent=4)
+
         # In inference mode, there is no logger
         if not self.__eval:
             self.__logger.info(self.model.__repr__())
