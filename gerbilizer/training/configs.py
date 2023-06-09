@@ -43,23 +43,31 @@ DEFAULT_CONFIG = {
         "CROP_LENGTH": 2048,
         # controls mirroring and channel permutation augmentations
         "AUGMENT_LABELS": False,
-        "AUGMENT_DATA": True,  # controls noise addition
+        # controls noise addition
+        "AUGMENT_DATA": True,
         "ARENA_DIMS": [558.9, 355.6],
     },
     "AUGMENTATIONS": {
-        "AUGMENT_STRETCH_MIN": 0.95,  # currently unimpleemented
-        "AUGMENT_STRETCH_MAX": 1.1,
-        "AUGMENT_STRETCH_PROB": 1e-6,
-        "AUGMENT_SNR_PROB": 0.5,
-        "AUGMENT_SNR_MIN": 5,
-        "AUGMENT_SNR_MAX": 45,
-        "AUGMENT_PITCH_MIN": -1.0,  # currently unimplemented
-        "AUGMENT_PITCH_MAX": 1.0,
-        "AUGMENT_PITCH_PROB": 1e-6,
-        "AUGMENT_SHIFT_MIN": -0.1,  # currently unimplemented
-        "AUGMENT_SHIFT_MAX": 0.1,
-        "AUGMENT_SHIFT_PROB": 1.0,
-        "AUGMENT_INVERSION_PROB": 0.5,  # currently unimplemented
+        # Data augmentations: involves performing augmentations to the audio to which the model should be invariant
+        "PITCH_SHIFT": {
+            "MIN_SHIFT_SEMITONES": -2,
+            "MAX_SHIFT_SEMITONES": 2,
+            "PROB": 0.5,
+        },
+        "SAMPLE_SHIFT": {
+            "MIN_SHIFT": -125,
+            "MAX_SHIFT": 125,
+            "SHIFT_UNIT": "samples",
+            "PROB": 0.5,
+        },
+        "INVERSION": {
+            "PROB": 0.5,
+        },
+        "NOISE": {
+            "MIN_SNR": 0,
+            "MAX_SNR": 10,
+            "PROB": 0.5,
+        },
         # Label augmentations: involve mirroring sounds within the arena
         "AUGMENT_FLIP_HORIZ": True,  # contingent on AUGMENT_LABELS
         "AUGMENT_FLIP_VERT": True,  # contingent on AUGMENT_LABELS

@@ -9,7 +9,6 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-# from augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
@@ -93,7 +92,6 @@ class Trainer:
         self.__init_model()
 
         if not self.__eval:
-            # self.__augment = build_augmentations(self.__config) if self.__config['AUGMENT_DATA'] else None
             self.__logger.info(f" ==== STARTING TRAINING ====\n")
             self.__logger.info(
                 f">> SAVING INITIAL MODEL WEIGHTS TO {self.__init_weights_file}"
@@ -167,8 +165,7 @@ class Trainer:
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
-        # Set random seeds. Note that numpy random seed will affect
-        # the data augmentation under the current implementation.
+        # Set random seeds.
         torch.manual_seed(self.__config["GENERAL"]["TORCH_SEED"])
         np.random.seed(self.__config["GENERAL"]["NUMPY_SEED"])
 
@@ -232,10 +229,8 @@ class Trainer:
             # Prepare optimizer.
             self.__optim.zero_grad()
 
-            # Forward pass, including data augmentation.
-            # aug_input = self.__augment(sounds, sample_rate=125000) if self.__config['AUGMENT_DATA'] else sounds
-            aug_input = sounds
-            outputs = self.model(aug_input)
+            # Forward pass
+            outputs = self.model(sounds)
 
             # Compute loss.
             losses = self.__loss_fn(outputs, locations)

@@ -16,6 +16,8 @@ from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset, DataLoader
 
+from .augmentations import build_augmentations
+
 
 class GerbilVocalizationDataset(IterableDataset):
     def __init__(
@@ -29,7 +31,7 @@ class GerbilVocalizationDataset(IterableDataset):
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
         crop_length: Optional[int] = None,
-        augmentation_params: Optional[dict] = None,
+        augmentations: torch.nn.Module = None,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
 
@@ -65,9 +67,7 @@ class GerbilVocalizationDataset(IterableDataset):
         self.returned_samples = 0
         self.max_returned_samples = self.dataset["len_idx"][-1]
 
-        self.augmentation_params = (
-            augmentation_params if augmentation_params is not None else dict()
-        )
+        self.augmentations = augmentations
 
     def __len__(self):
         if self.crop_length is not None:
@@ -269,38 +269,12 @@ class GerbilVocalizationDataset(IterableDataset):
         scaled_labels = labels * scale
         return scaled_labels
 
-    @staticmethod
-    def add_noise(audio: torch.Tensor, snr_db: float):
-        # Expects audio to have shape (L, C)
-        noise = torch.randn_like(audio)
-
-        # Choose one microphone as a reference, so the strength of the noise is the same across all channels
-        audio_norm = torch.linalg.vector_norm(audio, dim=0)[0]
-        noise_norm = torch.linalg.vector_norm(noise, dim=0, keepdim=True)
-
-        snr = 10 ** (snr_db / 20)
-        scale_factor = snr * noise_norm / audio_norm
-        return audio * scale_factor + noise
-
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
         sound = torch.from_numpy(sound)
 
         if self.crop_length is not None:
             sound = self.__make_crop(sound, self.crop_length)
-
-        if (
-            self.augmentation_params
-            and self.augmentation_params["AUGMENT_DATA"]
-            and np.random.rand() < self.augmentation_params["AUGMENT_SNR_PROB"]
-        ):
-            sound = self.add_noise(
-                sound,
-                np.random.uniform(
-                    self.augmentation_params["AUGMENT_SNR_MIN"],
-                    self.augmentation_params["AUGMENT_SNR_MAX"],
-                ),
-            )
 
         if self.make_xcorrs:
             sound = self.__append_xcorr(
@@ -327,6 +301,26 @@ class GerbilVocalizationDataset(IterableDataset):
         return torch.from_numpy(sound.astype("float32")), torch.from_numpy(
             location_map.astype("float32")
         )
+    
+    def collate_fn(self, batch):
+        """Collate function for the dataloader. Returns the augmented batch
+        This serves as a convenient middleman between the point at which the data is loaded
+        and the point at which it is fed into the model. Here, the data can be augmented as
+        a batch, which is more efficient than augmenting each sample individually.
+        """
+
+        # Squeeze out the false batch dimension
+        # This is due to the way the DataLoader class constructs batches on iterable datasets
+        batch = batch[0]
+        if self.augmentations is None:
+            return batch
+
+        # Audiomentations expects the channel dimension to come before the time dimension
+        if isinstance(batch, tuple):
+            data, labels = batch
+            return self.augmentations(data.transpose(-1, -2)).transpose(-1, -2), labels
+        else:
+            return self.augmentations(batch.transpose(-1, -2)).transpose(-1, -2)
 
 
 def build_dataloaders(path_to_data, CONFIG):
@@ -335,10 +329,7 @@ def build_dataloaders(path_to_data, CONFIG):
     val_path = os.path.join(path_to_data, "val_set.h5")
     test_path = os.path.join(path_to_data, "test_set.h5")
 
-    collate_fn = lambda batch: batch[
-        0
-    ]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
-    augment_params = CONFIG["AUGMENTATIONS"]
+    augmentations = build_augmentations(CONFIG)
 
     arena_dims = CONFIG["DATA"]["ARENA_DIMS"]
     make_xcorrs = CONFIG["DATA"]["COMPUTE_XCORRS"]
@@ -352,9 +343,9 @@ def build_dataloaders(path_to_data, CONFIG):
             make_xcorrs=make_xcorrs,
             max_batch_size=max_batch_size,
             crop_length=crop_length,
-            augmentation_params=augment_params,
+            augmentations=augmentations,
         )
-        train_dataloader = DataLoader(traindata, collate_fn=collate_fn)
+        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn)
     else:
         train_dataloader = None
 
@@ -366,7 +357,7 @@ def build_dataloaders(path_to_data, CONFIG):
             crop_length=crop_length,
             sequential=True,
         )
-        val_dataloader = DataLoader(valdata, collate_fn=collate_fn)
+        val_dataloader = DataLoader(valdata, collate_fn=valdata.collate_fn)
     else:
         val_dataloader = None
 
@@ -378,7 +369,7 @@ def build_dataloaders(path_to_data, CONFIG):
             make_xcorrs=make_xcorrs,
             inference=True,
         )
-        test_dataloader = DataLoader(testdata, collate_fn=collate_fn)
+        test_dataloader = DataLoader(testdata, collate_fn=testdata.collate_fn)
     else:
         test_dataloader = None
 
