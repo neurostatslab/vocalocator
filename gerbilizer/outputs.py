@@ -95,8 +95,16 @@ class ProbabilisticOutput(ModelOutput):
         """
         # convert coordinate grid to arbitrary units
         coordinate_grid = self._convert(coordinate_grid, units, Unit.ARBITRARY)
-        return torch.exp(self._log_p(coordinate_grid))
+        pdf_on_arbitrary_grid = torch.exp(self._log_p(coordinate_grid))
+        # scale pdf accordingly
+        # determinant of the affine transform from [-1, 1]^2 \to [0,xdim] x [0, ydim]
+        # is xdim * ydim / 4, so we divide the pdf by that.
+        scale_factor = self.arena_dims[units].prod() / 4
+        return pdf_on_arbitrary_grid / scale_factor
 
+class UniformOutput(ModelOutput):
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.log(torch.tensor(0.25))
 
 class GaussianParameterization(enum.Enum):
     """
