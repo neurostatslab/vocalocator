@@ -1,7 +1,7 @@
 import enum
 import logging
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import torch
 
@@ -27,7 +27,7 @@ class ModelOutput:
         self,
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
-        arena_dim_units: str | Unit,
+        arena_dim_units: Union[str, Unit],
         ):
         """Initialize a ModelOutput object."""
         self.data = raw_output
@@ -106,23 +106,129 @@ class ProbabilisticOutput(ModelOutput):
         scale_factor = self.arena_dims[units].prod() / 4
         return pdf_on_arbitrary_grid / scale_factor
 
-class Mixture(ProbabilisticOutput):
+
+# class Ensemble(ProbabilisticOutput):
+#     """
+#     Util class allowing an arbitrary number of models to be ensembled together
+#     into one mixture density.
+#
+#     Crucially this class has a DIFFERENT init pattern: instead of inputting a
+#     torch tensor `raw_output`, this class requires a LIST of
+#     ProbabilisticOutputs `model_outputs`. The reason for this change is so that
+#     an arbitrary number of model output classes each accepting a potentially
+#     instance-specific number of parameters can still be combined without
+#     needing to know the details ahead of time.
+#     """
+#     def __init__(
+#         self,
+#         model_outputs: List[ProbabilisticOutput],
+#         arena_dims: torch.Tensor,
+#         arena_dim_units: str | Unit,
+#         ):
+#         """Initialize a Mixture object."""
+#         # create a fake raw_output tensor so we can still
+#         # use the base class's constructor to process arena dims and units
+#         device = model_outputs[0].data.device
+#         fake_raw_output = torch.tensor(0, device=device)
+#         super().__init__(fake_raw_output,, arena_dims, arena_dim_units)
+
+
+class MDNOutput(ProbabilisticOutput):
     """
-    Class providing ability to create/specify/learn mixture densities.
+    Class storing the output of a mixture density network, which
+    assumes a mixture response and parameterizes both the constituent
+    distributions of the mixture as well as the weights by which the constituent
+    distributions should be combined.
     """
     def __init__(
         self,
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
-        arena_dim_units: str | Unit,
+        arena_dim_units: Union[str, Unit],
         constituent_response_types: List[type[ProbabilisticOutput]],
-        combination_mode: Literal['AVERAGE', 'MDN'],
         ):
-        """Initialize a Mixture object."""
+        """
+        ADD A BETTER DOCSTRING HERE LATER.
+        """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
+        # sum the number of parameters each constituent response distribution expects
+        total_parameters_for_constituents = sum(
+            t.N_OUTPUTS_EXPECTED for t in constituent_response_types
+            )
+        # then add on the number of mixing weights expected (R for R
+        # the number of response distributions)
+        num_responses = len(constituent_response_types)
+        n_parameters_expected = total_parameters_for_constituents + num_responses
+
+        if raw_output.shape[-1] != n_parameters_expected:
+            raise ValueError(
+                f"Given constituent response types {constituent_response_types}, expected "
+                f"to recieve {n_parameters_expected} parameters per stimulus, with "
+                f"{total_parameters_for_constituents} params to specify the constituent "
+                f"distributions, and {num_responses} params to specify the mixing weights. "
+                f"Instead encountered {raw_output.shape[-1]}, with raw_output shape "
+                f"of {raw_output.shape}."
+                )
+
+        curr_idx = 0
+        self.responses = []
+        for response_type in constituent_response_types:
+            n_params = response_type.N_OUTPUTS_EXPECTED
+            next_idx = curr_idx + n_params
+            response = response_type(raw_output[:, curr_idx:next_idx], arena_dims, arena_dim_units)
+            self.responses.append(response)
+            curr_idx = next_idx
+
+        # the parameters representing the weights are expected to be
+        # passes as unnormalized logits. call these w_ij for i the batch index
+        # and j the logit for response distribution j.
+        unnormalized_logits = raw_output[:, curr_idx:]
+        # the actual weights theta_i are given by
+        # theta_ij = exp(w_ij) / [ \sum_k exp(w_ik) ]
+        # but we're ultimately going to work on log scale, so
+        # instead compute log theta)ij = w_ij - log(sum_k exp(w_ik))
+        normalizer = torch.logsumexp(unnormalized_logits, -1, keepdim=True)
+        self.log_weights = unnormalized_logits - normalizer
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        # with the log weights log(theta_ij) defined in the init
+        # method, we can now compute the mixture density evaluated at a
+        # certain (collection of) point(s)
+        if x.shape[-2] != self.batch_size:
+            raise ValueError(
+                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
+                f'expected second-to-last dim of input `x` to have the same shape. Instead '
+                f'found shape {x.shape}.'
+                )
+        # stacks R tensors each of shape (..., self.batch_size)
+        # into one big tensor of shape (..., self.batch_size, R)
+        # this is for compatibility with self.log_weights, which has
+        # shape (..., self.batch_size)
+        individual_log_probs = torch.stack([r._log_p(x) for r in self.responses], -1)
+        # the result is given by p_i = \sum_j theta_ij p_ij
+        # for p_i the mixture density for batch element i,
+        # and p_ij the probability assigned from response j
+        # calculating this using only the log probs and log weights,
+        # the formula becomes
+        # log p_i = log \sum_j exp( log theta_ij + log p_ij)
+
+        # tensor shape wise, this operation reduces along the last dimension
+        # across the different responses as expected
+        #     (..., self.batch_size, R) --> (..., self.batch_size)
+        return torch.logsumexp(self.log_weights + individual_log_probs, -1)
 
 class UniformOutput(ProbabilisticOutput):
+
+    N_OUTPUTS_EXPECTED = 0
+
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.log(torch.tensor(0.25))
+        if x.shape[-2] != self.batch_size:
+            raise ValueError(
+                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
+                f'expected second-to-last dim of input `x` to have the same shape. Instead '
+                f'found shape {x.shape}.'
+                )
+        output_shape = x.shape[:-1]
+        return torch.ones(output_shape) * torch.log(torch.tensor(0.25))
 
