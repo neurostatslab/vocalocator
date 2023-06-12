@@ -49,9 +49,19 @@ class GaussianOutput(ProbabilisticOutput):
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return log p(x) under the Gaussian parameterized by the model
-        output, where x is an array-like with expected shape (..., 2). Importantly,
-        x is expected to be provided in arbitrary units (i.e. on the square [-1, 1]^2).
+        output.
+        
+        Expects x to have shape (..., self.batch_size, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^2).
         """
+        # check that the second-to-last dimension is the same as
+        # the batch dimension
+        if x.shape[-2] != self.batch_size:
+            raise ValueError(
+                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
+                f'expected second-to-last dim of input `x` to have the same shape. Instead '
+                f'found shape {x.shape}.'
+                )
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(),
             scale_tril=self.cholesky_covs
@@ -81,7 +91,7 @@ def select_gaussian_type(parameterization):
     return parameterization
 
                              
-class GaussianOutputFixedVariance(ProbabilisticOutput):
+class GaussianOutputFixedVariance(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 2
 
@@ -114,7 +124,7 @@ class GaussianOutputFixedVariance(ProbabilisticOutput):
         cholesky_cov = torch.diag_embed(torch.sqrt(variances))
         self.cholesky_covs = cholesky_cov[None].repeat(self.batch_size, 1, 1)
 
-class GaussianOutputSphericalCov(ProbabilisticOutput):
+class GaussianOutputSphericalCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 3
 
@@ -136,10 +146,11 @@ class GaussianOutputSphericalCov(ProbabilisticOutput):
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
-        diagonal_entries = F.softplus(self.data[:, 2] * torch.ones(2))
-        self.cholesky_covs = torch.diag_embed(diagonal_entries)
+        diagonal_entries = F.softplus(self.data[:, 2])
+        # (self.batch_size, 1, 1) * (2, 2) -> (self.batch_size, 2, 2)
+        self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(2)
 
-class GaussianOutputDiagonalCov(ProbabilisticOutput):
+class GaussianOutputDiagonalCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 4
 
@@ -157,10 +168,10 @@ class GaussianOutputDiagonalCov(ProbabilisticOutput):
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
-        diagonal_entries = F.softplus(self.data[:, 2:])
-        self.cholesky_covs = torch.diag_embed(diagonal_entries)
+        diagonal_entries = F.softplus(self.data[:, 2:]) # (self.batch_size, 2)
+        self.cholesky_covs = torch.diag_embed(diagonal_entries) # (self.batch_size, 2, 2)
 
-class GaussianOutputFullCov(ProbabilisticOutput):
+class GaussianOutputFullCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 5
 
