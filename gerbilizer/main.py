@@ -93,14 +93,17 @@ def validate_args(args):
     args.config_data = build_config(args.config)
 
     if args.data is None:
-        if "DATAFILE_PATH" not in args.config_data:
+        if "DATAFILE_PATH" not in args.config_data["DATA"]:
             raise ValueError(f"Error: no data files provided")
         else:
-            args.data = args.config_data["DATAFILE_PATH"]
+            args.data = args.config_data["DATA"]["DATAFILE_PATH"]
 
-    args.job_id = next_available_job_id(args.config_data["CONFIG_NAME"], args.save_path)
-    if "JOB_ID" in args.config_data:
-        args.job_id = args.config_data["JOB_ID"]
+    args.job_id = next_available_job_id(
+        args.config_data["GENERAL"]["CONFIG_NAME"], args.save_path
+    )
+    # Useful for sweeps
+    if "JOB_ID" in args.config_data["GENERAL"]:
+        args.job_id = args.config_data["GENERAL"]["JOB_ID"]
 
     # place output directly into directory user provides if bare flag is enabled
     if args.bare:
@@ -111,7 +114,7 @@ def validate_args(args):
         args.model_dir = path.join(
             args.save_path,
             "trained_models",
-            args.config_data["CONFIG_NAME"],
+            args.config_data["GENERAL"]["CONFIG_NAME"],
             f"{args.job_id:0>5d}",
         )
 
@@ -120,7 +123,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
     # expects args.data to point toward a file rather than a directory
     # In this case, all three h5py.File objects held by the Trainer are None
     data_path = args.data
-    arena_dims = args.config_data["ARENA_WIDTH"], args.config_data["ARENA_LENGTH"]
+    arena_dims = args.config_data["DATA"]["ARENA_DIMS"]
     if not (data_path.endswith(".h5") or data_path.endswith(".hdf5")):
         raise ValueError(
             "--data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
@@ -163,9 +166,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
 
 
 def run(args):
-    weights = (
-        args.config_data["WEIGHTS_PATH"] if "WEIGHTS_PATH" in args.config_data else None
-    )
+    weights = args.config_data.get("WEIGHTS_PATH", None)
 
     # This modifies args.config_data['WEIGHTS_PATH']
     trainer = Trainer(
@@ -181,7 +182,8 @@ def run(args):
     if args.eval:
         run_eval(args, trainer)
     else:
-        num_epochs = args.config_data["NUM_EPOCHS"]
+        # Assume all keys with defualt entries in config.py are present
+        num_epochs = args.config_data["OPTIMIZATION"]["NUM_EPOCHS"]
         for _ in range(num_epochs):
             trainer.train_epoch()
             trainer.eval_validation()

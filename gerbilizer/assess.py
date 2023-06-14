@@ -226,7 +226,7 @@ if __name__ == "__main__":
     config_data = build_config(args.config)
 
     # load the model
-    weights_path = config_data.get("WEIGHTS_PATH")
+    weights_path = config_data.get("WEIGHTS_PATH", None)
 
     # if not weights_path:
     #     raise ValueError(
@@ -234,19 +234,19 @@ if __name__ == "__main__":
     #     )
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
-        config_data["DEVICE"] = "cpu"
+        config_data["GENERAL"]["DEVICE"] = "cpu"
 
     model, _ = build_model(config_data)
     if weights_path:
         weights = torch.load(weights_path, map_location=device)
         model.load_state_dict(weights, strict=False)
 
-    arena_dims = (config_data["ARENA_WIDTH"], config_data["ARENA_LENGTH"])
+    arena_dims = config_data["DATA"]["ARENA_DIMS"]
     dataset = GerbilVocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
-        make_xcorrs=config_data["COMPUTE_XCORRS"],
-        crop_length=config_data.get("CROP_LENGTH", None),
+        make_xcorrs=config_data["DATA"]["COMPUTE_XCORRS"],
+        crop_length=config_data["DATA"].get("CROP_LENGTH", None),
         sequential=True,
     )
 
