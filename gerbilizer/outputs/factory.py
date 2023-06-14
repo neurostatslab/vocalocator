@@ -5,6 +5,7 @@ import torch
 from gerbilizer.outputs.base import (
     ModelOutput,
     MDNOutput,
+    EnsembleOutput,
     Unit
     )
 
@@ -33,7 +34,7 @@ class ModelOutputFactory:
             # if supposed to create a mixture density network,
             # we need to parse the kwargs to understand how many
             # outputs are expected
-            constituents = kwargs.get('constituent_response_types')
+            constituents = self.type_specific_kwargs.get('constituent_response_types')
             if not constituents:
                 raise ValueError(
                     "Cannot create MDNOutput without "
@@ -45,13 +46,19 @@ class ModelOutputFactory:
             self.n_outputs_expected = sum(
                 t.N_OUTPUTS_EXPECTED for t in constituents
                 )
+        elif self.output_type == EnsembleOutput:
+            # ensemble is a bit of a weird exception
+            # probably worth cleaning up and readjusting at some point
+            # for now, though, it can take a variable number of arguments
+            # since it expects an output of type List[ProbabilisticOutput]
+            self.n_outputs_expected = None
         else:
             raise ValueError(
                 f'ModelOutputFactory doesn\'t support creating objects of type {self.output_type}. '
                 f'Maybe {self.output_type} is only meant to be used as an interface and not instantiated?'
                 )
 
-    def create_output(self, x: torch.Tensor) -> ModelOutput:
+    def create_output(self, x) -> ModelOutput:
         """
         Package a batch of raw model output `x` into an appropriate
         `ModelOutput` instance.

@@ -1,7 +1,4 @@
 import enum
-import logging
-
-from typing import List, Literal, Optional
 
 import torch
 
@@ -41,7 +38,7 @@ class GaussianOutput(BaseDistributionOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        return torch.clamp(self.data[:, :2], -1, 1)
+        return torch.clamp(self.raw_output[:, :2], -1, 1)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -91,6 +88,7 @@ def select_gaussian_type(parameterization):
 class GaussianOutputFixedVariance(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 2
+    config_name = 'GAUSSIAN_FIXED_VARIANCE'
 
     def __init__(
         self,
@@ -124,6 +122,7 @@ class GaussianOutputFixedVariance(GaussianOutput):
 class GaussianOutputSphericalCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 3
+    config_name = 'GAUSSIAN_SPHERICAL_COV'
 
     def __init__(
         self,
@@ -143,13 +142,14 @@ class GaussianOutputSphericalCov(GaussianOutput):
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
-        diagonal_entries = F.softplus(self.data[:, 2])
+        diagonal_entries = F.softplus(self.raw_output[:, 2])
         # (self.batch_size, 1, 1) * (2, 2) -> (self.batch_size, 2, 2)
         self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(2)
 
 class GaussianOutputDiagonalCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 4
+    config_name = 'GAUSSIAN_DIAGONAL_COV'
 
     def __init__(
         self,
@@ -165,12 +165,13 @@ class GaussianOutputDiagonalCov(GaussianOutput):
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
-        diagonal_entries = F.softplus(self.data[:, 2:]) # (self.batch_size, 2)
+        diagonal_entries = F.softplus(self.raw_output[:, 2:]) # (self.batch_size, 2)
         self.cholesky_covs = torch.diag_embed(diagonal_entries) # (self.batch_size, 2, 2)
 
 class GaussianOutputFullCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 5
+    config_name = 'GAUSSIAN_FULL_COV'
 
     def __init__(
         self,
@@ -186,7 +187,7 @@ class GaussianOutputFullCov(GaussianOutput):
         L = torch.zeros(self.batch_size, 2, 2, device=self.device)
         # embed the elements into the matrix
         idxs = torch.tril_indices(2, 2)
-        L[:, idxs[0], idxs[1]] = self.data[:, 2:]
+        L[:, idxs[0], idxs[1]] = self.raw_output[:, 2:]
         # apply softplus to the diagonal entries to guarantee the resulting
         # matrix is positive definite
         new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
