@@ -1,11 +1,8 @@
 import enum
-import logging
 
-from typing import List, Literal, Optional, Union
+from typing import List, Union
 
 import torch
-
-from torch.nn import functional as F
 
 
 class Unit(enum.Enum):
@@ -15,6 +12,7 @@ class Unit(enum.Enum):
     ARBITRARY = enum.auto()
     CM = enum.auto()
     MM = enum.auto()
+
 
 class ModelOutput:
     """
@@ -69,10 +67,22 @@ class ModelOutput:
                 f'out_units: {out_units}.'
                 )
 
-    def point_estimate(self, units: Unit = Unit.ARBITRARY):
-        """Return a single point estimate in the specified units."""
+    def _point_estimate(self):
+        """Return a single point estimate in arbitrary units."""
         raise NotImplementedError
 
+    def point_estimate(self, units: Unit = Unit.ARBITRARY):
+        """Return a single point estimate in the specified units."""
+        return self._convert(self._point_estimate(), Unit.ARBITRARY, units)
+
+class PointOutput(ModelOutput):
+    """
+    Class representing a batch of point estimates.
+    """
+    N_OUTPUTS_EXPECTED = 2
+
+    def _point_estimate(self):
+        return torch.clamp(self.data, -1, 1)
 
 class ProbabilisticOutput(ModelOutput):
     """
@@ -80,7 +90,6 @@ class ProbabilisticOutput(ModelOutput):
     parameterizes a (batch of) distributions with its unit and choice of
     parameterization.
     """
-    N_OUTPUTS_EXPECTED: int
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -107,30 +116,12 @@ class ProbabilisticOutput(ModelOutput):
         return pdf_on_arbitrary_grid / scale_factor
 
 
-# class Ensemble(ProbabilisticOutput):
-#     """
-#     Util class allowing an arbitrary number of models to be ensembled together
-#     into one mixture density.
-#
-#     Crucially this class has a DIFFERENT init pattern: instead of inputting a
-#     torch tensor `raw_output`, this class requires a LIST of
-#     ProbabilisticOutputs `model_outputs`. The reason for this change is so that
-#     an arbitrary number of model output classes each accepting a potentially
-#     instance-specific number of parameters can still be combined without
-#     needing to know the details ahead of time.
-#     """
-#     def __init__(
-#         self,
-#         model_outputs: List[ProbabilisticOutput],
-#         arena_dims: torch.Tensor,
-#         arena_dim_units: str | Unit,
-#         ):
-#         """Initialize a Mixture object."""
-#         # create a fake raw_output tensor so we can still
-#         # use the base class's constructor to process arena dims and units
-#         device = model_outputs[0].data.device
-#         fake_raw_output = torch.tensor(0, device=device)
-#         super().__init__(fake_raw_output,, arena_dims, arena_dim_units)
+class BaseDistributionOutput(ProbabilisticOutput):
+    """
+    Utility subclass expressing that the model output
+    parameterizes a single distribution rather than a mixture.
+    """
+    N_OUTPUTS_EXPECTED: int
 
 
 class MDNOutput(ProbabilisticOutput):
@@ -145,7 +136,7 @@ class MDNOutput(ProbabilisticOutput):
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
         arena_dim_units: Union[str, Unit],
-        constituent_response_types: List[type[ProbabilisticOutput]],
+        constituent_response_types: List[type[BaseDistributionOutput]],
         ):
         """
         ADD A BETTER DOCSTRING HERE LATER.
@@ -218,9 +209,12 @@ class MDNOutput(ProbabilisticOutput):
         #     (..., self.batch_size, R) --> (..., self.batch_size)
         return torch.logsumexp(self.log_weights + individual_log_probs, -1)
 
-class UniformOutput(ProbabilisticOutput):
+class UniformOutput(BaseDistributionOutput):
 
     N_OUTPUTS_EXPECTED = 0
+
+    def _point_estimate(self):
+        return torch.zeros(self.batch_size, 2)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         if x.shape[-2] != self.batch_size:

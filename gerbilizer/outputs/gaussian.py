@@ -7,16 +7,14 @@ import torch
 
 from torch.nn import functional as F
 
-from gerbilizer.outputs.base import ProbabilisticOutput, Unit
+from gerbilizer.outputs.base import BaseDistributionOutput, Unit
 
 
-class GaussianOutput(ProbabilisticOutput):
+class GaussianOutput(BaseDistributionOutput):
     """
     Base class representing a (batch of) Gaussian response distribution(s) that
     packages model output together with its units.
     """
-
-    N_OUTPUTS_EXPECTED: int
 
     def __init__(
         self,
@@ -38,13 +36,12 @@ class GaussianOutput(ProbabilisticOutput):
                 f'{raw_output.shape[-1]}.'
                 )
 
-    def point_estimate(self, units: Unit = Unit.ARBITRARY):
+    def _point_estimate(self):
         """
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        mean = torch.clamp(self.data[:, :2], -1, 1)
-        return self._convert(mean, Unit.ARBITRARY, units)
+        return torch.clamp(self.data[:, :2], -1, 1)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
