@@ -5,7 +5,8 @@ from math import comb
 import torch
 from torch import nn
 
-from gerbilizer.architectures.util import build_cov_output
+from gerbilizer.outputs import ModelOutputFactory
+from gerbilizer.architectures.base import GerbilizerArchitecture
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -57,7 +58,7 @@ def ceiling_division(n, d):
     return q + bool(r)
 
 
-class GerbilizerSimpleNetwork(torch.nn.Module):
+class GerbilizerSimpleNetwork(GerbilizerArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True, True, True, True, True, False],
@@ -68,8 +69,10 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         "REGULARIZE_COV": False,
     }
 
-    def __init__(self, CONFIG):
-        super(GerbilizerSimpleNetwork, self).__init__()
+    def __init__(self, CONFIG, output_factory: ModelOutputFactory):
+        super(GerbilizerSimpleNetwork, self).__init__(CONFIG, output_factory)
+
+        self.output_factory = output_factory
 
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
@@ -122,21 +125,18 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
 
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
-        # Final linear layer to reduce the number of channels.
-        # self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
-        self.output_cov = model_config["OUTPUT_COV"]
-        N_OUTPUTS = 5 if self.output_cov else 2
+        n_outputs = self.output_factory.n_outputs_expected
 
-        self.coord_readout = torch.nn.Linear(self.n_channels[-1], N_OUTPUTS)
+        self.coord_readout = torch.nn.Linear(self.n_channels[-1], n_outputs)
 
-    def forward(self, x):
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(
             -1, -2
         )  # (batch, seq_len, channels) -> (batch, channels, seq_len) needed by conv1d
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         coords = self.coord_readout(h2)
-        return build_cov_output(coords, x.device) if self.output_cov else coords
+        return coords
 
     def clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)

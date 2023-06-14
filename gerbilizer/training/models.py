@@ -1,48 +1,102 @@
 """Initialize model and loss function from configuration."""
 
-from collections import namedtuple
-from functools import partial
 from typing import Any, Callable, Union
 
 import numpy as np
 import torch
 
-from ..architectures.attentionnet import GerbilizerSparseAttentionNet
-from ..architectures.densenet import GerbilizerDenseNet
+from gerbilizer.outputs.base import MDNOutput
+
+from ..architectures.base import GerbilizerArchitecture
 from ..architectures.ensemble import GerbilizerEnsemble
-from ..architectures.perceiver import GerbilizerPerceiver
-from ..architectures.reduced import (
-    GerbilizerReducedAttentionNet,
-    GerbilizerAttentionHourglassNet,
-)
-from ..architectures.simplenet import GerbilizerSimpleNetwork
-from .losses import (
-    se_loss_fn,
-    map_se_loss_fn,
-    gaussian_NLL,
-    gaussian_NLL_half_normal_variances,
-    gaussian_NLL_entropy_penalty,
-)
+from .losses import squared_error, negative_log_likelihood
 
-ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov"))
+from gerbilizer.outputs import (
+    ModelOutput,
+    ProbabilisticOutput,
+    ModelOutputFactory,
+    GaussianOutputFixedVariance
+)
+from gerbilizer.outputs.base import BaseDistributionOutput
 
-LOOKUP_TABLE = {
-    "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, True),
-    "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
-    "GerbilizerSparseAttentionNet": ModelType(
-        GerbilizerSparseAttentionNet, se_loss_fn, True
-    ),
-    "GerbilizerReducedSparseAttentionNet": ModelType(
-        GerbilizerReducedAttentionNet, se_loss_fn, True
-    ),
-    "GerbilizerAttentionHourglassNet": ModelType(
-        GerbilizerAttentionHourglassNet, map_se_loss_fn, False
-    ),
-    "GerbilizerPerceiver": ModelType(GerbilizerPerceiver, se_loss_fn, True),
+
+def __subclasses_recursive(cls):
+    return set(cls.__subclasses__()).union(
+        [s for c in cls.__subclasses__() for s in __subclasses_recursive(c)])
+
+def subclasses(cls):
+    return {
+        c.config_name: c for c in list(__subclasses_recursive(cls)) if hasattr(c, 'config_name')
+    }
+
+ARCHITECTURES = {
+    model.__name__.lower(): model for model in GerbilizerArchitecture.__subclasses__()
 }
 
+OUTPUT_TYPES = subclasses(ModelOutput)
 
-def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
+
+def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
+    """
+    Parse the provided config and return an appropriately configured
+    ModelOutputFactory instance.
+    """
+    model_params = config["MODEL_PARAMS"]
+    provided_type = model_params.get("OUTPUT_TYPE", "").upper()
+    if provided_type not in OUTPUT_TYPES:
+        raise ValueError(
+            f'Unrecognized output type: {provided_type}! '
+            f'Allowable types are: {list(OUTPUT_TYPES.keys())}'
+            )
+    output_type = OUTPUT_TYPES[provided_type]
+
+    arena_dims = torch.tensor(config["DATA"]["ARENA_DIMS"])
+    arena_dims_units = config["DATA"].get("ARENA_DIMS_UNITS")
+
+    # now handle certain subclasses which require additional information
+    # to be parsed from config
+    additional_kwargs = {}
+    if output_type == MDNOutput:
+        # check for additional parameter 'CONSTITUENT_DISTRIBUTIONS'
+        if not model_params.get('CONSTITUENT_DISTRIBUTIONS'):
+            raise ValueError(
+                'Given mixture density network output type (MDNOutput), '
+                'expected parameter `CONSTITUENT_DISTRIBUTIONS` expressing '
+                'the component distributions for the MDN. This argument '
+                'should be in the `MODEL_PARAMS` subdict of the config '
+                'and should contain a list of valid output type strings.'
+                )
+        provided_constituents = model_params['CONSTITUENT_DISTRIBUTIONS']
+
+        # only allow subclasses of BaseDistributionOutput now
+        base_distr_subclasses = subclasses(BaseDistributionOutput)
+        constituent_types = []
+        for constituent_type in provided_constituents:
+            if constituent_type not in base_distr_subclasses:
+                raise ValueError(
+                    f'Unrecognized output type as constituent for MDN: {constituent_type}! '
+                    f'Allowable types are: {list(base_distr_subclasses.keys())}'
+                    )
+            constituent_types.append(base_distr_subclasses[constituent_type])
+
+        additional_kwargs['constituent_response_types'] = constituent_types
+    elif output_type == GaussianOutputFixedVariance:
+        # expect 'VARIANCE' and 'VARIANCE_UNITS'
+        variance = model_params.get('VARIANCE', '')
+        units = model_params.get('VARIANCE_UNITS', '')
+
+        additional_kwargs['variance'] = variance
+        additional_kwargs['units'] = units
+
+    return ModelOutputFactory(
+        arena_dims=arena_dims,
+        arena_dim_units=arena_dims_units,
+        output_type=output_type,
+        **additional_kwargs
+        )
+
+
+def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, Callable]:
     """
     Specifies model and loss funciton.
 
@@ -53,7 +107,7 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
 
     Returns
     -------
-    model : torch.nn.Module
+    model : GerbilizerArchitecture
         Model instance with hyperparameters specified
         in config.
 
@@ -64,47 +118,30 @@ def build_model(config: dict[str, Any]) -> tuple[torch.nn.Module, Callable]:
         and map it to a shape of (batch_size,) holding
         losses.
     """
-    arch = config["ARCHITECTURE"]
-    if arch in LOOKUP_TABLE:
-        model, loss_fn, can_output_cov = LOOKUP_TABLE[arch]
-        model = model(config)
-    elif arch == "GerbilizerEnsemble":
+    # 1. parse desired output type
+    output_factory = make_output_factory(config)
+
+    # if the output is probabilistic in nature, use NLL
+    if issubclass(output_factory.output_type, ProbabilisticOutput):
+        loss = negative_log_likelihood
+    # otherwise, just use squared error
+    else:
+        loss = squared_error
+
+    arch: str = config["ARCHITECTURE"].lower()
+
+    if arch == "gerbilizerensemble":
         # None out the other parameters
-        loss_fn, can_output_cov = None, None
         built_submodels = []
         for sub_model_config in config["MODELS"]:
             submodel, _ = build_model(sub_model_config)
             built_submodels.append(submodel)
-        model = GerbilizerEnsemble(config, built_submodels)
+        model = GerbilizerEnsemble(config, built_submodels, output_factory)
+    elif arch.lower() in ARCHITECTURES:
+        model = ARCHITECTURES[arch]
+        model = model(config, output_factory)
     else:
         raise ValueError(f"ARCHITECTURE {arch} not recognized.")
-
-    loss = loss_fn
-
-    # change the loss function depending on whether a model outputting covariance
-    # was chosen
-    if config.get("MODEL_PARAMS", {}).get("OUTPUT_COV", True):
-        # some models, like a model that outputs a 2d map, don't have the ability to output a
-        # cov matrix.
-        if not can_output_cov:
-            raise ValueError(
-                f"Flag `OUTPUT_COV` was passed to a model architecture that can't output a covariance matrix ({arch})."
-            )
-
-        loss = gaussian_NLL
-
-        # change the loss function depending on whether the "REGULARIZE_COV" parameter was provided
-        # in the JSON config.
-        if config.get("MODEL_PARAMS", {}).get("REGULARIZE_COV", False):
-            reg = config["MODEL_PARAMS"]["REGULARIZE_COV"]
-            if reg == "HALF_NORMAL":
-                loss = gaussian_NLL_half_normal_variances
-            elif reg == "ENTROPY":
-                loss = gaussian_NLL_entropy_penalty
-            else:
-                raise ValueError(
-                    f"Unrecognized value {reg} passed as `REGULARIZE_COV` parameter in model config!"
-                )
 
     return model, loss
 
