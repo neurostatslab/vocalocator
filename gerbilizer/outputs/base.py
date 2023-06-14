@@ -23,13 +23,14 @@ class ModelOutput:
 
     def __init__(
         self,
-        raw_output: torch.Tensor,
+        raw_output,
         arena_dims: torch.Tensor,
         arena_dim_units: Union[str, Unit],
         ):
         """Initialize a ModelOutput object."""
-        self.data = raw_output
-        self.batch_size = raw_output.shape[0]
+        self.raw_output = raw_output
+        if isinstance(raw_output, torch.Tensor):
+            self.batch_size = raw_output.shape[0]
         self.device = raw_output.device
 
         if isinstance(arena_dim_units, str):
@@ -81,8 +82,10 @@ class PointOutput(ModelOutput):
     """
     N_OUTPUTS_EXPECTED = 2
 
+    config_name = 'POINT'
+
     def _point_estimate(self):
-        return torch.clamp(self.data, -1, 1)
+        return torch.clamp(self.raw_output, -1, 1)
 
 class ProbabilisticOutput(ModelOutput):
     """
@@ -131,6 +134,9 @@ class MDNOutput(ProbabilisticOutput):
     distributions of the mixture as well as the weights by which the constituent
     distributions should be combined.
     """
+
+    config_name = 'MDN'
+
     def __init__(
         self,
         raw_output: torch.Tensor,
@@ -209,11 +215,61 @@ class MDNOutput(ProbabilisticOutput):
         #     (..., self.batch_size, R) --> (..., self.batch_size)
         return torch.logsumexp(self.log_weights + individual_log_probs, -1)
 
+class EnsembleOutput(ProbabilisticOutput):
+    """
+    Class storing the output of an ensemble of separate models.
+    """
+
+    config_name = 'ENSEMBLE'
+
+    def __init__(
+        self,
+        raw_output: List[ProbabilisticOutput],
+        arena_dims: torch.Tensor,
+        arena_dim_units: Union[str, Unit],
+        ):
+        """
+        Initialize an object representing a mixture density created by
+        averaging multiple separate probabilistic outputs, oftentimes from
+        separate models.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+        # make sure all constituent distributions have the same batch size
+        self.distributions = raw_output
+        self.n_distributions = len(self.raw_output)
+        self.batch_size = self.raw_output[0].batch_size
+
+        for output in self.raw_output:
+            if output.batch_size != self.batch_size:
+                raise ValueError(
+                    'Not all input model output objects have the same batch size! '
+                    f'The encountered batch sizes are: {[o.batch_size for o in self.raw_output]}.'
+                    )
+
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        # output probability should be the average of the individual
+        # distribution's probabilities. say i is batch index and p_ij is
+        # probability from distribution j on batch element i
+        # log p_i = log (1/N \sum_j p_ij) = log(1/N) + logsumexp(p_i1, ..., p_iN)
+        # get each p_ij
+        individual_log_probs = torch.stack([r._log_p(x) for r in self.distributions], -1)
+        # shape (..., self.batch_size, self.n_distributions) |--> (..., self.batch_size)
+        unnormalized = torch.logsumexp(individual_log_probs, -1)
+        normalizer = torch.log(torch.tensor(1 / self.n_distributions, device=x.device))
+        return normalizer + unnormalized
+
 class UniformOutput(BaseDistributionOutput):
 
     N_OUTPUTS_EXPECTED = 0
+    config_name = 'UNIFORM'
 
     def _point_estimate(self):
+        print(
+            'Warning: method `_point_estimate` was called on a UniformOutput object. '
+            'While supported for consistency, this method is almost nonsensical and '
+            'should not be used in general.'
+            )
         return torch.zeros(self.batch_size, 2)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
