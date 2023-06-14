@@ -1,12 +1,12 @@
 import torch
 from torch import nn
 
-# from torch.nn import functional as F
-# from gerbilizer.training.configs import build_config
+from gerbilizer.architectures.base import GerbilizerArchitecture
+from gerbilizer.outputs import ModelOutputFactory, ProbabilisticOutput
 
 
 # inference only for now
-class GerbilizerEnsemble(nn.Module):
+class GerbilizerEnsemble(GerbilizerArchitecture):
     """
     Wrapper class to help assess ensembles of models.
 
@@ -19,18 +19,26 @@ class GerbilizerEnsemble(nn.Module):
     script without issue.
     """
 
-    def __init__(self, config, built_models):
+    def __init__(
+        self,
+        config,
+        built_models: list[GerbilizerArchitecture],
+        output_factory: ModelOutputFactory
+        ):
         """
         Inputs the loaded config dictionary object, as well as each submodel
         built using `build_model`.
         """
-        super().__init__()
+        super().__init__(config, output_factory)
 
         for model_config, model in zip(config["MODELS"], built_models):
-            if "OUTPUT_COV" not in model_config:
+            output_type = model.output_factory.output_type
+            if not issubclass(output_type, ProbabilisticOutput):
                 raise ValueError(
-                    "Ensembling not yet available for models without uncertainty estimates."
-                )
+                    'Ensembling not available for models outputting non-probabilistic outputs! '
+                    f'Encountered class: {output_type}, which is not a subclass of '
+                    '`ProbabilisticOutput`.'
+                    )
 
             if "WEIGHTS_PATH" not in model_config:
                 raise ValueError(
@@ -39,20 +47,15 @@ class GerbilizerEnsemble(nn.Module):
 
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
             weights = torch.load(model_config["WEIGHTS_PATH"], map_location=device)
+            model.to(device)
             model.load_state_dict(weights, strict=False)
 
         self.models = nn.ModuleList(built_models)
 
-    def forward(self, x):
+    def _forward(self, x: torch.Tensor):
         # return mean and cholesky covariance of gaussian mixture
         # created from the ensemble of models
-        batch_size = x.shape[0]
-        means = torch.zeros(batch_size, len(self.models), 2)
-        cholesky_covs = torch.zeros(batch_size, len(self.models), 2, 2)
-        for i, model in enumerate(self.models):
-            output = model(x)
-            means[:, i] = output[:, 0]
-            cholesky_covs[:, i] = output[:, 1:]
-
-        # add extra dim so means is of shape (batch_size, len(self.models), 1, 2)
-        return torch.cat((means[:, :, None], cholesky_covs), dim=-2)
+        outputs = []
+        for model in self.models:
+            outputs.append(model(x))
+        return outputs
