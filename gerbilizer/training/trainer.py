@@ -10,7 +10,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 import torch_optimizer as optim
 
-from ..training.augmentations import build_augmentations
+from gerbilizer.outputs.base import ModelOutput, Unit
+
+# from augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
@@ -34,16 +36,6 @@ def make_logger(filepath: str) -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.FileHandler(filepath))
     return logger
-
-
-def l2_distance(preds: np.ndarray, labels: np.ndarray, arena_dims) -> np.ndarray:
-    """
-    Unscale predictions and locations, then return the l2 distances
-    across the batch in centimeters.
-    """
-    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
-    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
-    return np.linalg.norm(pred_cm - label_cm, axis=-1)
 
 
 class Trainer:
@@ -279,61 +271,27 @@ class Trainer:
     def eval_validation(self):
         self.__progress_log.start_testing()
         self.model.eval()
-        arena_dims = self.__config["DATA"]["ARENA_DIMS"]
         if self.__valdata is not None:
             with torch.no_grad():
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
-                    sounds = sounds.to(self.device)
-                    locations = locations.numpy()
+                    if self.__config["GENERAL"]["DEVICE"] == "GPU":
+                        sounds = sounds.to(self.device)
 
                     # Forward pass.
-                    outputs = self.model(sounds).cpu().numpy()
-                    # Convert outputs and labels to centimeters from arb. unit
-                    # But only if the outputs are x,y coordinate pairs
-                    if outputs.ndim == 2 and outputs.shape[1] == 2:
-                        mean_loss = l2_distance(outputs, locations, arena_dims).mean()
-                    elif outputs.ndim == 3 and outputs.shape[1:] == (3, 2):
-                        predicted_locations = outputs[:, 0]
-                        mean_loss = l2_distance(
-                            predicted_locations, locations, arena_dims
-                        ).mean()
-                    elif outputs.ndim == 3:
-                        x_step = 2 / outputs.shape[2]
-                        y_step = 2 / outputs.shape[1]
-                        x_centers = np.linspace(
-                            -1 + x_step / 2,
-                            1 - x_step / 2,
-                            outputs.shape[2],
-                            endpoint=True,
-                        )
-                        y_centers = np.linspace(
-                            -1 + y_step / 2,
-                            1 - y_step / 2,
-                            outputs.shape[1],
-                            endpoint=True,
-                        )
-                        pred = np.unravel_index(
-                            np.argmax(outputs.reshape(outputs.shape[0], -1), axis=1),
-                            outputs.shape[1:],
-                        )
-                        pred_x = x_centers[pred[1]]
-                        pred_y = y_centers[pred[0]]
-                        pred_locations = np.stack((pred_x, pred_y), axis=1)
-                        mean_loss = (
-                            l2_distance(pred_locations, locations, arena_dims)
-                            .mean()
-                            .item()
-                        )
-                    else:
-                        losses = self.__loss_fn(
-                            torch.from_numpy(outputs), torch.from_numpy(locations)
-                        )
-                        mean_loss = torch.mean(losses).item()
+                    outputs: ModelOutput = self.model(sounds)
+
+                    # Calculate mean error in cm
+                    point_estimates = outputs.point_estimate(units=Unit.CM).cpu().numpy()
+                    locations = outputs._convert(
+                        locations, Unit.ARBITRARY, Unit.CM
+                        ).cpu().numpy()
+
+                    mean_err = np.linalg.norm(point_estimates - locations, axis=-1).mean()
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        mean_loss / 10.0, np.nan, sounds.shape[0]
+                        mean_err, np.nan, sounds.shape[0] * sounds.shape[1]
                     )
 
             # Done with epoch.
@@ -355,7 +313,7 @@ class Trainer:
         self,
         dataset: Union[str, h5py.File],
         arena_dims: Tuple[float, float],
-    ) -> Generator[np.ndarray, None, None]:
+    ) -> Generator[ModelOutput, None, None]:
         """Creates an iterator to perform inference on a given dataset
         Parameters:
         - dataset: Either an h5py File or path to an h5 file
@@ -381,9 +339,9 @@ class Trainer:
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
-            for data in dloader:
-                data = data.to(self.device)  # (bsz, seq, channels)
-                output = self.model(data).cpu().numpy()
+            for batch in dloader:
+                data = batch  # (1, channels, seq)
+                output = self.model(data.to(self.device))
                 yield output
 
         if should_close_file:
