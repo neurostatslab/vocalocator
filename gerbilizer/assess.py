@@ -12,6 +12,7 @@ from typing import Union
 import h5py
 import numpy as np
 import torch
+from gerbilizer.architectures.base import GerbilizerArchitecture
 
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
@@ -22,6 +23,7 @@ from gerbilizer.training.dataloaders import GerbilVocalizationDataset
 from gerbilizer.training.configs import build_config
 from gerbilizer.util import make_xy_grids, subplots
 from gerbilizer.training.models import build_model, unscale_output
+from gerbilizer.outputs.base import ModelOutput, Unit, ProbabilisticOutput
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -32,24 +34,9 @@ def plot_results(f: h5py.File):
     """
     Create and save plots of calibration curve, error distributions, etc.
     """
-    output = f["scaled_output"][:]
-    means = np.zeros((f["scaled_output"][:].shape[0], 2))
-    # output is a mean and a cov
-    if output[0].shape == (3, 2):
-        means = output[:, 0]
-    # batch of means and covariances (like from an ensemble)
-    elif output[0].shape[1:] == (3, 2):
-        means = output[:, :, 0].mean(axis=-2)
-    # just a mean
-    elif output[0].shape == (2,):
-        means = output
-    else:
-        logging.warn(
-            "Automatically plotting results not supported for models that output a pmf! Skipping..."
-        )
-        return
+    point_predictions = f["point_predictions"][:]
 
-    errs = np.linalg.norm(means - f["scaled_locations"][:], axis=-1)
+    errs = np.linalg.norm(point_predictions - f["scaled_locations"][:], axis=-1)
     fig, axs = subplots(5, sharex=False, sharey=False)
     (err_ax, calib_ax, cset_area_ax, cset_radius_ax, dist_ax) = axs
 
@@ -82,7 +69,7 @@ def plot_results(f: h5py.File):
 
 
 def assess_model(
-    model,
+    model: GerbilizerArchitecture,
     dataloader: DataLoader,
     outfile: Union[Path, str],
     arena_dims: tuple,
@@ -99,15 +86,12 @@ def assess_model(
     outfile = Path(outfile)
 
     N = dataloader.dataset.n_vocalizations
-    LOC_SHAPE = (N, 2)
 
     with h5py.File(outfile, "w") as f:
-        raw_locations = f.create_dataset("raw_locations", shape=LOC_SHAPE)
-        scaled_locations = f.create_dataset("scaled_locations", shape=LOC_SHAPE)
+        scaled_locations = f.create_dataset("scaled_locations", shape=(N, 2))
 
-        # don't initialize a dataset bc we don't know model output shape
-        raw_output = []
-        scaled_output = []
+        raw_model_output = f.create_dataset("raw_model_output", shape=(N, model.n_outputs))
+        point_predictions = f.create_dataset("point_predictions", shape=(N, 2))
 
         ca = CalibrationAccumulator(arena_dims)
 
@@ -115,29 +99,18 @@ def assess_model(
         with torch.no_grad():
             for idx, (audio, location) in enumerate(dataloader):
                 audio = audio.to(device)
-                output = model(audio)
-                np_output = output.cpu().numpy()
+                output: ModelOutput = model(audio)
 
-                raw_output.append(np_output)
-                raw_locations[idx] = location
+                raw_model_output[idx] = output.raw_output.squeeze()
+                point_predictions[idx] = output.point_estimate(units=Unit.MM)
 
                 # unscale location from [-1, 1] square to units in arena (in mm)
-                A = 0.5 * np.diag(arena_dims)  # rescaling matrix
-                b = 0.5 * np.array(arena_dims)  # recentering vector
-                scaled_location = A.dot(location.cpu().numpy().squeeze()) + b
+                scaled_location = output._convert(location, Unit.ARBITRARY, Unit.MM).cpu().numpy()
                 scaled_locations[idx] = scaled_location
 
-                # some locations in the gpup finetune validation set
-                # have y-coordinates outside the arena. Here we clip them
-                scaled_location = np.minimum(scaled_location, arena_dims)
-
-                # process mean + cov matrix from model output, unscaling to
-                # arena size from [-1, 1] square
-                unscaled_output = unscale_output(np_output, arena_dims).squeeze()
-                scaled_output.append(unscaled_output)
-
                 # other useful info
-                ca.calculate_step(unscaled_output, scaled_location)
+                if isinstance(output, ProbabilisticOutput):
+                    ca.calculate_step(output, scaled_location)
 
                 if visualize and idx == FIRST_N_VOX_TO_PLOT:
                     # plot the densities
@@ -166,8 +139,7 @@ def assess_model(
         results = ca.results()
         f.attrs["calibration_curve"] = results["calibration_curve"]
 
-        f.create_dataset("raw_output", data=np.array(raw_output))
-        f.create_dataset("scaled_output", data=np.array(scaled_output))
+        # f.create_dataset("scaled_output", data=np.array(scaled_output))
 
         # array-like quantities outputted by the calibration accumulator
         OUTPUTS = (
@@ -242,6 +214,7 @@ if __name__ == "__main__":
         model.load_state_dict(weights, strict=False)
 
     arena_dims = config_data["DATA"]["ARENA_DIMS"]
+
     dataset = GerbilVocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
