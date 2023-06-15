@@ -96,7 +96,9 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
         )
 
 
-def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, Callable]:
+LossFunction = Callable[[ModelOutput, torch.Tensor], torch.Tensor]
+
+def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFunction]:
     """
     Specifies model and loss funciton.
 
@@ -111,7 +113,7 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, Callabl
         Model instance with hyperparameters specified
         in config.
 
-    loss_function : function
+    loss_function : LossFunction
         Loss function mapping network output to a
         per-instance. That is, loss_function should
         take a torch.Tensor with shape (batch_size, ...)
