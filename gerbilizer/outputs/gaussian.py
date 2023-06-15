@@ -1,5 +1,3 @@
-import enum
-
 import torch
 
 from torch.nn import functional as F
@@ -61,28 +59,6 @@ class GaussianOutput(BaseDistributionOutput):
             scale_tril=self.cholesky_covs
             )
         return distr.log_prob(x)
-
-
-class GaussianParameterization(enum.Enum):
-    """
-    Enum class storing different ways to parameterize a Gaussian response and
-    the number of raw model outputs expected in each case.
-    """
-    SPHERICAL_FIXED_VARIANCE = 2
-    SPHERICAL = 3
-    DIAGONAL = 4
-    CHOLESKY = 5
-
-
-def select_gaussian_type(parameterization):
-    try:
-        parameterization = GaussianParameterization[parameterization]
-    except KeyError:
-        raise ValueError(
-            f'Invalid paramterization string {parameterization}! '
-            f'Expected one of {[param.name for param in GaussianParameterization]}.'
-            )
-    return parameterization
 
                              
 class GaussianOutputFixedVariance(GaussianOutput):
