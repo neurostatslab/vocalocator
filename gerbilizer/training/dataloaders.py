@@ -271,10 +271,13 @@ class GerbilVocalizationDataset(IterableDataset):
 
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
+        if self.augmentations:
+            sound = self.augmentations(sound.transpose(-1, -2)).transpose(-1, -2)
         sound = torch.from_numpy(sound)
 
         if self.crop_length is not None:
             sound = self.__make_crop(sound, self.crop_length)
+        
 
         if self.make_xcorrs:
             sound = self.__append_xcorr(
@@ -303,24 +306,10 @@ class GerbilVocalizationDataset(IterableDataset):
         )
     
     def collate_fn(self, batch):
-        """Collate function for the dataloader. Returns the augmented batch
-        This serves as a convenient middleman between the point at which the data is loaded
-        and the point at which it is fed into the model. Here, the data can be augmented as
-        a batch, which is more efficient than augmenting each sample individually.
-        """
-
         # Squeeze out the false batch dimension
         # This is due to the way the DataLoader class constructs batches on iterable datasets
         batch = batch[0]
-        if self.augmentations is None:
-            return batch
-
-        # Audiomentations expects the channel dimension to come before the time dimension
-        if isinstance(batch, tuple):
-            data, labels = batch
-            return self.augmentations(data.transpose(-1, -2)).transpose(-1, -2), labels
-        else:
-            return self.augmentations(batch.transpose(-1, -2)).transpose(-1, -2)
+        return batch
 
 
 def build_dataloaders(path_to_data, CONFIG):

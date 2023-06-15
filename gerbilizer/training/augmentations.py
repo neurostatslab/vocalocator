@@ -1,15 +1,20 @@
 import torch
 from torch import nn
-from torch_audiomentations import AddColoredNoise, Compose, Shift, PolarityInversion, PitchShift
+from audiomentations import AddGaussianSNR, Compose, PolarityInversion, PitchShift, Shift, TimeMask
 
 
-class AddGaussianNoise(torch.nn.Module):
-    def __init__(self, snr):
+class AudiomentationsWrapper(torch.nn.Module):
+    """ Wrapper for audiomentations' modules to hold the sample rate and support Tensors
+    """
+    def __init__(self, module, sample_rate: int):
         super().__init__()
-        self.snr = snr
+        self.aug = module
+        self.sample_rate = sample_rate
 
     def forward(self, x):
-        pass
+        if isinstance(x, torch.Tensor):
+            return torch.from_numpy(self.aug(x.numpy(), sample_rate=self.sample_rate))
+        return self.aug(x, sample_rate=self.sample_rate)
 
 
 class Identity(nn.Module):
@@ -27,48 +32,50 @@ def build_augmentations(CONFIG):
     if not CONFIG["DATA"]["AUGMENT_DATA"]:
         return Identity()
     
-    # TODO: This might not be implemented for our sample rate, double check later
-    # if (pitch_config := aug_config.get("PITCH_SHIFT", False)):
-    #     pitch_shift = PitchShift(
-    #         sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
-    #         min_transpose_semitones=pitch_config["MIN_SHIFT_SEMITONES"],
-    #         max_transpose_semitones=pitch_config["MAX_SHIFT_SEMITONES"],
-    #         p=pitch_config["PROB"],
-    #         mode="per_example",
-    #     )
-    #     augmentations.append(pitch_shift)
-    
-    if (shift_config := aug_config.get("SAMPLE_SHIFT", False)):
-        # Shifts the audio forward or backward
-        shift = Shift(
-            min_shift=shift_config["MIN_SHIFT"],
-            max_shift=shift_config["MAX_SHIFT"],
-            shift_unit=shift_config["SHIFT_UNIT"],
-            p=shift_config["PROB"],
-            mode="per_example",
-            sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
+    if (pitch_config := aug_config.get("PITCH_SHIFT", False)):
+        pitch_shift = PitchShift(
+            min_semitones=pitch_config["MIN_SHIFT_SEMITONES"],
+            max_semitones=pitch_config["MAX_SHIFT_SEMITONES"],
+            p=pitch_config["PROB"],
         )
-        augmentations.append(shift)
+        augmentations.append(pitch_shift)
+    
+    # if (shift_config := aug_config.get("SAMPLE_SHIFT", False)):
+    #     # Shifts the audio forward or backward
+    #     shift = Shift(
+    #         min_shift=shift_config["MIN_SHIFT"],
+    #         max_shift=shift_config["MAX_SHIFT"],
+    #         shift_unit=shift_config["SHIFT_UNIT"],
+    #         p=shift_config["PROB"],
+    #         sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
+    #     )
+    #     augmentations.append(shift)
     
     if (inversion_config := aug_config.get("INVERSION", False)):
         # Inverts the polarity of the audio
         inversion = PolarityInversion(
             p=inversion_config["PROB"],
-            mode="per_example",
-            sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
         )
         augmentations.append(inversion)
     
     if (noise_config := aug_config.get("NOISE", False)):
         # Adds white background noise to the audio
-        noise = AddColoredNoise(
+        noise = AddGaussianSNR(
             min_snr_in_db=noise_config["MIN_SNR"],
             max_snr_in_db=noise_config["MAX_SNR"],
-            min_f_decay=0,  # 0 for white noise
-            max_f_decay=2,  # 0 for white noise
             p=noise_config["PROB"],
-            sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
         )
         augmentations.append(noise)
-
-    return Compose(augmentations)
+    
+    if (mask_config := aug_config.get("MASK", False)):
+        # Masks a random part of the audio
+        mask = TimeMask(
+            min_band_part=0,
+            max_band_part=0.1,
+            fade=False,
+            p=mask_config["PROB"],
+        )
+        augmentations.append(mask)
+    
+    sample_rate=CONFIG["DATA"]["SAMPLE_RATE"]
+    return AudiomentationsWrapper(Compose(augmentations), sample_rate=sample_rate)

@@ -9,7 +9,7 @@ torch = "*"
 torchaudio = "*"
 scipy = "*"
 h5py = "*"
-torch-audiomentations = "*"
+audiomentations = "*"
 
 [dev-packages]
 matplotlib = "*"
