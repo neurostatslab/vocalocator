@@ -11,8 +11,9 @@ class GerbilizerArchitecture(torch.nn.Module):
 
         self.config = CONFIG
         self.output_factory = output_factory
+        self.n_outputs = self.output_factory.n_outputs_expected
 
-    def _forward(self, x: torch.Tensor):
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()
 
     def forward(self, x: torch.Tensor) -> ModelOutput:
