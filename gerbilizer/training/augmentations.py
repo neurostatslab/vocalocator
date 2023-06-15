@@ -34,9 +34,9 @@ def build_augmentations(CONFIG):
     
     if (pitch_config := aug_config.get("PITCH_SHIFT", False)):
         pitch_shift = PitchShift(
-            min_semitones=pitch_config["MIN_SHIFT_SEMITONES"],
-            max_semitones=pitch_config["MAX_SHIFT_SEMITONES"],
-            p=pitch_config["PROB"],
+            min_semitones=pitch_config.get("MIN_SHIFT_SEMITONES", -2),
+            max_semitones=pitch_config.get("MAX_SHIFT_SEMITONES", 2),
+            p=pitch_config.get("PROB", 0.5),
         )
         augmentations.append(pitch_shift)
     
@@ -54,16 +54,16 @@ def build_augmentations(CONFIG):
     if (inversion_config := aug_config.get("INVERSION", False)):
         # Inverts the polarity of the audio
         inversion = PolarityInversion(
-            p=inversion_config["PROB"],
+            p=inversion_config.get("PROB", 0.5),
         )
         augmentations.append(inversion)
     
     if (noise_config := aug_config.get("NOISE", False)):
         # Adds white background noise to the audio
         noise = AddGaussianSNR(
-            min_snr_in_db=noise_config["MIN_SNR"],
-            max_snr_in_db=noise_config["MAX_SNR"],
-            p=noise_config["PROB"],
+            min_snr_in_db=noise_config.get("MIN_SNR", 0),
+            max_snr_in_db=noise_config.get("MAX_SNR", 10),
+            p=noise_config.get("PROB", 0.5),
         )
         augmentations.append(noise)
     
@@ -73,7 +73,7 @@ def build_augmentations(CONFIG):
             min_band_part=0,
             max_band_part=0.1,
             fade=False,
-            p=mask_config["PROB"],
+            p=mask_config.get("PROB", 0.5),
         )
         augmentations.append(mask)
     
