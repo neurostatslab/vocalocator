@@ -72,8 +72,6 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
         super(GerbilizerSimpleNetwork, self).__init__(CONFIG, output_factory)
 
-        self.output_factory = output_factory
-
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
         if CONFIG["DATA"].get("COMPUTE_XCORRS", False):
@@ -127,9 +125,11 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
 
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
-        n_outputs = self.output_factory.n_outputs_expected
-
-        self.coord_readout = torch.nn.Linear(self.n_channels[-1], n_outputs)
+        if not isinstance(self.n_outputs, int):
+            raise ValueError(
+                'Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?'
+                )
+        self.coord_readout = torch.nn.Linear(self.n_channels[-1], self.n_outputs)
 
     def _forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(
