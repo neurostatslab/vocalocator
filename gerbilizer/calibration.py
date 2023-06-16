@@ -189,8 +189,12 @@ class CalibrationAccumulator:
 
         # get the pmf
         coords = self._make_coord_array()
+        # add a batch dimension to match expected shape from `ProbabilisticOutput.pmf`
+        coords = np.expand_dims(coords, -2)
         pmf = model_output.pmf(torch.tensor(coords), Unit.MM).cpu().numpy()
         pmf /= pmf.sum()
+        # get rid of the extra batch dimension
+        pmf = pmf.squeeze()
 
         # calculate the confidence set for this prediction
         # and store useful stats about it
