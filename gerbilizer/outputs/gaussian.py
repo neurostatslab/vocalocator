@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch
 
 from torch.nn import functional as F
@@ -72,7 +74,7 @@ class GaussianOutputFixedVariance(GaussianOutput):
         arena_dims: torch.Tensor,
         arena_dim_units: Unit,
         variance: torch.Tensor,
-        units: Unit,
+        units: Union[str, Unit],
         ):
         """
         Construct a GaussianOutput object with fixed spherical covariance
@@ -86,11 +88,14 @@ class GaussianOutputFixedVariance(GaussianOutput):
                 'For spherical fixed variance parameterization, '
                 'arguments `variance` and `units` are required!'
                 )
+        variance = variance.to(self.device)
+        if isinstance(units, str):
+            units = Unit[units]
         # if necessary, convert to arbitrary units
         if units == Unit.ARBITRARY:
             variances = torch.ones(2, device=self.device) * variance
         else:
-            variances = (torch.ones(2) * self.device) / self.arena_dims[units]
+            variances = (torch.ones(2, device=self.device) * variance) / self.arena_dims[units]
 
         cholesky_cov = torch.diag_embed(torch.sqrt(variances))
         self.cholesky_covs = cholesky_cov[None].repeat(self.batch_size, 1, 1)
