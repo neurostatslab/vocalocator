@@ -1,4 +1,5 @@
 import enum
+import sys
 
 from typing import List, Union
 
@@ -127,6 +128,57 @@ class BaseDistributionOutput(ProbabilisticOutput):
     N_OUTPUTS_EXPECTED: int
 
 
+class UniformOutput(BaseDistributionOutput):
+
+    N_OUTPUTS_EXPECTED = 0
+    config_name = 'UNIFORM'
+
+    def __init__(
+        self,
+        raw_output: None,
+        arena_dims: torch.Tensor,
+        arena_dim_units: Union[str, Unit],
+        batch_size: int,
+        device: str
+        ):
+        """
+        Inits UniformOutput.
+
+        Args:
+            raw_output: expected to be None. the argument is kept for consistency
+                with other init methods, but it's ignored even if provided.
+            arena_dims: array-like (x, y) storing arena dimensions in either CM or MM
+            arena_dim_units: str or Unit indicating in which unit the arena dimensions
+                are provided.
+            batch_size: batch size. usually inferred from model output shape,
+                but since no output is expected or considered here, it must be
+                provided separately.
+            device: device on which outputs should be stored. usually inferred as well.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+        self.batch_size = batch_size
+        self.device = device
+
+    def _point_estimate(self):
+        print(
+            'Warning: method `_point_estimate` was called on a UniformOutput object. '
+            'While supported for consistency, this method is almost nonsensical and '
+            'should not be used in general.',
+            file=sys.stderr
+            )
+        return torch.zeros(self.batch_size, 2, device=self.device)
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        if x.shape[-2] != self.batch_size:
+            raise ValueError(
+                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
+                f'expected second-to-last dim of input `x` to have the same shape. Instead '
+                f'found shape {x.shape}.'
+                )
+        output_shape = x.shape[:-1]
+        return torch.log(torch.tensor(0.25)) * torch.ones(output_shape, device=x.device)
+
+
 class MDNOutput(ProbabilisticOutput):
     """
     Class storing the output of a mixture density network, which
@@ -145,7 +197,15 @@ class MDNOutput(ProbabilisticOutput):
         constituent_response_types: List[type[BaseDistributionOutput]],
         ):
         """
-        ADD A BETTER DOCSTRING HERE LATER.
+        Inits MDNOutput.
+        
+        Args:
+            raw_output: batched tensor output from a GerbilizerArchitecture model
+            arena_dims: array-like (x, y) storing arena dimensions in either CM or MM
+            arena_dim_units: str or Unit indicating which unit the arena dimensions are provided in
+            constituent_response_types: a list of class names indicating the distributions
+                that are assumed to be components of a mixture response, with mixture weights specified
+                on a per-stimulus basis by the model.
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
@@ -173,7 +233,18 @@ class MDNOutput(ProbabilisticOutput):
         for response_type in constituent_response_types:
             n_params = response_type.N_OUTPUTS_EXPECTED
             next_idx = curr_idx + n_params
-            response = response_type(raw_output[:, curr_idx:next_idx], arena_dims, arena_dim_units)
+
+            additional_kwargs = {}
+            if response_type == UniformOutput:
+                additional_kwargs['batch_size'] = self.batch_size
+                additional_kwargs['device'] = self.device
+
+            response = response_type(
+                raw_output[:, curr_idx:next_idx],
+                arena_dims,
+                arena_dim_units,
+                **additional_kwargs
+                )
             self.responses.append(response)
             curr_idx = next_idx
 
@@ -258,27 +329,4 @@ class EnsembleOutput(ProbabilisticOutput):
         unnormalized = torch.logsumexp(individual_log_probs, -1)
         normalizer = torch.log(torch.tensor(1 / self.n_distributions, device=x.device))
         return normalizer + unnormalized
-
-class UniformOutput(BaseDistributionOutput):
-
-    N_OUTPUTS_EXPECTED = 0
-    config_name = 'UNIFORM'
-
-    def _point_estimate(self):
-        print(
-            'Warning: method `_point_estimate` was called on a UniformOutput object. '
-            'While supported for consistency, this method is almost nonsensical and '
-            'should not be used in general.'
-            )
-        return torch.zeros(self.batch_size, 2)
-
-    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        if x.shape[-2] != self.batch_size:
-            raise ValueError(
-                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
-                f'expected second-to-last dim of input `x` to have the same shape. Instead '
-                f'found shape {x.shape}.'
-                )
-        output_shape = x.shape[:-1]
-        return torch.ones(output_shape) * torch.log(torch.tensor(0.25))
 
