@@ -23,7 +23,7 @@ from gerbilizer.training.dataloaders import GerbilVocalizationDataset
 from gerbilizer.training.configs import build_config
 from gerbilizer.util import make_xy_grids, subplots
 from gerbilizer.training.models import build_model, unscale_output
-from gerbilizer.outputs.base import ModelOutput, Unit, ProbabilisticOutput
+from gerbilizer.outputs.base import EnsembleOutput, ModelOutput, Unit, ProbabilisticOutput
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -37,43 +37,54 @@ def plot_results(f: h5py.File):
     point_predictions = f["point_predictions"][:]
 
     errs = np.linalg.norm(point_predictions - f["scaled_locations"][:], axis=-1)
-    fig, axs = subplots(5, sharex=False, sharey=False)
-    (err_ax, calib_ax, cset_area_ax, cset_radius_ax, dist_ax) = axs
+    if "calibration_curve" not in f.attrs:
+        fig, err_ax = plt.subplots(1, 1, sharex=False, sharey=False)
 
-    # convert errs to cm for readability
-    errs_cm = errs / 10
+        # convert errs to cm for readability
+        errs_cm = errs / 10
 
-    err_ax.hist(errs_cm)
-    err_ax.set_xlabel("errors (cm)")
-    err_ax.set_ylabel("counts")
-    err_ax.set_title("error distribution")
+        err_ax.hist(errs_cm, color="tab:blue")
+        err_ax.set_xlabel("errors (cm)")
+        err_ax.set_ylabel("counts")
+        err_ax.set_title("error distribution")
+        return fig, err_ax
+    else:
+        fig, axs = plt.subplots(1, 5, sharex=False, sharey=False, figsize=(20, 4))
+        (err_ax, calib_ax, cset_area_ax, cset_radius_ax, dist_ax) = axs.flat
 
-    calib_ax.plot(np.linspace(0, 1, 11), f.attrs["calibration_curve"][:], "bo")
-    calib_ax.set_xlabel("probability assigned to region")
-    calib_ax.set_ylabel("proportion of locations in the region")
-    calib_ax.set_title("calibration curve")
+        # convert errs to cm for readability
+        errs_cm = errs / 10
 
-    # convert confidence set areas to cm^2 for readability
-    cset_areas_cm = f["confidence_set_areas"][:] / 100
+        err_ax.hist(errs_cm, color="tab:blue")
+        err_ax.set_xlabel("errors (cm)")
+        err_ax.set_ylabel("counts")
+        err_ax.set_title("error distribution")
 
-    cset_area_ax.hist(cset_areas_cm)
-    cset_area_ax.hist(f["confidence_set_areas"][:] / 100)
-    cset_area_ax.set_xlabel("confidence set area (cm^2)")
-    cset_area_ax.set_ylabel("counts")
-    cset_area_ax.set_title("confidence set area distribution")
+        calib_ax.plot(np.linspace(0, 1, 11), f.attrs["calibration_curve"][:], "bo")
+        calib_ax.set_xlabel("probability assigned to region")
+        calib_ax.set_ylabel("proportion of locations in the region")
+        calib_ax.set_title("calibration curve")
 
-    cset_radius_ax.plot(np.sqrt(cset_areas_cm), errs_cm, "bo")
-    cset_radius_ax.set_xlabel("square root confidence set area (cm)")
-    cset_radius_ax.set_ylabel("error (cm)")
-    cset_radius_ax.set_title("sqrt confidence set area vs error")
+        # convert confidence set areas to cm^2 for readability
+        cset_areas_cm = f["confidence_set_areas"][:] / 100
 
-    # convert distances to cm
-    dist_ax.plot(f["distances_to_furthest_point"][:] / 10, errs_cm, "bo")
-    dist_ax.set_xlabel("distance to furthest point in confidence set (cm)")
-    dist_ax.set_ylabel("error (cm)")
-    dist_ax.set_title("distance to furthest point vs error")
+        cset_area_ax.hist(cset_areas_cm, color="tab:blue")
+        cset_area_ax.set_xlabel("confidence set area (cm^2)")
+        cset_area_ax.set_ylabel("counts")
+        cset_area_ax.set_title("confidence set area distribution")
 
-    return fig, axs
+        cset_radius_ax.plot(np.sqrt(cset_areas_cm), errs_cm, "bo")
+        cset_radius_ax.set_xlabel("square root confidence set area (cm)")
+        cset_radius_ax.set_ylabel("error (cm)")
+        cset_radius_ax.set_title("sqrt confidence set area vs error")
+
+        # convert distances to cm
+        dist_ax.plot(f["distances_to_furthest_point"][:] / 10, errs_cm, "bo")
+        dist_ax.set_xlabel("distance to furthest point in confidence set (cm)")
+        dist_ax.set_ylabel("error (cm)")
+        dist_ax.set_title("distance to furthest point vs error")
+
+        return fig, axs
 
 
 def assess_model(
@@ -105,19 +116,35 @@ def assess_model(
     with h5py.File(outfile, "w") as f:
         scaled_locations = f.create_dataset("scaled_locations", shape=(N, 2))
 
-        raw_model_output = f.create_dataset("raw_model_output", shape=(N, model.n_outputs))
+        if isinstance(model, GerbilizerEnsemble):
+            raw_output_dataset = []
+            for i, constituent in enumerate(model.models):
+                raw_output_dataset.append(f.create_dataset(
+                    f"constituent_{i}_raw_output",
+                    shape=(N, constituent.n_outputs)
+                    ))
+        else:
+            raw_output_dataset = f.create_dataset("raw_model_output", shape=(N, model.n_outputs))
+
         point_predictions = f.create_dataset("point_predictions", shape=(N, 2))
 
         ca = CalibrationAccumulator(arena_dims)
 
         model.eval()
+
+        should_compute_calibration = False
+
         with torch.no_grad():
             for idx, (audio, location) in enumerate(dataloader):
                 audio = audio.to(device)
                 output: ModelOutput = model(audio)
 
-                raw_model_output[idx] = output.raw_output.squeeze()
-                point_predictions[idx] = output.point_estimate(units=Unit.MM)
+                if isinstance(model, GerbilizerEnsemble):
+                    for out_dataset, constituent_output in zip(raw_output_dataset, output.raw_output):
+                        out_dataset[idx] = constituent_output.raw_output.squeeze().cpu().numpy()
+                else:
+                    raw_output_dataset[idx] = output.raw_output.squeeze().cpu().numpy()
+                point_predictions[idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
 
                 # unscale location from [-1, 1] square to units in arena (in mm)
                 scaled_location = output._convert(location, Unit.ARBITRARY, Unit.MM).cpu().numpy()
@@ -125,6 +152,7 @@ def assess_model(
 
                 # other useful info
                 if isinstance(output, ProbabilisticOutput):
+                    should_compute_calibration = True
                     ca.calculate_step(output, scaled_location)
 
                 if visualize and idx == FIRST_N_VOX_TO_PLOT:
@@ -133,40 +161,45 @@ def assess_model(
                     visualize_dir.mkdir(exist_ok=True, parents=True)
                     visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
 
-                    sets_to_plot = ca.confidence_sets[:idx]
-                    associated_locations = scaled_locations[:idx]
+                    _, axs = subplots(FIRST_N_VOX_TO_PLOT)
 
-                    _, axs = subplots(len(sets_to_plot))
-
-                    xgrid, ygrid = make_xy_grids(
-                        arena_dims, shape=sets_to_plot[0].shape, return_center_pts=True
-                    )
                     for i, ax in enumerate(axs):
                         ax.set_title(f"vocalization {i}")
-                        ax.contourf(xgrid, ygrid, sets_to_plot[i])
-                        # add a red dot indicating the true location
-                        ax.plot(*associated_locations[i], "ro")
+                        ax.plot(*point_predictions[i], "ro", label='predicted')
+                        # add a green dot indicating the true location
+                        ax.plot(*scaled_locations[i], "go", label='true')
                         ax.set_aspect("equal", "box")
+
+                        if should_compute_calibration:
+
+                            set_to_plot = ca.confidence_sets[i]
+
+                            xgrid, ygrid = make_xy_grids(
+                                arena_dims, shape=set_to_plot.shape, return_center_pts=True
+                            )
+                            ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
+                        ax.legend()
 
                     plt.savefig(visualize_outfile)
                     print(f"Model output visualized at file {visualize_outfile}")
 
-        results = ca.results()
-        f.attrs["calibration_curve"] = results["calibration_curve"]
+        if should_compute_calibration:
+            results = ca.results()
+            f.attrs["calibration_curve"] = results["calibration_curve"]
 
-        # array-like quantities outputted by the calibration accumulator
-        OUTPUTS = (
-            "confidence_sets",
-            "confidence_set_areas",
-            "location_in_confidence_set",
-            "distances_to_furthest_point",
-        )
-        for output_name in OUTPUTS:
-            f.create_dataset(output_name, data=results[output_name])
+            # array-like quantities outputted by the calibration accumulator
+            OUTPUTS = (
+                "confidence_sets",
+                "confidence_set_areas",
+                "location_in_confidence_set",
+                "distances_to_furthest_point",
+            )
+            for output_name in OUTPUTS:
+                f.create_dataset(output_name, data=results[output_name])
 
         _, axs = plot_results(f)
         plt.tight_layout()
-        plt.savefig(Path(outfile).parent / f"{Path(outfile).stem}_results.png")
+        plt.savefig(Path(outfile).parent / f"{Path(outfile).stem}.png")
 
     print(f"Model output saved to {outfile}")
 
@@ -222,6 +255,7 @@ if __name__ == "__main__":
         config_data["GENERAL"]["DEVICE"] = "cpu"
 
     model, _ = build_model(config_data)
+    model = model.to(device)
     if weights_path:
         weights = torch.load(weights_path, map_location=device)
         model.load_state_dict(weights)
