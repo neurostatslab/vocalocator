@@ -211,7 +211,7 @@ if __name__ == "__main__":
     model, _ = build_model(config_data)
     if weights_path:
         weights = torch.load(weights_path, map_location=device)
-        model.load_state_dict(weights, strict=False)
+        model.load_state_dict(weights)
 
     arena_dims = config_data["DATA"]["ARENA_DIMS"]
 
