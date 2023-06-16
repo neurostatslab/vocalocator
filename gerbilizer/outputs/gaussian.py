@@ -88,9 +88,9 @@ class GaussianOutputFixedVariance(GaussianOutput):
                 )
         # if necessary, convert to arbitrary units
         if units == Unit.ARBITRARY:
-            variances = torch.ones(2) * variance
+            variances = torch.ones(2, device=self.device) * variance
         else:
-            variances = (torch.ones(2) * variance) / self.arena_dims[units]
+            variances = (torch.ones(2) * self.device) / self.arena_dims[units]
 
         cholesky_cov = torch.diag_embed(torch.sqrt(variances))
         self.cholesky_covs = cholesky_cov[None].repeat(self.batch_size, 1, 1)
@@ -120,7 +120,7 @@ class GaussianOutputSphericalCov(GaussianOutput):
         # are positive
         diagonal_entries = F.softplus(self.raw_output[:, 2])
         # (self.batch_size, 1, 1) * (2, 2) -> (self.batch_size, 2, 2)
-        self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(2)
+        self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(2, device=self.device)
 
 class GaussianOutputDiagonalCov(GaussianOutput):
 
