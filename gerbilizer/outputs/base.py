@@ -1,7 +1,7 @@
 import enum
 import sys
 
-from typing import List, Union
+from typing import List, Optional, Union
 
 import torch
 
@@ -195,6 +195,7 @@ class MDNOutput(ProbabilisticOutput):
         arena_dims: torch.Tensor,
         arena_dim_units: Union[str, Unit],
         constituent_response_types: List[type[BaseDistributionOutput]],
+        constituent_extra_kwargs: Optional[dict[int, dict]] = None,
         ):
         """
         Inits MDNOutput.
@@ -206,6 +207,9 @@ class MDNOutput(ProbabilisticOutput):
             constituent_response_types: a list of class names indicating the distributions
                 that are assumed to be components of a mixture response, with mixture weights specified
                 on a per-stimulus basis by the model.
+            constituent_extra_kwargs: an OPTIONAL extra dictionary mapping integer indices
+                of the list `constituent_response_types` to keyword argument dictionaries
+                that should be passed to the constituent distributions' constructors.
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
@@ -228,13 +232,19 @@ class MDNOutput(ProbabilisticOutput):
                 f"of {raw_output.shape}."
                 )
 
+        # we don't set `constituent_extra_kwargs` to the empty dict by default
+        # because that's dangerous and stateful in python.
+        if not constituent_extra_kwargs:
+            constituent_extra_kwargs = {}
+
         curr_idx = 0
         self.responses = []
-        for response_type in constituent_response_types:
+        for i, response_type in enumerate(constituent_response_types):
             n_params = response_type.N_OUTPUTS_EXPECTED
             next_idx = curr_idx + n_params
 
-            additional_kwargs = {}
+            additional_kwargs = constituent_extra_kwargs.get(i, {})
+
             if response_type == UniformOutput:
                 additional_kwargs['batch_size'] = self.batch_size
                 additional_kwargs['device'] = self.device

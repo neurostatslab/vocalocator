@@ -80,6 +80,9 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
             constituent_types.append(base_distr_subclasses[constituent_type])
 
         additional_kwargs['constituent_response_types'] = constituent_types
+        # for more details on this config param, see the MDNOutput constructor
+        additional_kwargs['constituent_extra_kwargs'] = model_params.get('CONSTITUENT_EXTRA_KWARGS', {})
+
     elif output_type == GaussianOutputFixedVariance:
         # expect 'VARIANCE' and 'VARIANCE_UNITS'
         variance = model_params.get('VARIANCE', '')
