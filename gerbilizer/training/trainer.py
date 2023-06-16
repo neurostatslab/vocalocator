@@ -1,6 +1,7 @@
 import logging
 import os
 from os import path
+import time
 from typing import Generator, NewType, Tuple, Union
 
 import h5py
@@ -9,6 +10,7 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
+from ..training.augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
@@ -78,20 +80,21 @@ class Trainer:
         self.__model_dir = model_dir
         self.__config = config_data
 
-        if not self.__eval:
-            self.__init_output_dir()
-            self.__init_dataloaders()
-
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
         elif torch.backends.mps.is_available():
             self.device = torch.device("mps")
         else:
             self.device = torch.device("cpu")
-
         print(f"Using device: {self.device}")
 
+
+        if not self.__eval:
+            self.__init_output_dir()
+            self.__init_dataloaders()
         self.__init_model()
+        
+        self.augment = build_augmentations(self.__config)
 
         if not self.__eval:
             self.__logger.info(f" ==== STARTING TRAINING ====\n")
@@ -226,8 +229,13 @@ class Trainer:
         self.model.train()
 
         for sounds, locations in self.__traindata:
+            # Move data to device
             sounds = sounds.to(self.device)
             locations = locations.to(self.device)
+
+            # This should always exist, but might be the identity function
+            sounds = self.augment(sounds)
+
             # Prepare optimizer.
             self.__optim.zero_grad()
 
@@ -258,8 +266,7 @@ class Trainer:
             with torch.no_grad():
                 for sounds, locations in self.__valdata:
                     # Move data to gpu
-                    if self.__config["GENERAL"]["DEVICE"] == "GPU":
-                        sounds = sounds.to(self.device)
+                    sounds = sounds.to(self.device)
                     locations = locations.numpy()
 
                     # Forward pass.
@@ -323,14 +330,14 @@ class Trainer:
             inference=True,
         )
 
-        dloader = DataLoader(dset, collate_fn=lambda batch: batch[0])
+        dloader = DataLoader(dset, collate_fn=dset.collate_fn)
 
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
-            for batch in dloader:
-                data = batch  # (1, channels, seq)
-                output = self.model(data.to(self.device)).cpu().numpy()
+            for data in dloader:
+                data = data.to(self.device) # (1, channels, seq)
+                output = self.model(data).cpu().numpy()
                 yield output
 
         if should_close_file:

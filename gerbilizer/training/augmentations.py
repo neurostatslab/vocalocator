@@ -1,20 +1,6 @@
 import torch
 from torch import nn
-from audiomentations import AddGaussianSNR, Compose, PolarityInversion, PitchShift, Shift, TimeMask
-
-
-class AudiomentationsWrapper(torch.nn.Module):
-    """ Wrapper for audiomentations' modules to hold the sample rate and support Tensors
-    """
-    def __init__(self, module, sample_rate: int):
-        super().__init__()
-        self.aug = module
-        self.sample_rate = sample_rate
-
-    def forward(self, x):
-        if isinstance(x, torch.Tensor):
-            return torch.from_numpy(self.aug(x.numpy(), sample_rate=self.sample_rate))
-        return self.aug(x, sample_rate=self.sample_rate)
+from torch_audiomentations import AddColoredNoise, PolarityInversion
 
 
 class Identity(nn.Module):
@@ -25,57 +11,79 @@ class Identity(nn.Module):
         return x
 
 
+class TimeMask(nn.Module):
+    """Time masking data augmentation. Masks a random part of the audio across all channels.
+    Mutates the input tensor in-place. A bit slow because it has to do a lot of indexing.
+    """
+    def __init__(self, min_mask_length: int=0, max_mask_length: int=0, prob: float=0.5):
+        super().__init__()
+        self.min_mask_length = min_mask_length
+        self.max_mask_length = max_mask_length
+        self.prob = prob
+    
+    def forward(self, x):
+        if x.dim() <= 2:
+            # unbatched input
+            if torch.rand() > self.prob:
+                return x
+            mask_start = torch.randint(0, x.shape[-1] - self.max_mask_length, (1,))
+            mask_end = mask_start + torch.randint(self.min_mask_length, self.max_mask_length, (1,))
+            x[..., mask_start:mask_end] = 0
+            return x
+        # Batched input
+        bshape = x.shape[:-2]
+        num_channels, num_samples = x.shape[-2:]
+        x = x.reshape(-1, num_channels, num_samples)
+        bsz = x.shape[0]
+
+        prob_mask = torch.rand(bsz) < self.prob  # True where we should apply the mask
+        prob_idx = torch.nonzero(prob_mask).squeeze(1)
+        num_true = prob_idx.shape[0]
+        mask_start = torch.randint(0, num_samples - self.max_mask_length, num_true)
+        mask_lengths = torch.randint(self.min_mask_length, self.max_mask_length, num_true)
+        mask_end = mask_start + mask_lengths
+        for i, start, end in zip(prob_idx, mask_start, mask_end):
+            x[i, :, start:end] = 0
+        return x.reshape(*bshape, num_channels, num_samples)
+
+
 def build_augmentations(CONFIG):
     augmentations = []
     aug_config = CONFIG['AUGMENTATIONS']
+    sample_rate = CONFIG['DATA']['SAMPLE_RATE']
 
-    if not CONFIG["DATA"]["AUGMENT_DATA"]:
+    if not CONFIG["AUGMENTATIONS"]["AUGMENT_DATA"]:
         return Identity()
-    
-    if (pitch_config := aug_config.get("PITCH_SHIFT", False)):
-        pitch_shift = PitchShift(
-            min_semitones=pitch_config.get("MIN_SHIFT_SEMITONES", -2),
-            max_semitones=pitch_config.get("MAX_SHIFT_SEMITONES", 2),
-            p=pitch_config.get("PROB", 0.5),
-        )
-        augmentations.append(pitch_shift)
-    
-    # if (shift_config := aug_config.get("SAMPLE_SHIFT", False)):
-    #     # Shifts the audio forward or backward
-    #     shift = Shift(
-    #         min_shift=shift_config["MIN_SHIFT"],
-    #         max_shift=shift_config["MAX_SHIFT"],
-    #         shift_unit=shift_config["SHIFT_UNIT"],
-    #         p=shift_config["PROB"],
-    #         sample_rate=CONFIG["DATA"]["SAMPLE_RATE"],
-    #     )
-    #     augmentations.append(shift)
     
     if (inversion_config := aug_config.get("INVERSION", False)):
         # Inverts the polarity of the audio
         inversion = PolarityInversion(
             p=inversion_config.get("PROB", 0.5),
+            mode='per_example',
+            sample_rate=sample_rate,
         )
         augmentations.append(inversion)
     
     if (noise_config := aug_config.get("NOISE", False)):
         # Adds white background noise to the audio
-        noise = AddGaussianSNR(
+        noise = AddColoredNoise(
             min_snr_in_db=noise_config.get("MIN_SNR", 0),
             max_snr_in_db=noise_config.get("MAX_SNR", 10),
             p=noise_config.get("PROB", 0.5),
+            min_f_decay=0,
+            max_f_decay=2,
+            mode='per_example',
+            sample_rate=sample_rate,
         )
         augmentations.append(noise)
     
     if (mask_config := aug_config.get("MASK", False)):
         # Masks a random part of the audio
         mask = TimeMask(
-            min_band_part=0,
-            max_band_part=0.1,
-            fade=False,
-            p=mask_config.get("PROB", 0.5),
+            min_mask_length=mask_config.get("MIN_LENGTH", 75),
+            max_mask_length=mask_config.get("MAX_LENGTH", 250),
+            prob=mask_config.get("PROB", 0.5),
         )
         augmentations.append(mask)
     
-    sample_rate=CONFIG["DATA"]["SAMPLE_RATE"]
-    return AudiomentationsWrapper(Compose(augmentations), sample_rate=sample_rate)
+    return nn.Sequential(*augmentations)

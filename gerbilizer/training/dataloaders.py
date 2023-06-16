@@ -1,6 +1,5 @@
 """
-Functions to construct torch Dataset, DataLoader
-objects and specify data augmentation.
+Functions to construct Datasets and DataLoaders for training and inference
 """
 
 from itertools import combinations
@@ -16,8 +15,6 @@ from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset, DataLoader
 
-from .augmentations import build_augmentations
-
 
 class GerbilVocalizationDataset(IterableDataset):
     def __init__(
@@ -31,7 +28,7 @@ class GerbilVocalizationDataset(IterableDataset):
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
         crop_length: Optional[int] = None,
-        augmentations: torch.nn.Module = None,
+        cache_vocalizations: bool = False,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
 
@@ -48,7 +45,11 @@ class GerbilVocalizationDataset(IterableDataset):
             self.dataset = h5py.File(datapath, "r")
         else:
             self.dataset = datapath
-
+        if cache_vocalizations:
+            self.cache = self.dataset['vocalizations'][:]
+        else:
+            self.cache = None
+        
         if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
 
@@ -66,8 +67,6 @@ class GerbilVocalizationDataset(IterableDataset):
 
         self.returned_samples = 0
         self.max_returned_samples = self.dataset["len_idx"][-1]
-
-        self.augmentations = augmentations
 
     def __len__(self):
         if self.crop_length is not None:
@@ -207,7 +206,10 @@ class GerbilVocalizationDataset(IterableDataset):
         of the dataset and handle it appropriately.
         """
         start, end = dataset["len_idx"][idx : idx + 2]
-        audio = dataset["vocalizations"][start:end, ...]
+        if self.cache is not None:
+            audio = self.cache[start:end, ...]
+        else:
+            audio = dataset["vocalizations"][start:end, ...]
         if self.n_channels is None:
             self.n_channels = audio.shape[1]
         return audio
@@ -271,8 +273,6 @@ class GerbilVocalizationDataset(IterableDataset):
 
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
-        if self.augmentations:
-            sound = self.augmentations(sound.transpose(-1, -2)).transpose(-1, -2)
         sound = torch.from_numpy(sound)
 
         if self.crop_length is not None:
@@ -312,18 +312,16 @@ class GerbilVocalizationDataset(IterableDataset):
         return batch
 
 
-def build_dataloaders(path_to_data, CONFIG):
+def build_dataloaders(path_to_data: str, config: dict):
     # Construct Dataset objects.
     train_path = os.path.join(path_to_data, "train_set.h5")
     val_path = os.path.join(path_to_data, "val_set.h5")
     test_path = os.path.join(path_to_data, "test_set.h5")
 
-    augmentations = build_augmentations(CONFIG)
-
-    arena_dims = CONFIG["DATA"]["ARENA_DIMS"]
-    make_xcorrs = CONFIG["DATA"]["COMPUTE_XCORRS"]
-    max_batch_size = CONFIG["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
-    crop_length = CONFIG["DATA"].get("CROP_LENGTH", None)
+    arena_dims = config["DATA"]["ARENA_DIMS"]
+    make_xcorrs = config["DATA"]["COMPUTE_XCORRS"]
+    max_batch_size = config["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
+    crop_length = config["DATA"].get("CROP_LENGTH", None)
 
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
@@ -332,9 +330,8 @@ def build_dataloaders(path_to_data, CONFIG):
             make_xcorrs=make_xcorrs,
             max_batch_size=max_batch_size,
             crop_length=crop_length,
-            augmentations=augmentations,
         )
-        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn)
+        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn, num_workers=5)
     else:
         train_dataloader = None
 
