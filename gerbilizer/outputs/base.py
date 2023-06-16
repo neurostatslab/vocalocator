@@ -34,6 +34,8 @@ class ModelOutput:
             self.batch_size = raw_output.shape[0]
         self.device = raw_output.device
 
+        arena_dims = arena_dims.to(self.device)
+
         if isinstance(arena_dim_units, str):
             try:
                 arena_dim_units = Unit[arena_dim_units]
@@ -42,6 +44,7 @@ class ModelOutput:
                     'Arena dimensions must be provided in either centimeters or millimeters! '
                     f'Instead encountered unit: {arena_dim_units}.'
                     )
+
         self.arena_dims = {
             Unit.MM: self._convert(arena_dims, arena_dim_units, Unit.MM),
             Unit.CM: self._convert(arena_dims, arena_dim_units, Unit.CM),
@@ -59,9 +62,9 @@ class ModelOutput:
         elif in_units == Unit.CM and out_units == Unit.MM:
                 return x * 10
         elif in_units == Unit.ARBITRARY:
-            return (x + 1) * 0.5 * self.arena_dims[out_units]
+            return (x + 1) * 0.5 * self.arena_dims[out_units].to(x.device)
         elif out_units == Unit.ARBITRARY:
-            return 2 * (x / self.arena_dims[in_units]) - 1
+            return 2 * (x / self.arena_dims[in_units].to(x.device)) - 1
         else:
             raise ValueError(
                 'Expected both `in_units` and `out_units` to be instances of '
@@ -295,6 +298,16 @@ class MDNOutput(ProbabilisticOutput):
         # across the different responses as expected
         #     (..., self.batch_size, R) --> (..., self.batch_size)
         return torch.logsumexp(self.log_weights + individual_log_probs, -1)
+
+    def _point_estimate(self):
+        # average the component distribution's point estimates
+        # throwing out any uniform distributions because a point estimate
+        # from one is sort of nonsensical
+        to_include = []
+        for response in self.responses:
+            if not isinstance(response, UniformOutput):
+                to_include.append(response.point_estimate())
+        return sum(to_include) / len(to_include)
 
 class EnsembleOutput(ProbabilisticOutput):
     """
