@@ -40,8 +40,11 @@ def plot_results(f: h5py.File):
     fig, axs = subplots(5, sharex=False, sharey=False)
     (err_ax, calib_ax, cset_area_ax, cset_radius_ax, dist_ax) = axs
 
-    err_ax.hist(errs)
-    err_ax.set_xlabel("errors (mm)")
+    # convert errs to cm for readability
+    errs_cm = errs / 10
+
+    err_ax.hist(errs_cm)
+    err_ax.set_xlabel("errors (cm)")
     err_ax.set_ylabel("counts")
     err_ax.set_title("error distribution")
 
@@ -50,19 +53,24 @@ def plot_results(f: h5py.File):
     calib_ax.set_ylabel("proportion of locations in the region")
     calib_ax.set_title("calibration curve")
 
-    cset_area_ax.hist(f["confidence_set_areas"][:])
-    cset_area_ax.set_xlabel("confidence set area (mm^2)")
+    # convert confidence set areas to cm^2 for readability
+    cset_areas_cm = f["confidence_set_areas"][:] / 100
+
+    cset_area_ax.hist(cset_areas_cm)
+    cset_area_ax.hist(f["confidence_set_areas"][:] / 100)
+    cset_area_ax.set_xlabel("confidence set area (cm^2)")
     cset_area_ax.set_ylabel("counts")
     cset_area_ax.set_title("confidence set area distribution")
 
-    cset_radius_ax.plot(np.sqrt(f["confidence_set_areas"][:]), errs, "bo")
-    cset_radius_ax.set_xlabel("square root confidence set area (mm)")
-    cset_radius_ax.set_ylabel("error (mm)")
+    cset_radius_ax.plot(np.sqrt(cset_areas_cm), errs_cm, "bo")
+    cset_radius_ax.set_xlabel("square root confidence set area (cm)")
+    cset_radius_ax.set_ylabel("error (cm)")
     cset_radius_ax.set_title("sqrt confidence set area vs error")
 
-    dist_ax.plot(f["distances_to_furthest_point"][:], errs, "bo")
-    dist_ax.set_xlabel("distance to furthest point in confidence set (mm)")
-    dist_ax.set_ylabel("error (mm)")
+    # convert distances to cm
+    dist_ax.plot(f["distances_to_furthest_point"][:] / 10, errs_cm, "bo")
+    dist_ax.set_xlabel("distance to furthest point in confidence set (cm)")
+    dist_ax.set_ylabel("error (cm)")
     dist_ax.set_title("distance to furthest point vs error")
 
     return fig, axs
@@ -72,7 +80,7 @@ def assess_model(
     model: GerbilizerArchitecture,
     dataloader: DataLoader,
     outfile: Union[Path, str],
-    arena_dims: tuple,
+    arena_dims: Union[np.ndarray, tuple[float, float]],
     device="cuda:0",
     visualize=False,
 ):
@@ -82,6 +90,13 @@ def assess_model(
     at path `outfile`.
 
     Optionally, visualize confidence sets a few times throughout training.
+
+    Args:
+        model: instantiated GerbilizerArchitecture object
+        dataloader: DataLoader object on which the model should be assessed
+        outfile: path to an h5 file in which output should be saved
+        arena_dims: arena dimensions, *in millimeters*.
+        visualize: optional argument expressing whether the first few
     """
     outfile = Path(outfile)
 
@@ -138,8 +153,6 @@ def assess_model(
 
         results = ca.results()
         f.attrs["calibration_curve"] = results["calibration_curve"]
-
-        # f.create_dataset("scaled_output", data=np.array(scaled_output))
 
         # array-like quantities outputted by the calibration accumulator
         OUTPUTS = (
@@ -213,7 +226,12 @@ if __name__ == "__main__":
         weights = torch.load(weights_path, map_location=device)
         model.load_state_dict(weights)
 
-    arena_dims = config_data["DATA"]["ARENA_DIMS"]
+    arena_dims = np.array(config_data["DATA"]["ARENA_DIMS"])
+    arena_dims_units = config_data["DATA"].get("ARENA_DIMS_UNITS")
+
+    # if provided in cm, convert to MM
+    if arena_dims_units == 'CM':
+        arena_dims = np.array(arena_dims) * 10
 
     dataset = GerbilVocalizationDataset(
         str(args.data),

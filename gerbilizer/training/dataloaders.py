@@ -25,7 +25,7 @@ class GerbilVocalizationDataset(IterableDataset):
         make_xcorrs: bool = False,
         inference: bool = False,
         sequential: bool = False,
-        arena_dims: Optional[Tuple[float, float]] = None,
+        arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
         crop_length: Optional[int] = None,
