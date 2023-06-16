@@ -43,9 +43,13 @@ class ModelOutputFactory:
                     "density network should be interpreted as parameterizing."
                     )
             # sum the number of parameters each constituent response distribution expects
-            self.n_outputs_expected = sum(
+            n_params_for_constituents = sum(
                 t.N_OUTPUTS_EXPECTED for t in constituents
                 )
+            # and expect one value per constituent distribution representing a
+            # log of the mixing weights
+            n_mixing_params = len(constituents)
+            self.n_outputs_expected = n_params_for_constituents + n_mixing_params
         elif self.output_type == EnsembleOutput:
             # ensemble is a bit of a weird exception
             # probably worth cleaning up and readjusting at some point
