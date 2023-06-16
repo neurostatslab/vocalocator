@@ -31,7 +31,7 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
         """
         super().__init__(config, output_factory)
 
-        for model_config, model in zip(config["MODELS"], built_models):
+        for model_config, model in zip(config["MODEL_PARAMS"]["CONSTITUENT_MODELS"], built_models):
             output_type = model.output_factory.output_type
             if not issubclass(output_type, ProbabilisticOutput):
                 raise ValueError(
