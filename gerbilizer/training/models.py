@@ -53,6 +53,12 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
     arena_dims = torch.tensor(config["DATA"]["ARENA_DIMS"])
     arena_dims_units = config["DATA"].get("ARENA_DIMS_UNITS")
 
+    if not arena_dims_units:
+        raise ValueError(
+            'Need to specify units for arena dimensions under key '
+            '`ARENA_DIMS_UNITS`!'
+            )
+
     # now handle certain subclasses which require additional information
     # to be parsed from config
     additional_kwargs = {}
@@ -88,7 +94,7 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
         variance = model_params.get('VARIANCE', '')
         units = model_params.get('VARIANCE_UNITS', '')
 
-        additional_kwargs['variance'] = variance
+        additional_kwargs['variance'] = torch.tensor(variance)
         additional_kwargs['units'] = units
 
     return ModelOutputFactory(
@@ -138,7 +144,7 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFun
     if arch == "gerbilizerensemble":
         # None out the other parameters
         built_submodels = []
-        for sub_model_config in config["MODELS"]:
+        for sub_model_config in config["MODEL_PARAMS"]["CONSTITUENT_MODELS"]:
             submodel, _ = build_model(sub_model_config)
             built_submodels.append(submodel)
         model = GerbilizerEnsemble(config, built_submodels, output_factory)
