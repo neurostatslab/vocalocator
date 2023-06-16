@@ -10,6 +10,7 @@ torchaudio = "*"
 scipy = "*"
 h5py = "*"
 audiomentations = "*"
+pyjson5 = "*"
 
 [dev-packages]
 matplotlib = "*"

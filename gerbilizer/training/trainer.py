@@ -89,6 +89,8 @@ class Trainer:
         else:
             self.device = torch.device("cpu")
 
+        print(f"Using device: {self.device}")
+
         self.__init_model()
 
         if not self.__eval:
@@ -173,14 +175,14 @@ class Trainer:
         self.model, self.__loss_fn = build_model(self.__config)
         self.model.to(self.device)
 
-        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
-        # Ensure this is written after the model has had the chance to update the config
-        filemode = 'wb' if using_json5 else 'w'
-        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
-            json.dump(self.__config, ctx, indent=4)
-
         # In inference mode, there is no logger
         if not self.__eval:
+            # The JSON5 library only supports writing in binary mode, but the built-in json library does not
+            # Ensure this is written after the model has had the chance to update the config
+            filemode = 'wb' if using_json5 else 'w'
+            with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
+                json.dump(self.__config, ctx, indent=4)
+
             self.__logger.info(self.model.__repr__())
 
             if self.__config["OPTIMIZATION"]["OPTIMIZER"] == "SGD":
