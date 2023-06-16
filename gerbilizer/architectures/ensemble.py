@@ -48,7 +48,7 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
             weights = torch.load(model_config["WEIGHTS_PATH"], map_location=device)
             model.to(device)
-            model.load_state_dict(weights, strict=False)
+            model.load_state_dict(weights)
 
         self.models = nn.ModuleList(built_models)
 
