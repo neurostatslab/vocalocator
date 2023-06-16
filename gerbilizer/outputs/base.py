@@ -32,7 +32,9 @@ class ModelOutput:
         self.raw_output = raw_output
         if isinstance(raw_output, torch.Tensor):
             self.batch_size = raw_output.shape[0]
-        self.device = raw_output.device
+            self.device = raw_output.device
+        else:
+            self.device = raw_output[0].raw_output.device
 
         arena_dims = arena_dims.to(self.device)
 
@@ -113,6 +115,7 @@ class ProbabilisticOutput(ModelOutput):
         vectorized and numerically stable way.
         """
         # convert coordinate grid to arbitrary units
+        coordinate_grid = coordinate_grid.to(self.device)
         coordinate_grid = self._convert(coordinate_grid, units, Unit.ARBITRARY)
         pdf_on_arbitrary_grid = torch.exp(self._log_p(coordinate_grid))
         # scale pdf accordingly
@@ -225,7 +228,7 @@ class MDNOutput(ProbabilisticOutput):
         num_responses = len(constituent_response_types)
         n_parameters_expected = total_parameters_for_constituents + num_responses
 
-        if raw_output.shape[-1] != n_parameters_expected:
+        if self.raw_output.shape[-1] != n_parameters_expected:
             raise ValueError(
                 f"Given constituent response types {constituent_response_types}, expected "
                 f"to recieve {n_parameters_expected} parameters per stimulus, with "
@@ -309,6 +312,7 @@ class MDNOutput(ProbabilisticOutput):
                 to_include.append(response.point_estimate())
         return sum(to_include) / len(to_include)
 
+
 class EnsembleOutput(ProbabilisticOutput):
     """
     Class storing the output of an ensemble of separate models.
@@ -353,3 +357,12 @@ class EnsembleOutput(ProbabilisticOutput):
         normalizer = torch.log(torch.tensor(1 / self.n_distributions, device=x.device))
         return normalizer + unnormalized
 
+    def _point_estimate(self):
+        # average the component distribution's point estimates
+        # throwing out any uniform distributions because a point estimate
+        # from one is sort of nonsensical
+        to_include = []
+        for distr in self.distributions:
+            if not isinstance(distr, UniformOutput):
+                to_include.append(distr.point_estimate())
+        return sum(to_include) / len(to_include)
