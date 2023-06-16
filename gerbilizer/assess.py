@@ -109,7 +109,7 @@ def assess_model(
     """
     outfile = Path(outfile)
 
-    N = len(dataloader.dataset)
+    N = dataloader.dataset.n_vocalizations
 
     with h5py.File(outfile, "w") as f:
         scaled_locations_dataset = f.create_dataset("scaled_locations", shape=(N, 2))
