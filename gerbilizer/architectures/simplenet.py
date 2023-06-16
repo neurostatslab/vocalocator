@@ -7,7 +7,7 @@ from torch import nn
 
 from gerbilizer.architectures.util import build_cov_output
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class GerbilizerSimpleLayer(torch.nn.Module):
@@ -60,10 +60,10 @@ def ceiling_division(n, d):
 class GerbilizerSimpleNetwork(torch.nn.Module):
     defaults = {
         "USE_BATCH_NORM": True,
-        "SHOULD_DOWNSAMPLE": [ False, True, True, True, True, True, False ],
-        "CONV_FILTER_SIZES": [ 19, 7, 39, 41, 23, 29, 33 ],
-        "CONV_NUM_CHANNELS": [ 16, 16, 16, 32, 32, 32, 64 ],
-        "CONV_DILATIONS": [ 1, 1, 1, 1, 1, 1, 1 ],
+        "SHOULD_DOWNSAMPLE": [False, True, True, True, True, True, False],
+        "CONV_FILTER_SIZES": [19, 7, 39, 41, 23, 29, 33],
+        "CONV_NUM_CHANNELS": [16, 16, 16, 32, 32, 32, 64],
+        "CONV_DILATIONS": [1, 1, 1, 1, 1, 1, 1],
         "OUTPUT_COV": True,
         "REGULARIZE_COV": False,
     }
@@ -79,13 +79,19 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = GerbilizerSimpleNetwork.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
+        CONFIG["MODEL_PARAMS"] = model_config  # Save the parameters used in this run for backward compatibility
 
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
         filter_sizes = model_config["CONV_FILTER_SIZES"]
         dilations = model_config["CONV_DILATIONS"]
 
-        min_len = min(len(self.n_channels), len(filter_sizes), len(should_downsample), len(dilations))
+        min_len = min(
+            len(self.n_channels),
+            len(filter_sizes),
+            len(should_downsample),
+            len(dilations),
+        )
         self.n_channels = self.n_channels[:min_len]
         filter_sizes = filter_sizes[:min_len]
         should_downsample = should_downsample[:min_len]

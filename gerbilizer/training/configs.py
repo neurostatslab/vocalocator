@@ -20,11 +20,9 @@ DEFAULT_CONFIG = {
         "MOMENTUM": 0.9,
         "MAX_LEARNING_RATE": 0.0005,
         "MIN_LEARNING_RATE": 0.0000,
-        "CLIP_GRADIENTS": False
+        "CLIP_GRADIENTS": False,
     },
-
     "ARCHITECTURE": "GerbilizerSimpleNetwork",
-
     "GENERAL": {
         "CONFIG_NAME": "simple_network",
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
@@ -34,7 +32,6 @@ DEFAULT_CONFIG = {
         "SAVE_SAMPLE_OUTPUT": False,
         "SAVE_LOSS_PLOT": False,
     },
-
     "DATA": {
         "NUM_MICROPHONES": 4,
         "AUDIO_SAMPLE_RATE": 125000,
@@ -46,24 +43,31 @@ DEFAULT_CONFIG = {
         "CROP_LENGTH": 2048,
         # controls mirroring and channel permutation augmentations
         "AUGMENT_LABELS": False,
-        "AUGMENT_DATA": True,  # controls noise addition
+        # controls noise addition
+        "AUGMENT_DATA": True,
         "ARENA_DIMS": [558.9, 355.6],
     },
-
     "AUGMENTATIONS": {
-        "AUGMENT_STRETCH_MIN": 0.95,  # currently unimpleemented
-        "AUGMENT_STRETCH_MAX": 1.1,
-        "AUGMENT_STRETCH_PROB": 1e-6,
-        "AUGMENT_SNR_PROB": 0.5,
-        "AUGMENT_SNR_MIN": 5,
-        "AUGMENT_SNR_MAX": 45,
-        "AUGMENT_PITCH_MIN": -1.0,  # currently unimplemented
-        "AUGMENT_PITCH_MAX": 1.0,
-        "AUGMENT_PITCH_PROB": 1e-6,
-        "AUGMENT_SHIFT_MIN": -0.1,  # currently unimplemented
-        "AUGMENT_SHIFT_MAX": 0.1,
-        "AUGMENT_SHIFT_PROB": 1.0,
-        "AUGMENT_INVERSION_PROB": 0.5,  # currently unimplemented
+        # Data augmentations: involves performing augmentations to the audio to which the model should be invariant
+        "PITCH_SHIFT": {
+            "MIN_SHIFT_SEMITONES": -2,
+            "MAX_SHIFT_SEMITONES": 2,
+            "PROB": 0.5,
+        },
+        "SAMPLE_SHIFT": {
+            "MIN_SHIFT": -125,
+            "MAX_SHIFT": 125,
+            "SHIFT_UNIT": "samples",
+            "PROB": 0.5,
+        },
+        "INVERSION": {
+            "PROB": 0.5,
+        },
+        "NOISE": {
+            "MIN_SNR": 0,
+            "MAX_SNR": 10,
+            "PROB": 0.5,
+        },
         # Label augmentations: involve mirroring sounds within the arena
         "AUGMENT_FLIP_HORIZ": True,  # contingent on AUGMENT_LABELS
         "AUGMENT_FLIP_VERT": True,  # contingent on AUGMENT_LABELS
@@ -84,22 +88,26 @@ def keys_to_uppercase(dictionary: dict) -> dict:
     return new_dict
 
 
-def update_recursively(dictionary: dict, defualts: dict) -> dict:
+def update_recursively(dictionary: dict, defaults: dict) -> dict:
     """Updates a dictionary with default values, recursing through subdictionaries"""
-    for key, defualt_value in defualts.items():
+    for key, default_value in defaults.items():
         if key not in dictionary:
-            dictionary[key] = defualt_value
+            dictionary[key] = default_value
         elif isinstance(dictionary[key], dict):
-            dictionary[key] = update_recursively(
-                dictionary[key], defualt_value)
+            dictionary[key] = update_recursively(dictionary[key], default_value)
     return dictionary
 
 
 def build_config(filepath: str) -> JSON:
     with open(filepath, "r") as ctx:
-        config = json.load(ctx)
+        try:
+            config = json.load(ctx)
+        except:
+            raise ValueError(
+                f"Could not parse JSON file at {filepath}. Perhaps a JSON5 file was provided without the necessary libraries installed?"
+            )
 
-    if "CONFIG_NAME" not in config['GENERAL']:
+    if "CONFIG_NAME" not in config["GENERAL"]:
         raise ValueError(
             "Configurations provided as JSON files should include a 'CONFIG_NAME' string."
         )
