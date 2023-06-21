@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import logging
 import os
 from os import path
@@ -26,8 +25,6 @@ try:
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
-
-    using_json5 = False
 
     using_json5 = False
 
