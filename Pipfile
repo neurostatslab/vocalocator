@@ -11,6 +11,7 @@ scipy = "*"
 h5py = "*"
 pyjson5 = "*"
 torch-audiomentations = "*"
+torch-optimizer = "*"
 
 [dev-packages]
 matplotlib = "*"

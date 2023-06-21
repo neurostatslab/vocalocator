@@ -1,8 +1,6 @@
-import matplotlib.pyplot as plt
 import logging
 import os
 from os import path
-import time
 from typing import Generator, NewType, Tuple, Union
 
 import h5py
@@ -10,6 +8,7 @@ import numpy as np
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+import torch_optimizer as optim
 
 from ..training.augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
@@ -24,7 +23,6 @@ except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
     using_json5 = False
-
 
 JSON = NewType("JSON", dict)
 
@@ -204,10 +202,13 @@ class Trainer:
             elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
                 optim_args = {
-                    "betas": (
-                        self.__config["OPTIMIZATION"]["ADAM_BETA1"],
-                        self.__config["OPTIMIZATION"]["ADAM_BETA2"],
-                    )
+                    "betas": self.__config["OPTIMIZATION"]["ADAM_BETAS"],
+                }
+            elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "LAMB":
+                base_optim = optim.Lamb
+                optim_args = {
+                    "betas": self.__config["OPTIMIZATION"]["LAMB_BETAS"],
+                    "weight_decay": self.__config["OPTIMIZATION"]["WEIGHT_DECAY"],
                 }
             else:
                 raise NotImplementedError(
@@ -224,6 +225,7 @@ class Trainer:
                 lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"],
                 **optim_args,
             )
+
             self.__scheduler = CosineAnnealingLR(
                 self.__optim,
                 T_max=self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
@@ -234,7 +236,7 @@ class Trainer:
         # Set the learning rate using cosine annealing.
         self.__progress_log.start_training()
         self.model.train()
-
+        
         for sounds, locations in self.__traindata:
             # Move data to device
             sounds = sounds.to(self.device)

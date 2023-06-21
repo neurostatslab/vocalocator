@@ -1,5 +1,4 @@
 """Initialize model and loss function from configuration."""
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from functools import partial
 from typing import Any, Callable, Tuple, Union
