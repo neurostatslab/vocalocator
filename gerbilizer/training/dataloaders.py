@@ -66,7 +66,9 @@ class GerbilVocalizationDataset(IterableDataset):
         self.max_batch_size = max_batch_size
 
         self.returned_samples = 0
-        self.max_returned_samples = self.dataset["len_idx"][-1]
+        worker_info = torch.utils.data.get_worker_info()
+        num_workers = 1 if worker_info is None else worker_info.num_workers
+        self.max_returned_samples = self.dataset["len_idx"][-1] // num_workers
 
     def __len__(self):
         if self.crop_length is not None:
@@ -86,9 +88,17 @@ class GerbilVocalizationDataset(IterableDataset):
             return
 
         if self.crop_length is not None:
+            worker_info = torch.utils.data.get_worker_info()
+            seed = worker_info.seed % 2**32 if worker_info else 0
+            rng = np.random.RandomState(seed)
             batch_size = self.max_batch_size // self.crop_length
             rand_idx = np.arange(self.n_vocalizations)
-            np.random.shuffle(rand_idx)
+            rng.shuffle(rand_idx)
+
+            # Prevent the parallel workers from duplicating samples
+            num_workers = 1 if worker_info is None else worker_info.num_workers
+            worker_id = 0 if worker_info is None else worker_info.id
+            rand_idx = rand_idx[worker_id::num_workers]
 
             batch = []
             labels = []
