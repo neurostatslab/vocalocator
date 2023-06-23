@@ -333,6 +333,8 @@ def build_dataloaders(path_to_data: str, config: dict):
     max_batch_size = config["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
     crop_length = config["DATA"].get("CROP_LENGTH", None)
 
+    avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
+
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
             train_path,
@@ -341,7 +343,7 @@ def build_dataloaders(path_to_data: str, config: dict):
             max_batch_size=max_batch_size,
             crop_length=crop_length,
         )
-        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn, num_workers=5)
+        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn, num_workers=avail_cpus)
     else:
         train_dataloader = None
 
