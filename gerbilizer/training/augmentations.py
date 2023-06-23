@@ -26,25 +26,26 @@ class TimeMask(nn.Module):
             # unbatched input
             if torch.rand() > self.prob:
                 return x
-            mask_start = torch.randint(0, x.shape[-1] - self.max_mask_length, (1,))
+            num_samples, num_channels = x.shape
+            mask_start = torch.randint(0, num_samples - self.max_mask_length, (1,))
             mask_end = mask_start + torch.randint(self.min_mask_length, self.max_mask_length, (1,))
-            x[..., mask_start:mask_end] = 0
+            x[mask_start:mask_end, :] = 0
             return x
         # Batched input
         bshape = x.shape[:-2]
-        num_channels, num_samples = x.shape[-2:]
-        x = x.reshape(-1, num_channels, num_samples)
+        num_samples, num_channels = x.shape[-2:]
+        x = x.reshape(-1, num_samples, num_channels)
         bsz = x.shape[0]
 
         prob_mask = torch.rand(bsz) < self.prob  # True where we should apply the mask
         prob_idx = torch.nonzero(prob_mask).squeeze(1)
         num_true = prob_idx.shape[0]
-        mask_start = torch.randint(0, num_samples - self.max_mask_length, num_true)
-        mask_lengths = torch.randint(self.min_mask_length, self.max_mask_length, num_true)
+        mask_start = torch.randint(0, num_samples - self.max_mask_length, (num_true,))
+        mask_lengths = torch.randint(self.min_mask_length, self.max_mask_length, (num_true,))
         mask_end = mask_start + mask_lengths
         for i, start, end in zip(prob_idx, mask_start, mask_end):
-            x[i, :, start:end] = 0
-        return x.reshape(*bshape, num_channels, num_samples)
+            x[i, start:end, :] = 0
+        return x.reshape(*bshape, num_samples, num_channels)
 
 
 def build_augmentations(CONFIG):
