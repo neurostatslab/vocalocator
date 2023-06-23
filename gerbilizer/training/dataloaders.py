@@ -79,13 +79,31 @@ class GerbilVocalizationDataset(IterableDataset):
 
     def __iter__(self):
         if self.inference or self.sequential:
-            for idx in range(len(self.lengths)):
-                data = self.__processed_data_for_index__(idx)
-                if self.inference:
-                    yield data.unsqueeze(0)
-                else:
-                    yield data[0].unsqueeze(0), data[1].unsqueeze(0)
-            return
+            if not self.crop_length:
+                for idx in range(len(self.lengths)):
+                    data = self.__processed_data_for_index__(idx)
+                    if self.inference:
+                        yield data.unsqueeze(0)
+                    else:
+                        yield data[0].unsqueeze(0), data[1].unsqueeze(0)
+                return
+            else:
+                est_batch_size = self.max_batch_size // self.crop_length
+                batch, labels = [], []
+                for idx in range(len(self.lengths)):
+                    if len(batch) == est_batch_size:
+                        if self.inference: yield torch.stack(batch)
+                        else: yield torch.stack(batch), torch.stack(labels)
+                    data = self.__processed_data_for_index__(idx)
+                    if self.inference:
+                        batch.append(data)
+                    else:
+                        batch.append(data[0])
+                        labels.append(data[1])
+                if batch or labels:  # if there are any remaining samples
+                    if self.inference: yield torch.stack(batch)
+                    else: yield torch.stack(batch), torch.stack(labels)
+                return
 
         if self.crop_length is not None:
             worker_info = torch.utils.data.get_worker_info()
