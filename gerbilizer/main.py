@@ -151,16 +151,17 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         preds = dest.create_dataset("predictions", shape=shape, dtype=np.float32)
 
         start_time = time.time()
-        for n, result in enumerate(
-            trainer.eval_on_dataset(data_path, arena_dims=arena_dims)
-        ):
-            preds[n] = result.squeeze()
-            if (n + 1) % 100 == 0:
-                est_speed = (n + 1) / (time.time() - start_time)
-                remaining_items = n_vox - n
+        n_added = 0
+        for result in iter(trainer.eval_on_dataset(data_path, arena_dims=arena_dims)):
+            print(result.shape)
+            preds[n_added:n_added + len(result)] = result
+            n_added += len(result)
+            if (len(result) == 1 and (n_added + 1) % 100 == 0) or len(result) > 1:
+                est_speed = n_added / (time.time() - start_time)
+                remaining_items = n_vox - n_added
                 remaining_time = remaining_items / est_speed
                 print(
-                    f"Evaluation progress: {n+1}/{n_vox}. Est. remaining time: {int(remaining_time):d}s"
+                    f"Evaluation progress: {n_added+1}/{n_vox}. Est. remaining time: {int(remaining_time):d}s"
                 )
         print("Done")
 

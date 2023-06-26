@@ -94,6 +94,7 @@ class GerbilVocalizationDataset(IterableDataset):
                     if len(batch) == est_batch_size:
                         if self.inference: yield torch.stack(batch)
                         else: yield torch.stack(batch), torch.stack(labels)
+                        batch, labels = [], []
                     data = self.__processed_data_for_index__(idx)
                     if self.inference:
                         batch.append(data)

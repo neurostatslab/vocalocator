@@ -336,7 +336,7 @@ class Trainer:
         self.model.to(self.device)
         with torch.no_grad():
             for data in dloader:
-                data = data.to(self.device) # (1, channels, seq)
+                data = data.to(self.device) # (bsz, seq, channels)
                 output = self.model(data).cpu().numpy()
                 yield output
 
