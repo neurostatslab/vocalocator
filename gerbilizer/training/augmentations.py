@@ -4,6 +4,8 @@ from torch_audiomentations import AddColoredNoise, PolarityInversion
 
 
 class Identity(nn.Module):
+    """ Implements the identity function as a placeholder augmentation
+    """
     def __init__(self):
         super().__init__()
 
@@ -48,7 +50,17 @@ class TimeMask(nn.Module):
         return x.reshape(*bshape, num_samples, num_channels)
 
 
-def build_augmentations(CONFIG):
+def build_augmentations(CONFIG: dict) -> nn.Module:
+    """ Builds an augmentation module using the config parameters
+    The augmentation module is a subclass of nn.Module which takes in a batched data tensor
+    and returns a batched data tensor with the augmentations applied.
+
+    Args:
+        CONFIG (dict): Whole config dictionary
+
+    Returns:
+        nn.Module: Augmemtation module
+    """    
     augmentations = []
     aug_config = CONFIG['AUGMENTATIONS']
     sample_rate = CONFIG['DATA']['SAMPLE_RATE']
