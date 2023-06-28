@@ -29,37 +29,18 @@ DEFAULT_CONFIG = {
         "TORCH_SEED": 888,  # rng seeds for reproducibility
         "NUMPY_SEED": 777,
         "LOG_INTERVAL": 3,  # Amount of time between consecutive log messages
-        "SAVE_SAMPLE_OUTPUT": False,
-        "SAVE_LOSS_PLOT": False,
     },
     "DATA": {
         "NUM_MICROPHONES": 4,
         "AUDIO_SAMPLE_RATE": 125000,
         "COMPUTE_XCORRS": False,
-        "TRAIN_BATCH_SIZE": 1024,
         "TRAIN_BATCH_MAX_SAMPLES": 200_000,
-        "VAL_BATCH_SIZE": 64,
-        "TEST_BATCH_SIZE": 64,
         "CROP_LENGTH": 2048,
-        # controls mirroring and channel permutation augmentations
-        "AUGMENT_LABELS": False,
-        # controls noise addition
         "AUGMENT_DATA": True,
         "ARENA_DIMS": [558.9, 355.6],
     },
     "AUGMENTATIONS": {
         # Data augmentations: involves performing augmentations to the audio to which the model should be invariant
-        "PITCH_SHIFT": {
-            "MIN_SHIFT_SEMITONES": -2,
-            "MAX_SHIFT_SEMITONES": 2,
-            "PROB": 0.5,
-        },
-        "SAMPLE_SHIFT": {
-            "MIN_SHIFT": -125,
-            "MAX_SHIFT": 125,
-            "SHIFT_UNIT": "samples",
-            "PROB": 0.5,
-        },
         "INVERSION": {
             "PROB": 0.5,
         },
@@ -68,9 +49,11 @@ DEFAULT_CONFIG = {
             "MAX_SNR": 10,
             "PROB": 0.5,
         },
-        # Label augmentations: involve mirroring sounds within the arena
-        "AUGMENT_FLIP_HORIZ": True,  # contingent on AUGMENT_LABELS
-        "AUGMENT_FLIP_VERT": True,  # contingent on AUGMENT_LABELS
+        "MASK": {
+            "PROB": 0.5,
+            "MIN_LENGTH": 75,  # 0.6 ms at 125 kHz
+            "MAX_LENGTH": 125,  # 1 ms at 125 kHz
+        }
     },
 }
 
