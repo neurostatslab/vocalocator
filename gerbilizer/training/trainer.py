@@ -9,9 +9,8 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from gerbilizer.outputs.base import ModelOutput, Unit
-
-# from augmentations import build_augmentations
+from ..outputs.base import ModelOutput, Unit
+from ..training.augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
@@ -71,21 +70,23 @@ class Trainer:
         self.__model_dir = model_dir
         self.__config = config_data
 
-        if not self.__eval:
-            self.__init_output_dir()
-            self.__init_dataloaders()
-
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
         elif torch.backends.mps.is_available():
             self.device = torch.device("mps")
         else:
             self.device = torch.device("cpu")
+        print(f"Using device: {self.device}")
 
-        self.__init_model()
 
         if not self.__eval:
-            # self.__augment = build_augmentations(self.__config) if self.__config['AUGMENT_DATA'] else None
+            self.__init_output_dir()
+            self.__init_dataloaders()
+        self.__init_model()
+        
+        self.augment = build_augmentations(self.__config)
+
+        if not self.__eval:
             self.__logger.info(f" ==== STARTING TRAINING ====\n")
             self.__logger.info(
                 f">> SAVING INITIAL MODEL WEIGHTS TO {self.__init_weights_file}"
@@ -159,8 +160,7 @@ class Trainer:
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
-        # Set random seeds. Note that numpy random seed will affect
-        # the data augmentation under the current implementation.
+        # Set random seeds.
         torch.manual_seed(self.__config["GENERAL"]["TORCH_SEED"])
         np.random.seed(self.__config["GENERAL"]["NUMPY_SEED"])
 
@@ -168,14 +168,14 @@ class Trainer:
         self.model, self.__loss_fn = build_model(self.__config)
         self.model.to(self.device)
 
-        # The JSON5 library only supports writing in binary mode, but the built-in json library does not
-        # Ensure this is written after the model has had the chance to update the config
-        filemode = 'wb' if using_json5 else 'w'
-        with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
-            json.dump(self.__config, ctx, indent=4)
-
         # In inference mode, there is no logger
         if not self.__eval:
+            # The JSON5 library only supports writing in binary mode, but the built-in json library does not
+            # Ensure this is written after the model has had the chance to update the config
+            filemode = 'wb' if using_json5 else 'w'
+            with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
+                json.dump(self.__config, ctx, indent=4)
+
             self.__logger.info(self.model.__repr__())
 
             if self.__config["OPTIMIZATION"]["OPTIMIZER"] == "SGD":
@@ -219,15 +219,18 @@ class Trainer:
         self.model.train()
 
         for sounds, locations in self.__traindata:
+            # Move data to device
             sounds = sounds.to(self.device)
             locations = locations.to(self.device)
+
+            # This should always exist, but might be the identity function
+            sounds = self.augment(sounds)
+
             # Prepare optimizer.
             self.__optim.zero_grad()
 
-            # Forward pass, including data augmentation.
-            # aug_input = self.__augment(sounds, sample_rate=125000) if self.__config['AUGMENT_DATA'] else sounds
-            aug_input = sounds
-            outputs = self.model(aug_input)
+            # Forward pass
+            outputs = self.model(sounds)
 
             # Compute loss.
             losses = self.__loss_fn(outputs, locations)
@@ -311,7 +314,7 @@ class Trainer:
             inference=True,
         )
 
-        dloader = DataLoader(dset, collate_fn=lambda batch: batch[0])
+        dloader = DataLoader(dset, collate_fn=dset.collate_fn)
 
         self.model.eval()
         self.model.to(self.device)

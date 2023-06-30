@@ -6,18 +6,17 @@ name = "pypi"
 [packages]
 numpy = "*"
 torch = "*"
-torchvision = "*"
 torchaudio = "*"
 scipy = "*"
 h5py = "*"
-matplotlib = "*"
-tqdm = "*"
+pyjson5 = "*"
 torch-audiomentations = "*"
+
+[dev-packages]
+matplotlib = "*"
 ipython = "*"
 notebook = "*"
 ipykernel = "*"
-
-[dev-packages]
 gerbilizer = {editable = true, path = "."}
 
 [requires]

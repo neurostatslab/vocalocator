@@ -8,7 +8,7 @@ from torch import nn
 from gerbilizer.outputs import ModelOutputFactory
 from gerbilizer.architectures.base import GerbilizerArchitecture
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class GerbilizerSimpleLayer(torch.nn.Module):

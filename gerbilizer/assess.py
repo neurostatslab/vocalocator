@@ -22,8 +22,8 @@ from gerbilizer.calibration import CalibrationAccumulator
 from gerbilizer.training.dataloaders import GerbilVocalizationDataset
 from gerbilizer.training.configs import build_config
 from gerbilizer.util import make_xy_grids, subplots
-from gerbilizer.training.models import build_model, unscale_output
-from gerbilizer.outputs.base import EnsembleOutput, ModelOutput, Unit, ProbabilisticOutput
+from gerbilizer.training.models import build_model
+from gerbilizer.outputs.base import ModelOutput, Unit, ProbabilisticOutput
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -114,7 +114,7 @@ def assess_model(
     N = dataloader.dataset.n_vocalizations
 
     with h5py.File(outfile, "w") as f:
-        scaled_locations = f.create_dataset("scaled_locations", shape=(N, 2))
+        scaled_locations_dataset = f.create_dataset("scaled_locations", shape=(N, 2))
 
         if isinstance(model, GerbilizerEnsemble):
             raw_output_dataset = []
@@ -135,53 +135,63 @@ def assess_model(
         should_compute_calibration = False
 
         with torch.no_grad():
-            for idx, (audio, location) in enumerate(dataloader):
-                audio = audio.to(device)
-                output: ModelOutput = model(audio)
+            idx = 0
+            for (sounds, locations) in iter(dataloader):
+                sounds = sounds.to(device)
+
+                output: ModelOutput = model(sounds)
+                # check outputs batch size.
+
+                batch_size = output.batch_size
+                end_idx = idx + batch_size
 
                 if isinstance(model, GerbilizerEnsemble):
                     for out_dataset, constituent_output in zip(raw_output_dataset, output.raw_output):
-                        out_dataset[idx] = constituent_output.raw_output.squeeze().cpu().numpy()
+                        out_dataset[idx:end_idx] = constituent_output.raw_output.squeeze().cpu().numpy()
                 else:
-                    raw_output_dataset[idx] = output.raw_output.squeeze().cpu().numpy()
-                point_predictions[idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
+                    raw_output_dataset[idx:end_idx] = output.raw_output.squeeze().cpu().numpy()
+
+                point_predictions[idx:end_idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
 
                 # unscale location from [-1, 1] square to units in arena (in mm)
-                scaled_location = output._convert(location, Unit.ARBITRARY, Unit.MM).cpu().numpy()
-                scaled_locations[idx] = scaled_location
+                scaled_locations = output._convert(locations, Unit.ARBITRARY, Unit.MM).cpu().numpy()
+                scaled_locations_dataset[idx:end_idx] = scaled_locations
 
                 # other useful info
                 if isinstance(output, ProbabilisticOutput):
                     should_compute_calibration = True
-                    ca.calculate_step(output, scaled_location)
+                    ca.calculate_step(output, scaled_locations)
 
-                if visualize and idx == FIRST_N_VOX_TO_PLOT:
-                    # plot the densities
-                    visualize_dir = outfile.parent / "pmfs_visualized"
-                    visualize_dir.mkdir(exist_ok=True, parents=True)
-                    visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
+                    if visualize and idx == FIRST_N_VOX_TO_PLOT:
+                        # plot the densities
+                        visualize_dir = outfile.parent / "pmfs_visualized"
+                        visualize_dir.mkdir(exist_ok=True, parents=True)
+                        visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
 
-                    _, axs = subplots(FIRST_N_VOX_TO_PLOT)
+                        _, axs = subplots(FIRST_N_VOX_TO_PLOT)
 
-                    for i, ax in enumerate(axs):
-                        ax.set_title(f"vocalization {i}")
-                        ax.plot(*point_predictions[i], "ro", label='predicted')
-                        # add a green dot indicating the true location
-                        ax.plot(*scaled_locations[i], "go", label='true')
-                        ax.set_aspect("equal", "box")
+                        for i, ax in enumerate(axs):
+                            ax.set_title(f"vocalization {i}")
+                            ax.plot(*point_predictions[i], "ro", label='predicted')
+                            # add a green dot indicating the true location
+                            ax.plot(*scaled_locations[i], "go", label='true')
+                            ax.set_aspect("equal", "box")
 
-                        if should_compute_calibration:
+                            if should_compute_calibration:
 
-                            set_to_plot = ca.confidence_sets[i]
+                                set_to_plot = ca.confidence_sets[i]
 
-                            xgrid, ygrid = make_xy_grids(
-                                arena_dims, shape=set_to_plot.shape, return_center_pts=True
-                            )
-                            ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
-                        ax.legend()
+                                xgrid, ygrid = make_xy_grids(
+                                    arena_dims, shape=set_to_plot.shape, return_center_pts=True
+                                )
+                                ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
+                            ax.legend()
 
-                    plt.savefig(visualize_outfile)
-                    print(f"Model output visualized at file {visualize_outfile}")
+                        plt.savefig(visualize_outfile)
+                        print(f"Model output visualized at file {visualize_outfile}")
+
+                # update number of vocalizations seen
+                idx = end_idx
 
         if should_compute_calibration:
             results = ca.results()
@@ -278,8 +288,7 @@ if __name__ == "__main__":
     # function that torch dataloader uses to assemble batches.
     # in our case, applying this is necessary because of the structure of the
     # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
-    collate_fn = lambda x: x[0]
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn)
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent
