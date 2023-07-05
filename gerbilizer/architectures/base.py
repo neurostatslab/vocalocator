@@ -1,3 +1,5 @@
+from typing import overload, Literal
+
 import torch
 
 from gerbilizer.outputs import ModelOutput, ModelOutputFactory
@@ -16,9 +18,23 @@ class GerbilizerArchitecture(torch.nn.Module):
     def _forward(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()
 
-    def forward(self, x: torch.Tensor) -> ModelOutput:
+    # add overload for nice unbatched functionality
+    @overload
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
+    @overload
+    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]: ...
+
+    def forward(self, x: torch.Tensor, unbatched: bool = False):
         """
         Run the model on input `x` and return an appropriate
         ModelOutput object, determined based on `self.output_factory`.
         """
-        return self.output_factory.create_output(self._forward(x))
+        raw_outputs = self._forward(x)
+        if unbatched:
+            outputs = []
+            for o in raw_outputs:
+                # add batch dim back
+                outputs.append(self.output_factory.create_output(o[None]))
+            return outputs
+        else:
+            return self.output_factory.create_output(self._forward(x))
