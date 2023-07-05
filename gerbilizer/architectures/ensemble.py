@@ -1,8 +1,10 @@
+from typing import Literal, overload
+
 import torch
 from torch import nn
 
 from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory, ProbabilisticOutput
+from gerbilizer.outputs import ModelOutputFactory, ProbabilisticOutput, ModelOutput
 
 
 # inference only for now
@@ -52,10 +54,28 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
 
         self.models = nn.ModuleList(built_models)
 
-    def _forward(self, x: torch.Tensor):
-        # return mean and cholesky covariance of gaussian mixture
-        # created from the ensemble of models
+    # add overload for nice unbatched functionality
+    @overload
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
+    @overload
+    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]: ...
+
+    def forward(self, x: torch.Tensor, unbatched: bool = False):
+        """
+        Run the model on input `x` and return an appropriate
+        ModelOutput object, determined based on `self.output_factory`.
+        """
         outputs = []
         for model in self.models:
-            outputs.append(model(x))
-        return outputs
+            outputs.append(model(x, unbatched=unbatched))
+        if unbatched:
+            # outputs will be a list where each item
+            # corresponds to a submodel,
+            # and the item is a list of model outputs, one for each
+            # input in the batch.
+            # to return as expected, we need to transpose
+            # this list of lists and run `create_output` on
+            # each item of the result.
+            return [self.output_factory.create_output(list(l)) for l in zip(*outputs)]
+        else:
+            return self.output_factory.create_output(outputs)
