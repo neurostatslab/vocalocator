@@ -295,6 +295,7 @@ if __name__ == "__main__":
 
     model, _ = build_model(config_data)
     model = model.to(device)
+
     if weights_path:
         weights = torch.load(weights_path, map_location=device)
         model.load_state_dict(weights)
