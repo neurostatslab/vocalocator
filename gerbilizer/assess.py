@@ -138,60 +138,56 @@ def assess_model(
             idx = 0
             for (sounds, locations) in iter(dataloader):
                 sounds = sounds.to(device)
+                outputs: list[ModelOutput] = model(sounds, unbatched=True)
+                for (output, location) in zip(outputs, locations):
+                    # add batch dimension back
+                    if isinstance(model, GerbilizerEnsemble):
+                        for out_dataset, constituent_output in zip(raw_output_dataset, output.raw_output):
+                            out_dataset[idx] = constituent_output.raw_output.squeeze().cpu().numpy()
+                    else:
+                        raw_output_dataset[idx] = output.raw_output.squeeze().cpu().numpy()
 
-                output: ModelOutput = model(sounds)
-                # check outputs batch size.
+                    point_predictions[idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
 
-                batch_size = output.batch_size
-                end_idx = idx + batch_size
+                    # unscale location from [-1, 1] square to units in arena (in mm)
+                    scaled_location = output._convert(location[None], Unit.ARBITRARY, Unit.MM).cpu().numpy()
+                    scaled_locations_dataset[idx] = scaled_location
 
-                if isinstance(model, GerbilizerEnsemble):
-                    for out_dataset, constituent_output in zip(raw_output_dataset, output.raw_output):
-                        out_dataset[idx:end_idx] = constituent_output.raw_output.squeeze().cpu().numpy()
-                else:
-                    raw_output_dataset[idx:end_idx] = output.raw_output.squeeze().cpu().numpy()
+                    # other useful info
+                    if isinstance(output, ProbabilisticOutput):
+                        should_compute_calibration = True
+                        ca.calculate_step(output, scaled_location)
 
-                point_predictions[idx:end_idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
+                        if visualize and idx == FIRST_N_VOX_TO_PLOT:
+                            # plot the densities
+                            visualize_dir = outfile.parent / "pmfs_visualized"
+                            visualize_dir.mkdir(exist_ok=True, parents=True)
+                            visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
 
-                # unscale location from [-1, 1] square to units in arena (in mm)
-                scaled_locations = output._convert(locations, Unit.ARBITRARY, Unit.MM).cpu().numpy()
-                scaled_locations_dataset[idx:end_idx] = scaled_locations
+                            _, axs = subplots(FIRST_N_VOX_TO_PLOT)
 
-                # other useful info
-                if isinstance(output, ProbabilisticOutput):
-                    should_compute_calibration = True
-                    ca.calculate_step(output, scaled_locations)
+                            for i, ax in enumerate(axs):
+                                ax.set_title(f"vocalization {i}")
+                                ax.plot(*point_predictions[i], "ro", label='predicted')
+                                # add a green dot indicating the true location
+                                ax.plot(*scaled_locations_dataset[i], "go", label='true')
+                                ax.set_aspect("equal", "box")
 
-                    if visualize and idx == FIRST_N_VOX_TO_PLOT:
-                        # plot the densities
-                        visualize_dir = outfile.parent / "pmfs_visualized"
-                        visualize_dir.mkdir(exist_ok=True, parents=True)
-                        visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
+                                if should_compute_calibration:
 
-                        _, axs = subplots(FIRST_N_VOX_TO_PLOT)
+                                    set_to_plot = ca.confidence_sets[i]
 
-                        for i, ax in enumerate(axs):
-                            ax.set_title(f"vocalization {i}")
-                            ax.plot(*point_predictions[i], "ro", label='predicted')
-                            # add a green dot indicating the true location
-                            ax.plot(*scaled_locations[i], "go", label='true')
-                            ax.set_aspect("equal", "box")
+                                    xgrid, ygrid = make_xy_grids(
+                                        arena_dims, shape=set_to_plot.shape, return_center_pts=True
+                                    )
+                                    ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
+                                ax.legend()
 
-                            if should_compute_calibration:
+                            plt.savefig(visualize_outfile)
+                            print(f"Model output visualized at file {visualize_outfile}")
 
-                                set_to_plot = ca.confidence_sets[i]
-
-                                xgrid, ygrid = make_xy_grids(
-                                    arena_dims, shape=set_to_plot.shape, return_center_pts=True
-                                )
-                                ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
-                            ax.legend()
-
-                        plt.savefig(visualize_outfile)
-                        print(f"Model output visualized at file {visualize_outfile}")
-
-                # update number of vocalizations seen
-                idx = end_idx
+                    # update number of vocalizations seen
+                    idx += 1
 
         if should_compute_calibration:
             results = ca.results()
@@ -266,6 +262,7 @@ if __name__ == "__main__":
 
     model, _ = build_model(config_data)
     model = model.to(device)
+
     if weights_path:
         weights = torch.load(weights_path, map_location=device)
         model.load_state_dict(weights)
