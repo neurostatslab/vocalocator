@@ -24,7 +24,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-
 class RotaryPositionalEmbeddings(nn.Module):
     """
     ## RoPE module
@@ -136,15 +135,13 @@ class RotaryPositionalEmbeddings(nn.Module):
         seq_len = x.shape[0]
 
         # $\Theta = {\theta_i = 10000^{\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
-        theta = 1.0 / (self.base ** (torch.arange(0, self.d, 2).float() / self.d)).to(
-            x.device
-        )
+        theta = 1. / (self.base ** (torch.arange(0, self.d, 2).float() / self.d)).to(x.device)
 
         # Create position indexes `[0, 1, ..., seq_len - 1]`
         seq_idx = torch.arange(seq_len, device=x.device).float().to(x.device)
 
         # Calculate the product of position index and $\theta_i$
-        idx_theta = torch.einsum("n,d->nd", seq_idx, theta)
+        idx_theta = torch.einsum('n,d->nd', seq_idx, theta)
 
         # Concatenate so that for row $m$ we have
         # $[m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}, m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}]$
@@ -169,7 +166,7 @@ class RotaryPositionalEmbeddings(nn.Module):
         self._build_cache(x)
 
         # Split the features, we can choose to apply rotary embeddings only to a partial set of features.
-        x_rope, x_pass = x[..., : self.d], x[..., self.d :]
+        x_rope, x_pass = x[..., :self.d], x[..., self.d:]
 
         # Calculate
         # $[-x^{(\frac{d}{2} + 1)}, -x^{(\frac{d}{2} + 2)}, ..., -x^{(d)}, x^{(1)}, x^{(2)}, ..., x^{(\frac{d}{2})}]$
@@ -185,9 +182,7 @@ class RotaryPositionalEmbeddings(nn.Module):
         # \end{align}
         #
         # for $i \in {1, 2, ..., \frac{d}{2}}$
-        x_rope = (x_rope * self.cos_cached[: x.shape[0]]) + (
-            neg_half_x * self.sin_cached[: x.shape[0]]
-        )
+        x_rope = (x_rope * self.cos_cached[:x.shape[0]]) + (neg_half_x * self.sin_cached[:x.shape[0]])
 
         #
         return torch.cat((x_rope, x_pass), dim=-1)
@@ -201,13 +196,13 @@ class RotaryPEMultiHeadSelfAttention(nn.Module):
     """
 
     def __init__(
-        self,
-        d_model: int,
-        num_heads: int,
-        rope_percentage: float = 0.5,
-        batch_first=None,
-        device=None,
-        dtype=None,
+            self,
+            d_model: int,
+            num_heads: int,
+            rope_percentage: float = 0.5,
+            batch_first=None,
+            device=None,
+            dtype=None
     ) -> None:
         super().__init__()
 
@@ -217,26 +212,22 @@ class RotaryPEMultiHeadSelfAttention(nn.Module):
         self.batch_first = batch_first
 
         if self.d_k * self.num_heads != self.d_model:
-            raise ValueError(
-                f"d_model ({d_model}) must be divisible by num_heads ({num_heads})"
-            )
+            raise ValueError(f"d_model ({d_model}) must be divisible by num_heads ({num_heads})")
 
-        self.in_proj_weight = nn.Parameter(
-            torch.empty((3 * d_model, d_model), device=device, dtype=dtype)
-        )
+        self.in_proj_weight = nn.Parameter(torch.empty((3 * d_model, d_model), device=device, dtype=dtype))
         nn.init.xavier_uniform_(self.in_proj_weight)
         self.out_proj = nn.Linear(d_model, d_model, bias=False)
 
         d_rope = int(self.d_k * rope_percentage)
         self.query_rotary_pe = RotaryPositionalEmbeddings(d_rope)
         self.key_rotary_pe = RotaryPositionalEmbeddings(d_rope)
-
+    
     def forward(self, x, *args, **kwargs):
         if self.batch_first:
             x = x.transpose(0, 1)
-
+        
         qkv = torch.einsum(
-            "ed,lbd->lbe",
+            'ed,lbd->lbe',
             self.in_proj_weight,
             x,
         )
@@ -250,7 +241,7 @@ class RotaryPEMultiHeadSelfAttention(nn.Module):
         q, k, v = (t.transpose(0, 2).contiguous() for t in (q, k, v))
         # current shape: (num_heads, batch_size, seq_len, d_k)
         out = F.scaled_dot_product_attention(q, k, v)
-        out = out.permute(1, 2, 0, 3).reshape(bsz, seq, self.d_model)
+        out = out.permute(1,2,0,3).reshape(bsz, seq, self.d_model)
         if self.batch_first:
             return out
         return out.transpose(0, 1)
