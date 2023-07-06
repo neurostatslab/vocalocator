@@ -74,6 +74,13 @@ class Trainer:
         - eval_mode:
             Should be false when training and true when performing inference.
         """
+
+        # disable torch 2.0 SDP optimizations
+        # torch.backends.cuda.enable_mem_efficient_sdp(False)
+        # torch.backends.cuda.enable_flash_sdp(False)
+        # torch.backends.cuda.enable_math_sdp(False)
+
+
         self.__eval = eval_mode
         self.__datafile = data_dir
         self.__model_dir = model_dir

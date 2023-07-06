@@ -12,7 +12,6 @@ from ..architectures.ensemble import GerbilizerEnsemble
 from ..architectures.simplenet import GerbilizerSimpleNetwork
 from .losses import (
     se_loss_fn,
-    map_se_loss_fn,
     gaussian_NLL,
     gaussian_NLL_half_normal_variances,
     gaussian_NLL_entropy_penalty,
@@ -24,7 +23,7 @@ ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov
 LOOKUP_TABLE = {
     "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, True),
     "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
-    "GerbilizerTransformer": ModelType(GerbilizerTransformer, wass_loss_fn, True),
+    "GerbilizerTransformer": ModelType(GerbilizerTransformer, se_loss_fn, True),
 }
 
 
