@@ -240,6 +240,12 @@ if __name__ == "__main__":
         help="Include flag to plot confidence sets occasionally during assessment.",
     )
 
+    parser.add_argument(
+        "--use_final",
+        action="store_true",
+        help="Include flag use the FINAL model weights, not the best.",
+    )
+
     args = parser.parse_args()
 
     if not Path(args.config).exists():
@@ -251,6 +257,8 @@ if __name__ == "__main__":
 
     # load the model
     weights_path = config_data.get("WEIGHTS_PATH", None)
+    if args.use_final and weights_path is not None:
+        weights_path = weights_path.replace('best', 'final')
 
     # if not weights_path:
     #     raise ValueError(
