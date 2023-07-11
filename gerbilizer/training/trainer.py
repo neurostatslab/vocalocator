@@ -9,11 +9,12 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from ..outputs.base import ModelOutput, Unit
+from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
+from ..calibration import CalibrationAccumulator
 
 try:
     # Attempt to use json5 if available
@@ -120,11 +121,11 @@ class Trainer:
         print(f"Saving logs to file: `{log_filepath}`")
 
     def __init_output_dir(self):
-        if path.exists(self.__model_dir):
-            raise ValueError(
-                f"Model directory {self.__model_dir} already exists. Perhaps this job id is taken?"
-            )
-        os.makedirs(self.__model_dir)
+        # if path.exists(self.__model_dir):
+        #     raise ValueError(
+        #         f"Model directory {self.__model_dir} already exists. Perhaps this job id is taken?"
+        #     )
+        # os.makedirs(self.__model_dir)
 
         self.__best_weights_file = os.path.join(self.__model_dir, "best_weights.pt")
         self.__init_weights_file = os.path.join(self.__model_dir, "init_weights.pt")
@@ -218,6 +219,7 @@ class Trainer:
         self.__progress_log.start_training()
         self.model.train()
 
+        iter = 0
         for sounds, locations in self.__traindata:
             # Move data to device
             sounds = sounds.to(self.device)
@@ -246,6 +248,8 @@ class Trainer:
             self.__progress_log.log_train_batch(
                 mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1]
             )
+            iter += 1
+            # if iter > 10: break
         self.__scheduler.step()
 
     def eval_validation(self):
@@ -253,29 +257,46 @@ class Trainer:
         self.model.eval()
         if self.__valdata is not None:
             with torch.no_grad():
+                idx = 0
+                compute_calibration = False
                 for sounds, locations in self.__valdata:
-                    # Move data to gpu
                     if self.__config["GENERAL"]["DEVICE"] == "GPU":
                         sounds = sounds.to(self.device)
 
-                    # Forward pass.
-                    outputs: ModelOutput = self.model(sounds)
+                    batch_err = 0
 
-                    # Calculate mean error in cm
-                    point_estimates = outputs.point_estimate(units=Unit.CM).cpu().numpy()
-                    locations = outputs._convert(
-                        locations, Unit.ARBITRARY, Unit.CM
-                        ).cpu().numpy()
+                    outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
-                    mean_err = np.linalg.norm(point_estimates - locations, axis=-1).mean()
+                    for (output, location) in zip(outputs, locations):
+                        # Calculate error in cm
+                        point_estimate = output.point_estimate(units=Unit.CM).cpu().numpy()
+                        location = output._convert(
+                            location, Unit.ARBITRARY, Unit.CM
+                            ).cpu().numpy()
+
+                        err = np.linalg.norm(point_estimate - location, axis=-1).item()
+                        batch_err += err
+
+                        if isinstance(output, ProbabilisticOutput):
+                            compute_calibration = True
+                            if idx == 0:
+                                ca = CalibrationAccumulator(output.arena_dims[Unit.MM].cpu().numpy())
+                            location_mm = location * 10
+                            ca.calculate_step(output, location_mm)
+
+                        idx += 1
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        mean_err, np.nan, sounds.shape[0] * sounds.shape[1]
+                        batch_err / sounds.shape[0], np.nan, sounds.shape[0] * sounds.shape[1]
                     )
 
             # Done with epoch.
-            val_loss = self.__progress_log.finish_epoch()
+            cal_curve = None
+            if compute_calibration:
+                cal_curve = ca.results()['calibration_curve']
+            val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
+
         else:
             val_loss = 0
 
