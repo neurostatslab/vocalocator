@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
         "AUDIO_SAMPLE_RATE": 125000,
         "COMPUTE_XCORRS": False,
         "TRAIN_BATCH_MAX_SAMPLES": 200_000,
-        "CROP_LENGTH": 2048,
+        "CROP_LENGTH": 8192,
         "AUGMENT_DATA": True,
         "ARENA_DIMS": [558.9, 355.6],
     },
