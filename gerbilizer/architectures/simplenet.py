@@ -7,7 +7,7 @@ from torch import nn
 
 from gerbilizer.architectures.util import build_cov_output
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 
 class GerbilizerSimpleLayer(torch.nn.Module):

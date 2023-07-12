@@ -1,6 +1,5 @@
 """
-Functions to construct torch Dataset, DataLoader
-objects and specify data augmentation.
+Functions to construct Datasets and DataLoaders for training and inference
 """
 
 from itertools import combinations
@@ -29,7 +28,6 @@ class GerbilVocalizationDataset(IterableDataset):
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
         crop_length: Optional[int] = None,
-        augmentation_params: Optional[dict] = None,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
 
@@ -46,7 +44,7 @@ class GerbilVocalizationDataset(IterableDataset):
             self.dataset = h5py.File(datapath, "r")
         else:
             self.dataset = datapath
-
+        
         if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
 
@@ -63,11 +61,9 @@ class GerbilVocalizationDataset(IterableDataset):
         self.max_batch_size = max_batch_size
 
         self.returned_samples = 0
-        self.max_returned_samples = self.dataset["len_idx"][-1]
-
-        self.augmentation_params = (
-            augmentation_params if augmentation_params is not None else dict()
-        )
+        worker_info = torch.utils.data.get_worker_info()
+        num_workers = 1 if worker_info is None else worker_info.num_workers
+        self.max_returned_samples = self.dataset["len_idx"][-1] // num_workers
 
     def __len__(self):
         if self.crop_length is not None:
@@ -78,18 +74,45 @@ class GerbilVocalizationDataset(IterableDataset):
 
     def __iter__(self):
         if self.inference or self.sequential:
-            for idx in range(len(self.lengths)):
-                data = self.__processed_data_for_index__(idx)
-                if self.inference:
-                    yield data.unsqueeze(0)
-                else:
-                    yield data[0].unsqueeze(0), data[1].unsqueeze(0)
-            return
+            if not self.crop_length:
+                for idx in range(len(self.lengths)):
+                    data = self.__processed_data_for_index__(idx)
+                    if self.inference:
+                        yield data.unsqueeze(0)
+                    else:
+                        yield data[0].unsqueeze(0), data[1].unsqueeze(0)
+                return
+            else:
+                est_batch_size = self.max_batch_size // self.crop_length
+                batch, labels = [], []
+                for idx in range(len(self.lengths)):
+                    if len(batch) == est_batch_size:
+                        if self.inference: yield torch.stack(batch)
+                        else: yield torch.stack(batch), torch.stack(labels)
+                        batch, labels = [], []
+                    data = self.__processed_data_for_index__(idx)
+                    if self.inference:
+                        batch.append(data)
+                    else:
+                        batch.append(data[0])
+                        labels.append(data[1])
+                if batch or labels:  # if there are any remaining samples
+                    if self.inference: yield torch.stack(batch)
+                    else: yield torch.stack(batch), torch.stack(labels)
+                return
 
         if self.crop_length is not None:
+            worker_info = torch.utils.data.get_worker_info()
+            seed = worker_info.seed % 2**32 if worker_info else 0
+            rng = np.random.RandomState(seed)
             batch_size = self.max_batch_size // self.crop_length
             rand_idx = np.arange(self.n_vocalizations)
-            np.random.shuffle(rand_idx)
+            rng.shuffle(rand_idx)
+
+            # Prevent the parallel workers from duplicating samples
+            num_workers = 1 if worker_info is None else worker_info.num_workers
+            worker_id = 0 if worker_info is None else worker_info.id
+            rand_idx = rand_idx[worker_id::num_workers]
 
             batch = []
             labels = []
@@ -269,38 +292,13 @@ class GerbilVocalizationDataset(IterableDataset):
         scaled_labels = labels * scale
         return scaled_labels
 
-    @staticmethod
-    def add_noise(audio: torch.Tensor, snr_db: float):
-        # Expects audio to have shape (L, C)
-        noise = torch.randn_like(audio)
-
-        # Choose one microphone as a reference, so the strength of the noise is the same across all channels
-        audio_norm = torch.linalg.vector_norm(audio, dim=0)[0]
-        noise_norm = torch.linalg.vector_norm(noise, dim=0, keepdim=True)
-
-        snr = 10 ** (snr_db / 20)
-        scale_factor = snr * noise_norm / audio_norm
-        return audio * scale_factor + noise
-
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
         sound = torch.from_numpy(sound)
 
         if self.crop_length is not None:
             sound = self.__make_crop(sound, self.crop_length)
-
-        if (
-            self.augmentation_params
-            and self.augmentation_params["AUGMENT_DATA"]
-            and np.random.rand() < self.augmentation_params["AUGMENT_SNR_PROB"]
-        ):
-            sound = self.add_noise(
-                sound,
-                np.random.uniform(
-                    self.augmentation_params["AUGMENT_SNR_MIN"],
-                    self.augmentation_params["AUGMENT_SNR_MAX"],
-                ),
-            )
+        
 
         if self.make_xcorrs:
             sound = self.__append_xcorr(
@@ -327,23 +325,26 @@ class GerbilVocalizationDataset(IterableDataset):
         return torch.from_numpy(sound.astype("float32")), torch.from_numpy(
             location_map.astype("float32")
         )
+    
+    def collate_fn(self, batch):
+        # Squeeze out the false batch dimension
+        # This is due to the way the DataLoader class constructs batches on iterable datasets
+        batch = batch[0]
+        return batch
 
 
-def build_dataloaders(path_to_data, CONFIG):
+def build_dataloaders(path_to_data: str, config: dict):
     # Construct Dataset objects.
     train_path = os.path.join(path_to_data, "train_set.h5")
     val_path = os.path.join(path_to_data, "val_set.h5")
     test_path = os.path.join(path_to_data, "test_set.h5")
 
-    collate_fn = lambda batch: batch[
-        0
-    ]  # Prevent the dataloader from unsqueezing in a batch dimension of size 1
-    augment_params = CONFIG["AUGMENTATIONS"]
+    arena_dims = config["DATA"]["ARENA_DIMS"]
+    make_xcorrs = config["DATA"]["COMPUTE_XCORRS"]
+    max_batch_size = config["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
+    crop_length = config["DATA"].get("CROP_LENGTH", None)
 
-    arena_dims = CONFIG["DATA"]["ARENA_DIMS"]
-    make_xcorrs = CONFIG["DATA"]["COMPUTE_XCORRS"]
-    max_batch_size = CONFIG["DATA"]["TRAIN_BATCH_MAX_SAMPLES"]
-    crop_length = CONFIG["DATA"].get("CROP_LENGTH", None)
+    avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
 
     if os.path.exists(train_path):
         traindata = GerbilVocalizationDataset(
@@ -352,9 +353,8 @@ def build_dataloaders(path_to_data, CONFIG):
             make_xcorrs=make_xcorrs,
             max_batch_size=max_batch_size,
             crop_length=crop_length,
-            augmentation_params=augment_params,
         )
-        train_dataloader = DataLoader(traindata, collate_fn=collate_fn)
+        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn, num_workers=avail_cpus)
     else:
         train_dataloader = None
 
@@ -366,7 +366,7 @@ def build_dataloaders(path_to_data, CONFIG):
             crop_length=crop_length,
             sequential=True,
         )
-        val_dataloader = DataLoader(valdata, collate_fn=collate_fn)
+        val_dataloader = DataLoader(valdata, collate_fn=valdata.collate_fn)
     else:
         val_dataloader = None
 
@@ -378,7 +378,7 @@ def build_dataloaders(path_to_data, CONFIG):
             make_xcorrs=make_xcorrs,
             inference=True,
         )
-        test_dataloader = DataLoader(testdata, collate_fn=collate_fn)
+        test_dataloader = DataLoader(testdata, collate_fn=testdata.collate_fn)
     else:
         test_dataloader = None
 
