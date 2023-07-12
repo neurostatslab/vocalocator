@@ -28,7 +28,6 @@ class GerbilVocalizationDataset(IterableDataset):
         max_padding: int = 64,
         max_batch_size: int = 125 * 60 * 32,
         crop_length: Optional[int] = None,
-        cache_vocalizations: bool = False,
     ):
         """A dataloader designed to return batches of vocalizations with similar lengths
 
@@ -45,10 +44,6 @@ class GerbilVocalizationDataset(IterableDataset):
             self.dataset = h5py.File(datapath, "r")
         else:
             self.dataset = datapath
-        if cache_vocalizations:
-            self.cache = self.dataset['vocalizations'][:]
-        else:
-            self.cache = None
         
         if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
@@ -235,10 +230,7 @@ class GerbilVocalizationDataset(IterableDataset):
         of the dataset and handle it appropriately.
         """
         start, end = dataset["len_idx"][idx : idx + 2]
-        if self.cache is not None:
-            audio = self.cache[start:end, ...]
-        else:
-            audio = dataset["vocalizations"][start:end, ...]
+        audio = dataset["vocalizations"][start:end, ...]
         if self.n_channels is None:
             self.n_channels = audio.shape[1]
         return audio
