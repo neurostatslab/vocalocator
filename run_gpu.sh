@@ -4,7 +4,7 @@
 #SBATCH -c 6
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --time=12:00:00
+#SBATCH --time=48:00:00
 #SBATCH -o slurm_logs/train_model_%j.log
 pwd; hostname; date;
 
@@ -46,7 +46,8 @@ source /mnt/home/atanelus/venvs/general/bin/activate
 # Working directory is expected to be the root of the gerbilizer repo
 python -u -m gerbilizer.main \
     --config $CONFIG \
-    --data /tmp/dataset \
-    --save_path $OUTPUT_DIR
+    --data $DATA_DIR \
+    --save_path $OUTPUT_DIR \
+    --bare
 
 date;
