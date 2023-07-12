@@ -189,12 +189,7 @@ def run(args):
     if args.eval:
         run_eval(args, trainer)
     else:
-        # Assume all keys with defualt entries in config.py are present
-        num_epochs = args.config_data["OPTIMIZATION"]["NUM_EPOCHS"]
-        for _ in range(num_epochs):
-            trainer.train_epoch()
-            trainer.eval_validation()
-        trainer.finalize()
+        trainer.train()
 
 
 if __name__ == "__main__":

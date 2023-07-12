@@ -6,7 +6,7 @@ from typing import Generator, NewType, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
 from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
@@ -146,8 +146,9 @@ class Trainer:
         if self.__testdata is not None:
             self.__logger.info(f"Test set:\t{self.__testdata.dataset}")
 
+        self.num_epochs: int = self.__config["OPTIMIZATION"]["NUM_EPOCHS"]
         self.__progress_log = ProgressLogger(
-            self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
+            self.num_epochs,
             self.__traindata,
             self.__valdata,
             self.__config["GENERAL"]["LOG_INTERVAL"],
@@ -179,23 +180,24 @@ class Trainer:
 
             self.__logger.info(self.model.__repr__())
 
-            if self.__config["OPTIMIZATION"]["OPTIMIZER"] == "SGD":
+            optim_config = self.__config["OPTIMIZATION"]
+            if optim_config["OPTIMIZER"] == "SGD":
                 base_optim = torch.optim.SGD
                 optim_args = {
-                    "momentum": self.__config["OPTIMIZATION"]["MOMENTUM"],
-                    "weight_decay": self.__config["OPTIMIZATION"]["WEIGHT_DECAY"],
+                    "momentum": optim_config["MOMENTUM"],
+                    "weight_decay": optim_config["WEIGHT_DECAY"],
                 }
-            elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "ADAM":
+            elif optim_config["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
                 optim_args = {
                     "betas": (
-                        self.__config["OPTIMIZATION"]["ADAM_BETA1"],
-                        self.__config["OPTIMIZATION"]["ADAM_BETA2"],
+                        optim_config["ADAM_BETA1"],
+                        optim_config["ADAM_BETA2"],
                     )
                 }
             else:
                 raise NotImplementedError(
-                    f'Unrecognized optimizer "{self.__config["OPTIMIZATION"]["OPTIMIZER"]}"'
+                    f'Unrecognized optimizer "{optim_config["OPTIMIZER"]}"'
                 )
 
             params = (
@@ -203,15 +205,42 @@ class Trainer:
                 if hasattr(self.model, "trainable_params")
                 else self.model.parameters()
             )
+
+            lr_config = optim_config["LR_PARAMS"]
+
             self.__optim = base_optim(
                 params,
-                lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"],
+                lr=lr_config["MAX_LEARNING_RATE"],
                 **optim_args,
             )
-            self.__scheduler = CosineAnnealingLR(
+            # parse + instantiate desired lr scheduler
+            if lr_config["SCHEDULER"] == "COSINE_ANNEALING":
+                base_scheduler = CosineAnnealingLR
+                scheduler_args = {
+                    "T_max": self.num_epochs,
+                    "eta_min": lr_config.get("MIN_LEARNING_RATE", 0),
+                }
+            elif lr_config["SCHEDULER"] == "EXPONENTIAL_DECAY":
+                base_scheduler = ExponentialLR
+                scheduler_args = {
+                    "gamma": lr_config['MULTIPLICATIVE_DECAY_FACTOR']
+                }
+            elif lr_config["SCHEDULER"] == "REDUCE_ON_PLATEAU":
+                base_scheduler = ReduceLROnPlateau
+                scheduler_args = {
+                    "factor": lr_config.get("MULTIPLICATIVE_DECAY_FACTOR", 0.1),
+                    "patience": lr_config.get("PLATEAU_DECAY_PATIENCE", 10),
+                    "threshold_mode": lr_config.get("PLATEAU_THRESHOLD_MODE", 'rel'),
+                    "threshold": lr_config.get("PLATEAU_THRESHOLD", 1e-4),
+                    "min_lr": lr_config.get("MIN_LEARNING_RATE", 0),
+                }
+            else:
+                raise NotImplementedError(
+                    f'Unrecognized scheduler "{lr_config["SCHEDULER"]}"'
+                )
+            self.__scheduler = base_scheduler(
                 self.__optim,
-                T_max=self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
-                eta_min=self.__config["OPTIMIZATION"]["MIN_LEARNING_RATE"],
+                **scheduler_args
             )
 
     def train_epoch(self):
@@ -250,7 +279,6 @@ class Trainer:
             )
             iter += 1
             # if iter > 10: break
-        self.__scheduler.step()
 
     def eval_validation(self):
         self.__progress_log.start_testing()
@@ -298,7 +326,7 @@ class Trainer:
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:
-            val_loss = 0
+            val_loss = 0.
 
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
@@ -309,6 +337,27 @@ class Trainer:
             )
             self.save_weights(self.__best_weights_file)
         self.__logger.info(Trainer.__query_mem_usage())
+
+        return val_loss
+
+    def update_learning_rate(self, val_loss: float):
+        """
+        Update the learning rate after epoch completion.
+        """
+        if isinstance(self.__scheduler, ReduceLROnPlateau):
+            self.__scheduler.step(val_loss)
+        else:
+            self.__scheduler.step()
+
+    def train(self):
+        """
+        Train the model for self.num_epochs passes through the dataset.
+        """
+        for _ in range(self.num_epochs):
+            self.train_epoch()
+            val_loss = self.eval_validation()
+            self.update_learning_rate(val_loss)
+        self.finalize()
 
     def eval_on_dataset(
         self,
