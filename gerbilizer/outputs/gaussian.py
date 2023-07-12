@@ -62,6 +62,23 @@ class GaussianOutput(BaseDistributionOutput):
             )
         return distr.log_prob(x)
 
+    def covs(self, units: Unit) -> torch.Tensor:
+        """
+        Return the covariance matrix/matrices of the Gaussian(s), in
+        the specified units.
+        """
+        # let S be a covariance matrix parameterized as S = L @ L.T
+        # for L the Cholesky factor stored in self.cholesky_covs
+        # then for A the linear part of the affine transformation
+        # from arbitrary units to the real arena size, the resulting
+        # transformed covariance matrix is given by A @ S @ A.T.
+        # calculate this as the equivalent: (A @ L) @ (A @ L).T
+        scaled_cholesky = self.cholesky_covs
+        if units != Unit.ARBITRARY:
+            A = 0.5 * torch.diag(self.arena_dims[units])
+            scaled_cholesky = A @ scaled_cholesky
+        return scaled_cholesky @ scaled_cholesky.swapaxes(-2, -1)
+
                              
 class GaussianOutputFixedVariance(GaussianOutput):
 
