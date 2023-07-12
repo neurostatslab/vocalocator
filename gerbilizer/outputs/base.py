@@ -108,22 +108,31 @@ class ProbabilisticOutput(ModelOutput):
         """
         raise NotImplementedError
 
+    def log_p(self, x: torch.Tensor, units: Unit) -> torch.Tensor:
+        """
+        Return log p(x) for x provided in units `units`.
+        """
+        # convert coordinate grid to arbitrary units
+        x = x.to(self.device)
+        x_arbitrary = self._convert(x, units, Unit.ARBITRARY)
+        log_prob = self._log_p(x_arbitrary)
+        # scale probability accordingly
+        # jacobian determinant of the affine transform from [-1, 1]^2 \to
+        # [0,xdim] x [0, ydim] is xdim * ydim / 4, so we divide the density by
+        # that.
+        scale_factor = self.arena_dims[units].prod() / 4
+        # equivalently, subtract the log of the scale factor from log_prob.
+        return log_prob - torch.log(scale_factor)
+
     def pmf(self, coordinate_grid: torch.Tensor, units: Unit) -> torch.Tensor:
         """
         Calculate p(x) at each point on the coordinate grid for the
         distribution p parameterized by this model output instance, in a
-        vectorized and numerically stable way.
+        vectorized and numerically stable way. Normalizes to sum to 1.
         """
-        # convert coordinate grid to arbitrary units
-        coordinate_grid = coordinate_grid.to(self.device)
-        coordinate_grid = self._convert(coordinate_grid, units, Unit.ARBITRARY)
-        pdf_on_arbitrary_grid = torch.exp(self._log_p(coordinate_grid))
-        # scale pdf accordingly
-        # jacobian determinant of the affine transform from [-1, 1]^2 \to
-        # [0,xdim] x [0, ydim] is xdim * ydim / 4, so we divide the pdf by
-        # that.
-        scale_factor = self.arena_dims[units].prod() / 4
-        return pdf_on_arbitrary_grid / scale_factor
+        probs = torch.exp(self.log_p(coordinate_grid, units=units))
+        # normalize to 1
+        return probs / probs.sum()
 
 
 class BaseDistributionOutput(ProbabilisticOutput):
