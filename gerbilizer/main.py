@@ -1,7 +1,9 @@
 import argparse
 import os
-from os import path
 import time
+import pathlib
+
+from os import path
 
 import h5py
 import numpy as np
@@ -109,6 +111,8 @@ def validate_args(args):
     # place output directly into directory user provides if bare flag is enabled
     if args.bare:
         args.model_dir = args.save_path
+        if not path.exists(args.model_dir):
+            pathlib.Path(args.model_dir).mkdir(exist_ok=True, parents=True)
     else:
         if not path.exists(args.save_path):
             os.makedirs(args.save_path)
