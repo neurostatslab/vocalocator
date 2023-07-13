@@ -184,7 +184,8 @@ def run(args):
     )
 
     if weights is not None:
-        trainer.load_weights(weights)
+        print(f'Loading weights from path {weights}.')
+        trainer.model.load_weights(best_weights_path=weights)
 
     if args.eval:
         run_eval(args, trainer)
