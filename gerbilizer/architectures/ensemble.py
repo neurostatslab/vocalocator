@@ -33,7 +33,8 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
         """
         super().__init__(config, output_factory)
 
-        for model_config, model in zip(config["MODEL_PARAMS"]["CONSTITUENT_MODELS"], built_models):
+        # check that each model has the correct output type
+        for model in built_models:
             output_type = model.output_factory.output_type
             if not issubclass(output_type, ProbabilisticOutput):
                 raise ValueError(
@@ -42,17 +43,16 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
                     '`ProbabilisticOutput`.'
                     )
 
-            if "WEIGHTS_PATH" not in model_config:
-                raise ValueError(
-                    "Cannot construct ensemble! Not all models have config paramter `WEIGHTS_PATH`."
-                )
+        self.models= nn.ModuleList(built_models)
 
-            device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            weights = torch.load(model_config["WEIGHTS_PATH"], map_location=device)
-            model.to(device)
-            model.load_state_dict(weights)
-
-        self.models = nn.ModuleList(built_models)
+    def load_weights(self, best_weights_path = None, use_final_weights: bool = False):
+        """
+        Load the weights for each constituent model of the ensemble.
+        """
+        # best_weights_path included for consistency of signature
+        # with `GerbilizerArchitecture.load_weights`
+        for model in self.models:
+            model.load_weights(use_final_weights=use_final_weights)
 
     # add overload for nice unbatched functionality
     @overload
