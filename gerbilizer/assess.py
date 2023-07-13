@@ -255,25 +255,18 @@ if __name__ == "__main__":
 
     config_data = build_config(args.config)
 
-    # load the model
-    weights_path = config_data.get("WEIGHTS_PATH", None)
-    if args.use_final and weights_path is not None:
-        weights_path = weights_path.replace('best', 'final')
+    model, _ = build_model(config_data)
 
-    # if not weights_path:
-    #     raise ValueError(
-    #         f"Cannot evaluate model as the config stored at {args.config} doesn't include path to weights."
-    #     )
+    best_weights_path = config_data.get("WEIGHTS_PATH", None)
+    model.load_weights(
+        best_weights_path=best_weights_path,
+        use_final_weights=args.use_final
+        )
+
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         config_data["GENERAL"]["DEVICE"] = "cpu"
-
-    model, _ = build_model(config_data)
     model = model.to(device)
-
-    if weights_path:
-        weights = torch.load(weights_path, map_location=device)
-        model.load_state_dict(weights)
 
     arena_dims = np.array(config_data["DATA"]["ARENA_DIMS"])
     arena_dims_units = config_data["DATA"].get("ARENA_DIMS_UNITS")
