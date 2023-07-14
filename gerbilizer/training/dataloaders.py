@@ -124,6 +124,7 @@ class GerbilVocalizationDataset(Dataset):
 
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
+        sound = torch.from_numpy(sound)
         sound = self.__make_crop(sound, self.crop_length)
         location = None if self.inference else self.__label_for_index(self.dataset, idx)
 
@@ -133,8 +134,8 @@ class GerbilVocalizationDataset(Dataset):
         )
 
         if self.inference:
-            return sound.astype(np.float32)
-        return sound.astype(np.float32), location.astype(np.float32)
+            return sound
+        return sound, location
 
 
 def build_dataloaders(path_to_data: str, config: dict):

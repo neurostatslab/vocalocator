@@ -107,6 +107,6 @@ class AttentionNet(nn.Module):
     def forward(self, x):
         encoded = self.dense(self.encode(x))
         if self.output_cov:
-            return build_cov_output(encoded)
+            return build_cov_output(encoded, device=x.device)
         else:
             return encoded
