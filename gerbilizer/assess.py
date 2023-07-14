@@ -98,7 +98,7 @@ def assess_model(
     """
     outfile = Path(outfile)
 
-    N = dataloader.dataset.n_vocalizations
+    N = len(dataloader.dataset)
     LOC_SHAPE = (N, 2)
 
     with h5py.File(outfile, "w") as f:
@@ -255,16 +255,14 @@ if __name__ == "__main__":
     dataset = GerbilVocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
-        make_xcorrs=config_data["DATA"]["COMPUTE_XCORRS"],
         crop_length=config_data["DATA"].get("CROP_LENGTH", None),
-        sequential=True,
     )
 
     # function that torch dataloader uses to assemble batches.
     # in our case, applying this is necessary because of the structure of the
     # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
     dataloader = DataLoader(
-        dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn
+        dataset, batch_size=64, shuffle=False
     )
 
     # make the parent directories for the desired outfile if they don't exist

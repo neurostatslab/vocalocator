@@ -41,11 +41,10 @@ echo "Done copying dataset"
 date;
 
 source /mnt/home/${USER}/.bashrc
-module purge
-module load python cuda cudnn
+source /mnt/home/atanelus/venvs/general/bin/activate
 
 # Working directory is expected to be the root of the gerbilizer repo
-pipenv run python -u -m gerbilizer.main \
+python -u -m gerbilizer.main \
     --config $CONFIG \
     --data /tmp/dataset \
     --save_path $OUTPUT_DIR

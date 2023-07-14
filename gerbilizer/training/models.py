@@ -6,7 +6,7 @@ from typing import Any, Callable, Tuple, Union
 import numpy as np
 import torch
 
-from ..architectures.attentionnet import AttentionNet
+from ..architectures.attentionnet import DenseAttentionNet as AttentionNet
 from ..architectures.densenet import GerbilizerDenseNet
 from ..architectures.ensemble import GerbilizerEnsemble
 from ..architectures.simplenet import GerbilizerSimpleNetwork
