@@ -119,12 +119,15 @@ def assess_model(
         if isinstance(model, GerbilizerEnsemble):
             raw_output_dataset = []
             for i, constituent in enumerate(model.models):
-                raw_output_dataset.append(f.create_dataset(
-                    f"constituent_{i}_raw_output",
-                    shape=(N, constituent.n_outputs)
-                    ))
+                raw_output_dataset.append(
+                    f.create_dataset(
+                        f"constituent_{i}_raw_output", shape=(N, constituent.n_outputs)
+                    )
+                )
         else:
-            raw_output_dataset = f.create_dataset("raw_model_output", shape=(N, model.n_outputs))
+            raw_output_dataset = f.create_dataset(
+                "raw_model_output", shape=(N, model.n_outputs)
+            )
 
         point_predictions = f.create_dataset("point_predictions", shape=(N, 2))
 
@@ -136,21 +139,33 @@ def assess_model(
 
         with torch.no_grad():
             idx = 0
-            for (sounds, locations) in iter(dataloader):
+            for sounds, locations in iter(dataloader):
                 sounds = sounds.to(device)
                 outputs: list[ModelOutput] = model(sounds, unbatched=True)
-                for (output, location) in zip(outputs, locations):
+                for output, location in zip(outputs, locations):
                     # add batch dimension back
                     if isinstance(model, GerbilizerEnsemble):
-                        for out_dataset, constituent_output in zip(raw_output_dataset, output.raw_output):
-                            out_dataset[idx] = constituent_output.raw_output.squeeze().cpu().numpy()
+                        for out_dataset, constituent_output in zip(
+                            raw_output_dataset, output.raw_output
+                        ):
+                            out_dataset[idx] = (
+                                constituent_output.raw_output.squeeze().cpu().numpy()
+                            )
                     else:
-                        raw_output_dataset[idx] = output.raw_output.squeeze().cpu().numpy()
+                        raw_output_dataset[idx] = (
+                            output.raw_output.squeeze().cpu().numpy()
+                        )
 
-                    point_predictions[idx] = output.point_estimate(units=Unit.MM).cpu().numpy()
+                    point_predictions[idx] = (
+                        output.point_estimate(units=Unit.MM).cpu().numpy()
+                    )
 
                     # unscale location from [-1, 1] square to units in arena (in mm)
-                    scaled_location = output._convert(location[None], Unit.ARBITRARY, Unit.MM).cpu().numpy()
+                    scaled_location = (
+                        output._convert(location[None], Unit.ARBITRARY, Unit.MM)
+                        .cpu()
+                        .numpy()
+                    )
                     scaled_locations_dataset[idx] = scaled_location
 
                     # other useful info
@@ -162,29 +177,41 @@ def assess_model(
                             # plot the densities
                             visualize_dir = outfile.parent / "pmfs_visualized"
                             visualize_dir.mkdir(exist_ok=True, parents=True)
-                            visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
+                            visualize_outfile = (
+                                visualize_dir / f"{outfile.stem}_visualized.png"
+                            )
 
                             _, axs = subplots(FIRST_N_VOX_TO_PLOT)
 
                             for i, ax in enumerate(axs):
                                 ax.set_title(f"vocalization {i}")
-                                ax.plot(*point_predictions[i], "ro", label='predicted')
+                                ax.plot(*point_predictions[i], "ro", label="predicted")
                                 # add a green dot indicating the true location
-                                ax.plot(*scaled_locations_dataset[i], "go", label='true')
+                                ax.plot(
+                                    *scaled_locations_dataset[i], "go", label="true"
+                                )
                                 ax.set_aspect("equal", "box")
 
                                 if should_compute_calibration:
-
                                     set_to_plot = ca.confidence_sets[i]
 
                                     xgrid, ygrid = make_xy_grids(
-                                        arena_dims, shape=set_to_plot.shape, return_center_pts=True
+                                        arena_dims,
+                                        shape=set_to_plot.shape,
+                                        return_center_pts=True,
                                     )
-                                    ax.contourf(xgrid, ygrid, set_to_plot, label='95% confidence set')
+                                    ax.contourf(
+                                        xgrid,
+                                        ygrid,
+                                        set_to_plot,
+                                        label="95% confidence set",
+                                    )
                                 ax.legend()
 
                             plt.savefig(visualize_outfile)
-                            print(f"Model output visualized at file {visualize_outfile}")
+                            print(
+                                f"Model output visualized at file {visualize_outfile}"
+                            )
 
                     # update number of vocalizations seen
                     idx += 1
@@ -258,7 +285,7 @@ if __name__ == "__main__":
     # load the model
     weights_path = config_data.get("WEIGHTS_PATH", None)
     if args.use_final and weights_path is not None:
-        weights_path = weights_path.replace('best', 'final')
+        weights_path = weights_path.replace("best", "final")
 
     # if not weights_path:
     #     raise ValueError(
@@ -279,7 +306,7 @@ if __name__ == "__main__":
     arena_dims_units = config_data["DATA"].get("ARENA_DIMS_UNITS")
 
     # if provided in cm, convert to MM
-    if arena_dims_units == 'CM':
+    if arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
 
     dataset = GerbilVocalizationDataset(
@@ -293,7 +320,9 @@ if __name__ == "__main__":
     # function that torch dataloader uses to assemble batches.
     # in our case, applying this is necessary because of the structure of the
     # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn)
+    dataloader = DataLoader(
+        dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn
+    )
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent

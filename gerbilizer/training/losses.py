@@ -16,13 +16,16 @@ logger.setLevel(logging.INFO)
 
 # MARK: Loss functions
 
+
 def squared_error(output: ModelOutput, target: torch.Tensor):
     """Mean squared error criterion."""
     return 2 * torch.mean(torch.square(output.point_estimate() - target))
 
+
 def negative_log_likelihood(output: ProbabilisticOutput, target: torch.Tensor):
     """Negative log likelihood loss criterion."""
     return -1 * output._log_p(target)
+
 
 # All loss functions are expected to accept the prediction as the first argument
 # and the ground truth as the second argument

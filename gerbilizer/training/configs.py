@@ -53,7 +53,7 @@ DEFAULT_CONFIG = {
             "PROB": 0.5,
             "MIN_LENGTH": 75,  # 0.6 ms at 125 kHz
             "MAX_LENGTH": 125,  # 1 ms at 125 kHz
-        }
+        },
     },
 }
 

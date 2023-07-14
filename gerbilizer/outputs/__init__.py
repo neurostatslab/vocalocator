@@ -4,13 +4,11 @@ from gerbilizer.outputs.base import (
     MDNOutput,
     UniformOutput,
     ModelOutput,
-    ProbabilisticOutput
-    )
+    ProbabilisticOutput,
+)
 from gerbilizer.outputs.gaussian import (
     GaussianOutputFixedVariance,
     GaussianOutputSphericalCov,
     GaussianOutputDiagonalCov,
-    GaussianOutputFullCov
-    )
-
-
+    GaussianOutputFullCov,
+)

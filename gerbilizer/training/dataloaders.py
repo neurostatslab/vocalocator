@@ -44,7 +44,7 @@ class GerbilVocalizationDataset(IterableDataset):
             self.dataset = h5py.File(datapath, "r")
         else:
             self.dataset = datapath
-        
+
         if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
 
@@ -87,8 +87,10 @@ class GerbilVocalizationDataset(IterableDataset):
                 batch, labels = [], []
                 for idx in range(len(self.lengths)):
                     if len(batch) == est_batch_size:
-                        if self.inference: yield torch.stack(batch)
-                        else: yield torch.stack(batch), torch.stack(labels)
+                        if self.inference:
+                            yield torch.stack(batch)
+                        else:
+                            yield torch.stack(batch), torch.stack(labels)
                         batch, labels = [], []
                     data = self.__processed_data_for_index__(idx)
                     if self.inference:
@@ -97,8 +99,10 @@ class GerbilVocalizationDataset(IterableDataset):
                         batch.append(data[0])
                         labels.append(data[1])
                 if batch or labels:  # if there are any remaining samples
-                    if self.inference: yield torch.stack(batch)
-                    else: yield torch.stack(batch), torch.stack(labels)
+                    if self.inference:
+                        yield torch.stack(batch)
+                    else:
+                        yield torch.stack(batch), torch.stack(labels)
                 return
 
         if self.crop_length is not None:
@@ -298,7 +302,6 @@ class GerbilVocalizationDataset(IterableDataset):
 
         if self.crop_length is not None:
             sound = self.__make_crop(sound, self.crop_length)
-        
 
         if self.make_xcorrs:
             sound = self.__append_xcorr(
@@ -325,7 +328,7 @@ class GerbilVocalizationDataset(IterableDataset):
         return torch.from_numpy(sound.astype("float32")), torch.from_numpy(
             location_map.astype("float32")
         )
-    
+
     def collate_fn(self, batch):
         # Squeeze out the false batch dimension
         # This is due to the way the DataLoader class constructs batches on iterable datasets
@@ -354,7 +357,9 @@ def build_dataloaders(path_to_data: str, config: dict):
             max_batch_size=max_batch_size,
             crop_length=crop_length,
         )
-        train_dataloader = DataLoader(traindata, collate_fn=traindata.collate_fn, num_workers=avail_cpus)
+        train_dataloader = DataLoader(
+            traindata, collate_fn=traindata.collate_fn, num_workers=avail_cpus
+        )
     else:
         train_dataloader = None
 
