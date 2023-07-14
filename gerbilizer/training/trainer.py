@@ -18,10 +18,12 @@ from ..training.models import build_model
 try:
     # Attempt to use json5 if available
     import pyjson5 as json
+
     using_json5 = True
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
+
     using_json5 = False
 
 JSON = NewType("JSON", dict)
@@ -80,7 +82,6 @@ class Trainer:
         # torch.backends.cuda.enable_flash_sdp(False)
         # torch.backends.cuda.enable_math_sdp(False)
 
-
         self.__eval = eval_mode
         self.__datafile = data_dir
         self.__model_dir = model_dir
@@ -88,18 +89,20 @@ class Trainer:
 
         if torch.cuda.is_available() and self.__config["GENERAL"]["DEVICE"] == "GPU":
             self.device = torch.device("cuda")
-        elif torch.backends.mps.is_available() and self.__config["GENERAL"]["DEVICE"] == "GPU":
+        elif (
+            torch.backends.mps.is_available()
+            and self.__config["GENERAL"]["DEVICE"] == "GPU"
+        ):
             self.device = torch.device("mps")
         else:
             self.device = torch.device("cpu")
         print(f"Using device: {self.device}")
 
-
         if not self.__eval:
             self.__init_output_dir()
             self.__init_dataloaders()
         self.__init_model()
-        
+
         self.augment = build_augmentations(self.__config)
 
         if not self.__eval:
@@ -189,12 +192,11 @@ class Trainer:
         print(torch.backends.cuda.mem_efficient_sdp_enabled())
         print(torch.backends.cuda.math_sdp_enabled())
 
-
         # In inference mode, there is no logger
         if not self.__eval:
             # The JSON5 library only supports writing in binary mode, but the built-in json library does not
             # Ensure this is written after the model has had the chance to update the config
-            filemode = 'wb' if using_json5 else 'w'
+            filemode = "wb" if using_json5 else "w"
             with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
                 json.dump(self.__config, ctx, indent=4)
 
@@ -243,7 +245,7 @@ class Trainer:
         # Set the learning rate using cosine annealing.
         self.__progress_log.start_training()
         self.model.train()
-        
+
         for sounds, locations in self.__traindata:
             # Move data to device
             sounds = sounds.to(self.device)
@@ -270,7 +272,7 @@ class Trainer:
 
             # Count batch as completed.
             self.__progress_log.log_train_batch(
-                mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1]
+                mean_loss.item(), np.nan, sounds.shape[0]
             )
         self.__scheduler.step()
 
@@ -297,24 +299,41 @@ class Trainer:
                             predicted_locations, locations, arena_dims
                         ).mean()
                     elif outputs.ndim == 3:
-                        x_step  = 2 / outputs.shape[2]
-                        y_step  = 2 / outputs.shape[1]
-                        x_centers = np.linspace(-1 + x_step / 2, 1 - x_step / 2, outputs.shape[2], endpoint=True)
-                        y_centers = np.linspace(-1 + y_step / 2, 1 - y_step / 2, outputs.shape[1], endpoint=True)
-                        pred = np.unravel_index(np.argmax(outputs.reshape(outputs.shape[0], -1), axis=1), outputs.shape[1:])
+                        x_step = 2 / outputs.shape[2]
+                        y_step = 2 / outputs.shape[1]
+                        x_centers = np.linspace(
+                            -1 + x_step / 2,
+                            1 - x_step / 2,
+                            outputs.shape[2],
+                            endpoint=True,
+                        )
+                        y_centers = np.linspace(
+                            -1 + y_step / 2,
+                            1 - y_step / 2,
+                            outputs.shape[1],
+                            endpoint=True,
+                        )
+                        pred = np.unravel_index(
+                            np.argmax(outputs.reshape(outputs.shape[0], -1), axis=1),
+                            outputs.shape[1:],
+                        )
                         pred_x = x_centers[pred[1]]
                         pred_y = y_centers[pred[0]]
                         pred_locations = np.stack((pred_x, pred_y), axis=1)
-                        mean_loss = l2_distance(
-                            pred_locations, locations, arena_dims
-                        ).mean().item()
+                        mean_loss = (
+                            l2_distance(pred_locations, locations, arena_dims)
+                            .mean()
+                            .item()
+                        )
                     else:
-                        losses = self.__loss_fn(torch.from_numpy(outputs), torch.from_numpy(locations))
+                        losses = self.__loss_fn(
+                            torch.from_numpy(outputs), torch.from_numpy(locations)
+                        )
                         mean_loss = torch.mean(losses).item()
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        mean_loss / 10.0, np.nan, sounds.shape[0] * sounds.shape[1]
+                        mean_loss / 10.0, np.nan, sounds.shape[0]
                     )
 
             # Done with epoch.
@@ -363,7 +382,7 @@ class Trainer:
         self.model.to(self.device)
         with torch.no_grad():
             for data in dloader:
-                data = data.to(self.device) # (bsz, seq, channels)
+                data = data.to(self.device)  # (bsz, seq, channels)
                 output = self.model(data).cpu().numpy()
                 yield output
 

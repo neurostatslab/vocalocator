@@ -114,7 +114,7 @@ def assess_model(
         model.eval()
         with torch.no_grad():
             idx = 0
-            for (sounds, locations) in iter(dataloader):
+            for sounds, locations in iter(dataloader):
                 sounds = sounds.to(device)
                 outputs = model(sounds)
                 np_output = outputs.cpu().numpy()
@@ -135,7 +135,9 @@ def assess_model(
 
                     # process mean + cov matrix from model output, unscaling to
                     # arena size from [-1, 1] square
-                    unscaled_output = unscale_output(single_output[None, ...], arena_dims).squeeze()
+                    unscaled_output = unscale_output(
+                        single_output[None, ...], arena_dims
+                    ).squeeze()
                     scaled_output.append(unscaled_output)
 
                     # other useful info
@@ -145,7 +147,9 @@ def assess_model(
                         # plot the densities
                         visualize_dir = outfile.parent / "pmfs_visualized"
                         visualize_dir.mkdir(exist_ok=True, parents=True)
-                        visualize_outfile = visualize_dir / f"{outfile.stem}_visualized.png"
+                        visualize_outfile = (
+                            visualize_dir / f"{outfile.stem}_visualized.png"
+                        )
 
                         sets_to_plot = ca.confidence_sets[:idx]
                         associated_locations = scaled_locations[:idx]
@@ -153,7 +157,9 @@ def assess_model(
                         _, axs = subplots(len(sets_to_plot))
 
                         xgrid, ygrid = make_xy_grids(
-                            arena_dims, shape=sets_to_plot[0].shape, return_center_pts=True
+                            arena_dims,
+                            shape=sets_to_plot[0].shape,
+                            return_center_pts=True,
                         )
                         for i, ax in enumerate(axs):
                             ax.set_title(f"vocalization {i}")
@@ -257,7 +263,9 @@ if __name__ == "__main__":
     # function that torch dataloader uses to assemble batches.
     # in our case, applying this is necessary because of the structure of the
     # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn)
+    dataloader = DataLoader(
+        dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn
+    )
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent

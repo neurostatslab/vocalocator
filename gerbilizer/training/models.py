@@ -6,7 +6,7 @@ from typing import Any, Callable, Tuple, Union
 import numpy as np
 import torch
 
-from ..architectures.attentionnet import GerbilizerTransformer
+from ..architectures.attentionnet import AttentionNet
 from ..architectures.densenet import GerbilizerDenseNet
 from ..architectures.ensemble import GerbilizerEnsemble
 from ..architectures.simplenet import GerbilizerSimpleNetwork
@@ -23,7 +23,7 @@ ModelType = namedtuple("ModelType", ("model", "non_cov_loss_fn", "can_output_cov
 LOOKUP_TABLE = {
     "GerbilizerDenseNet": ModelType(GerbilizerDenseNet, se_loss_fn, True),
     "GerbilizerSimpleNetwork": ModelType(GerbilizerSimpleNetwork, se_loss_fn, True),
-    "GerbilizerTransformer": ModelType(GerbilizerTransformer, se_loss_fn, True),
+    "GerbilizerTransformer": ModelType(AttentionNet, se_loss_fn, True),
 }
 
 
@@ -104,15 +104,27 @@ def transport_cost_fn(target: torch.Tensor, width: int, height: int) -> torch.Te
     arena_dims = [2, 2]
     spacing_x = arena_dims[0] / width
     spacing_y = arena_dims[1] / height
-    x_points = np.linspace(-arena_dims[0] / 2 + spacing_x / 2, arena_dims[0] / 2 - spacing_x / 2, width, endpoint=True)  # evaluate at center of each grid cell
-    y_points = np.linspace(-arena_dims[1] / 2 + spacing_y / 2, arena_dims[1] / 2 - spacing_y / 2, height, endpoint=True)
+    x_points = np.linspace(
+        -arena_dims[0] / 2 + spacing_x / 2,
+        arena_dims[0] / 2 - spacing_x / 2,
+        width,
+        endpoint=True,
+    )  # evaluate at center of each grid cell
+    y_points = np.linspace(
+        -arena_dims[1] / 2 + spacing_y / 2,
+        arena_dims[1] / 2 - spacing_y / 2,
+        height,
+        endpoint=True,
+    )
     x_grid, y_grid = np.meshgrid(x_points, y_points)
     grid = np.stack([x_grid, y_grid], axis=-1).astype(np.float32)
     grid = torch.from_numpy(grid).float().to(target.device)
     # fill each cell with the distance between the cell center and the target
     # grid is of shape (height, width, 2)
     # target is of shape (n_samples, 2)
-    dists = torch.norm(target[:, None, None, :] - grid[None, :, :, :], dim=-1, p=2)  # yields shape (n_samples, height, width)
+    dists = torch.norm(
+        target[:, None, None, :] - grid[None, :, :, :], dim=-1, p=2
+    )  # yields shape (n_samples, height, width)
 
     # warning: if displayed as an image, this will be upside down
     return dists

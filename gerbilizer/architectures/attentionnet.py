@@ -1,158 +1,112 @@
-from copy import copy
-from math import comb
-from typing import Optional
-
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from .util import build_cov_output
-from .simplenet import GerbilizerSimpleLayer
 
 from .encodings import LearnedEncoding
-from .rope import RotaryPEMultiHeadSelfAttention
 
 
-class Transpose(nn.Module):
-    def __init__(self, dim_a, dim_b):
-        super().__init__()
-        self.a = dim_a
-        self.b = dim_b
+from itertools import chain
 
-    def forward(self, tensor):
-        return tensor.transpose(self.a, self.b)
-    
+import torch
+from torch import nn
+from torch.distributions.multivariate_normal import MultivariateNormal
 
-def swish(x):
-    return x * torch.sigmoid(x)  # Swish activation function with beta=1
-
-class SwiGLUEncoderLayer(nn.TransformerEncoderLayer):
-    def __init__(
-            self,
-            d_model: int,
-            nhead: int,
-            dim_feedforward: int = 2048,
-            dropout: float = 0.1,
-            layer_norm_eps: float = 1e-5,
-            batch_first: bool = False,
-            norm_first: bool = False,
-            device: Optional[torch.device]=None,
-            dtype: Optional[torch.dtype]=None
-    ) -> None:
-        super().__init__(d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward,
-                        dropout=dropout, batch_first=batch_first, norm_first=norm_first,
-                        layer_norm_eps=layer_norm_eps, device=device, dtype=dtype)
-
-        self.batch_first = batch_first
-        # Remove bias from the feedforward layer
-        self.linear1 = nn.Linear(d_model, dim_feedforward, bias=False)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, bias=False)
-        # overwrite the feedforward layer with a SwiGLU layer
-        self.linearV = nn.Linear(d_model, dim_feedforward, bias=False)
-
-        # Positional encoding returns data with batch second
-        # self.self_attn = RotaryPEMultiHeadSelfAttention(d_model, nhead, batch_first=False, device=device, dtype=dtype)
-    
-    def _ff_block(self, x: torch.Tensor) -> torch.Tensor:
-        swished = swish(self.linear1(x))
-        prod = self.linearV(x)
-        return self.dropout2(self.linear2(self.dropout1(swished * prod)))
+from .sparse_transformers import SparseTransformerEncoder, SparseTransformerEncoderLayer
 
 
-class GerbilizerTransformer(nn.Module):
-    """A transformer-based model for the Gerbilizer task."""
+class AttentionNet(nn.Module):
     default_config = {
-        "CONV_KERNEL_SIZE": 51,
-        "CONV_N_LAYERS": 3,
-
-        "NUM_ENCODER_LAYERS": 5,
-        "ENCODER_D_MODEL": 256,
-        "ENCODER_N_HEADS": 32,
-        "ENCODER_DROPOUT": 0.1,
-        "ENCODER_DIM_FEEDFORWARD": 2048,
-
-        "LINEAR_N_LAYERS": 3,  # For prediction head
-        "LINEAR_DIM_FEEDFORWARD": 2048,
+        "CROP_SIZE": 4096,
+        "BLOCK_SIZE": 16,
+        "D_MODEL": 256,
+        "NUM_HEADS": 8,
+        "OUTPUT_COV": True,
     }
 
-    def __init__(self, config):
-        super().__init__()
+    def __init__(self, config: dict):
+        """Constructs a regression model over the microphone traces
+        of Mongolian gerbil vocalizations.
+        Prameters:
+            - crop_size: max length of the input sequence
+            - block_size: number of audio samples per input token
+            - d_model: inner dimension size of transformer layers
+            - num_heads: Number of attention heads to use
+        """
+        super(AttentionNet, self).__init__()
 
-        n_mics = config["DATA"]["NUM_MICROPHONES"]
-        if config["DATA"]["COMPUTE_XCORRS"]:
-            n_mics += comb(n_mics, 2)
+        params = AttentionNet.default_config.copy()
+        params.update(config["MODEL_PARAMS"])
 
-        # Grab model parameters and fill in missing values with defaults
-        model_config = GerbilizerTransformer.default_config.copy()
-        model_config.update(config.get("MODEL_PARAMS", {}))
-        
+        self.n_mics = config["DATA"]["NUM_MICROPHONES"]
 
-        # Convolutional backbone
-        conv_kernel_size = model_config["CONV_KERNEL_SIZE"]
-        # conv_stride = max(1, conv_kernel_size // 2)
-        conv_stride = 2
-        c_0 = nn.Conv1d(n_mics, model_config["ENCODER_D_MODEL"], conv_kernel_size, stride=conv_stride, padding='same' if conv_stride == 1 else 0)
-        c = nn.Conv1d(model_config["ENCODER_D_MODEL"], model_config["ENCODER_D_MODEL"], conv_kernel_size, stride=conv_stride, padding='same' if conv_stride == 1 else 0)
-        conv_layers = [c_0, nn.ReLU()]
-        for _ in range(model_config["CONV_N_LAYERS"] - 1):
-            conv_layers += [copy(c)]
-            conv_layers += [nn.ReLU()]
+        self.crop_size = config["DATA"]["CROP_LENGTH"]
+        self.block_size = params["BLOCK_SIZE"]
+        self.max_seq = self.crop_size // self.block_size + 1
+        self.d_model = params["D_MODEL"]
+        self.num_heads = params["NUM_HEADS"]
+        self.output_cov = params["OUTPUT_COV"]
 
-        self.conv = nn.Sequential(
-            Transpose(1, 2),
-            *conv_layers,
-            Transpose(1, 2),
+        self.cls_token = nn.Parameter(torch.zeros(1, self.d_model))
+        nn.init.normal_(self.cls_token, std=0.02)
+
+        self.in_encoding = LearnedEncoding(
+            d_model=self.d_model, max_seq_len=self.max_seq
+        )
+        self.out_encoding = LearnedEncoding(
+            d_model=self.d_model, max_seq_len=self.max_seq
         )
 
-        # Define the encoder and decoder layers
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=model_config["ENCODER_D_MODEL"],
-            nhead=model_config["ENCODER_N_HEADS"],
-            dim_feedforward=model_config["ENCODER_DIM_FEEDFORWARD"],
-            dropout=model_config["ENCODER_DROPOUT"],
-            batch_first=True,
+        self.data_encoding = nn.Linear(self.block_size * self.n_mics, self.d_model)
+        self.encoder = SparseTransformerEncoder(
+            SparseTransformerEncoderLayer(
+                self.d_model,
+                self.num_heads,
+                block_size=8,
+                n_global=2,
+                n_window=11,
+                n_random=3,
+                dim_feedforward=2048,
+                dropout=0.1,
+                checkpoint=False,
+                batch_first=True,
+            ),
+            5,
         )
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=model_config["NUM_ENCODER_LAYERS"],
+
+        n_output = 5 if self.output_cov else 2
+        self.dense = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model),
+            nn.ReLU(),
+            nn.Linear(self.d_model, n_output),
         )
 
-        # Prediction head
-        dense_block = [nn.Linear(model_config["ENCODER_D_MODEL"], model_config["LINEAR_DIM_FEEDFORWARD"]), nn.ReLU()]
-        for _ in range(model_config["LINEAR_N_LAYERS"] - 1):
-            dense_block.extend([nn.Linear(model_config["LINEAR_DIM_FEEDFORWARD"], model_config["LINEAR_DIM_FEEDFORWARD"]), nn.ReLU()])
-        self.dense_block = nn.Sequential(*dense_block)
-        self.p_encoding = LearnedEncoding(d_model=model_config["ENCODER_D_MODEL"], max_seq_len=10000)
-
-        self.output_cov = model_config.get("OUTPUT_COV", False)
-        n_outputs = 5 if self.output_cov else 2
-        self.prob_readout = nn.Linear(model_config["LINEAR_DIM_FEEDFORWARD"], n_outputs)
-
-
-    def clip_grads(self):
+    def _clip_gradients(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0)
 
-    def embed(self, x):
-        """I'm splitting the forward pass into this 'embedding' segment
-        and the final x-y coord output to make inheritance easier
-        """
-        # x initial shape: (batch_size, seq_ln, n_mics)
-        x = self.conv(x)
-        cls_token = torch.zeros([x.shape[0], 1, x.shape[2]], device=x.device)
-        x = torch.cat([cls_token, x], dim=1)
-        x = self.p_encoding(x)
-        x = self.encoder(x)
-
-        return self.dense_block(x[:, 0, :])
+    def encode(self, x):
+        batched = x.dim() == 3
+        # Initial shape (batch, samples, mics)
+        if batched:
+            x = x.reshape(x.shape[0], -1, self.block_size * self.n_mics)
+        else:
+            x = x.reshape(-1, self.block_size * self.n_mics)
+        # shape: (batch, blocks, block_size * mics)
+        embed_out = self.data_encoding(x)  # Outputs (batch, blocks, d_model)
+        cls_token = self.cls_token
+        if batched:
+            cls_token = cls_token.unsqueeze(0).expand(x.shape[0], -1, -1)
+        transformer_in = torch.cat([cls_token, embed_out], dim=-2)
+        transformer_in = self.in_encoding(
+            transformer_in.unsqueeze(0) if not batched else transformer_in
+        )
+        transformer_out = self.encoder(transformer_in)[:, 0, :]
+        return transformer_out
 
     def forward(self, x):
-        linear_out = self.embed(x)
-
-        readout = self.prob_readout(linear_out)
+        encoded = self.dense(self.encode(x))
         if self.output_cov:
-            return build_cov_output(readout, readout.device)
-        return readout
-    
-    def trainable_params(self):
-        """Useful for freezing parts of the model"""
-        return self.parameters()
+            return build_cov_output(encoded)
+        else:
+            return encoded
