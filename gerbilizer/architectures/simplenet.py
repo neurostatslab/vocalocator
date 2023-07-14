@@ -127,8 +127,8 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
 
         if not isinstance(self.n_outputs, int):
             raise ValueError(
-                'Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?'
-                )
+                "Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?"
+            )
         self.coord_readout = torch.nn.Linear(self.n_channels[-1], self.n_outputs)
 
     def _forward(self, x: torch.Tensor) -> torch.Tensor:

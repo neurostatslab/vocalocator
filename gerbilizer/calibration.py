@@ -158,7 +158,7 @@ class CalibrationAccumulator:
         """
         self.n_calibration_bins = n_calibration_bins
 
-        self.arena_dims = arena_dims # expected to be in MM.
+        self.arena_dims = arena_dims  # expected to be in MM.
 
         # initialize the internal mass counts tracking arrays
         self.mass_counts = np.zeros(n_calibration_bins)
@@ -171,7 +171,9 @@ class CalibrationAccumulator:
         self.location_in_confidence_set = []
         self.distances_to_furthest_point = []
 
-    def calculate_step(self, model_output: ProbabilisticOutput, true_location: np.ndarray):
+    def calculate_step(
+        self, model_output: ProbabilisticOutput, true_location: np.ndarray
+    ):
         """
         Perform one step of the calibration process on `model_output`.
 
@@ -182,9 +184,9 @@ class CalibrationAccumulator:
         """
         if not isinstance(model_output, ProbabilisticOutput):
             raise ValueError(
-                'Model output passed to calibration expected to be a subclass of '
-                f'`ProbabilisticOutput`! Instead encountered object of type: {type(model_output)}.'
-                )
+                "Model output passed to calibration expected to be a subclass of "
+                f"`ProbabilisticOutput`! Instead encountered object of type: {type(model_output)}."
+            )
         # NOTE: true location expected in MM
 
         # get the pmf

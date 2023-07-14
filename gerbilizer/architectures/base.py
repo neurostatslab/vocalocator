@@ -4,8 +4,8 @@ import torch
 
 from gerbilizer.outputs import ModelOutput, ModelOutputFactory
 
-class GerbilizerArchitecture(torch.nn.Module):
 
+class GerbilizerArchitecture(torch.nn.Module):
     defaults: dict
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
@@ -20,9 +20,12 @@ class GerbilizerArchitecture(torch.nn.Module):
 
     # add overload for nice unbatched functionality
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput:
+        ...
+
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]: ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]:
+        ...
 
     def forward(self, x: torch.Tensor, unbatched: bool = False):
         """

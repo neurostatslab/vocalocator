@@ -7,6 +7,7 @@ from torch.nn import functional as F
 
 from .util import build_cov_output
 
+
 class GerbilizerDenseLayer(torch.nn.Module):
     def __init__(
         self,
@@ -21,12 +22,12 @@ class GerbilizerDenseLayer(torch.nn.Module):
         super(GerbilizerDenseLayer, self).__init__()
 
         if not downsample:
-            padding= (filter_size - 1) * dilation // 2,
+            padding = ((filter_size - 1) * dilation // 2,)
         else:
             # L_out = (L_in + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1
             # for L_out to be L_in / 2, we need padding = (kernel_size - 1) / 2
             padding = (filter_size) * dilation // 2
-        
+
         self.fc = torch.nn.Conv1d(
             channels_in,
             channels_out,
@@ -73,11 +74,12 @@ class GerbilizerDenseNet(torch.nn.Module):
         if CONFIG["DATA"].get("COMPUTE_XCORRS", False):
             N += comb(N, 2)
 
-        
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = GerbilizerDenseNet.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
-        CONFIG["MODEL_PARAMS"] = model_config  # Save the parameters used in this run for backward compatibility
+        CONFIG[
+            "MODEL_PARAMS"
+        ] = model_config  # Save the parameters used in this run for backward compatibility
 
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         n_channels = model_config["CONV_NUM_CHANNELS"]

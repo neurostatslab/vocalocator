@@ -28,6 +28,8 @@ except ImportError:
 
     using_json5 = False
 
+    using_json5 = False
+
 JSON = NewType("JSON", dict)
 
 
@@ -286,12 +288,16 @@ class Trainer:
 
                     outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
-                    for (output, location) in zip(outputs, locations):
+                    for output, location in zip(outputs, locations):
                         # Calculate error in cm
-                        point_estimate = output.point_estimate(units=Unit.CM).cpu().numpy()
-                        location = output._convert(
-                            location, Unit.ARBITRARY, Unit.CM
-                            ).cpu().numpy()
+                        point_estimate = (
+                            output.point_estimate(units=Unit.CM).cpu().numpy()
+                        )
+                        location = (
+                            output._convert(location, Unit.ARBITRARY, Unit.CM)
+                            .cpu()
+                            .numpy()
+                        )
 
                         err = np.linalg.norm(point_estimate - location, axis=-1).item()
                         batch_err += err
@@ -299,7 +305,9 @@ class Trainer:
                         if isinstance(output, ProbabilisticOutput):
                             compute_calibration = True
                             if idx == 0:
-                                ca = CalibrationAccumulator(output.arena_dims[Unit.MM].cpu().numpy())
+                                ca = CalibrationAccumulator(
+                                    output.arena_dims[Unit.MM].cpu().numpy()
+                                )
                             location_mm = location * 10
                             ca.calculate_step(output, location_mm)
 
@@ -307,13 +315,15 @@ class Trainer:
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        batch_err / sounds.shape[0], np.nan, sounds.shape[0] * sounds.shape[1]
+                        batch_err / sounds.shape[0],
+                        np.nan,
+                        sounds.shape[0] * sounds.shape[1],
                     )
 
             # Done with epoch.
             cal_curve = None
             if compute_calibration:
-                cal_curve = ca.results()['calibration_curve']
+                cal_curve = ca.results()["calibration_curve"]
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:
