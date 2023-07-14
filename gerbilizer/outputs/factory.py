@@ -2,7 +2,7 @@ from typing import Union
 
 import torch
 
-from gerbilizer.outputs.base import ModelOutput, MDNOutput, EnsembleOutput, Unit
+from gerbilizer.outputs.base import EnsembleOutput, MDNOutput, ModelOutput, Unit
 
 
 class ModelOutputFactory:

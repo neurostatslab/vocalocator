@@ -1,8 +1,8 @@
 from math import comb
 from typing import Optional
 
-from numpy import sqrt
 import torch
+from numpy import sqrt
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.parameter import Parameter

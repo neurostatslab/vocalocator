@@ -5,19 +5,17 @@ from typing import Any, Callable, Union
 import numpy as np
 import torch
 
-from gerbilizer.outputs.base import MDNOutput
+from gerbilizer.outputs import (
+    GaussianOutputFixedVariance,
+    ModelOutput,
+    ModelOutputFactory,
+    ProbabilisticOutput,
+)
+from gerbilizer.outputs.base import BaseDistributionOutput, MDNOutput
 
 from ..architectures.base import GerbilizerArchitecture
 from ..architectures.ensemble import GerbilizerEnsemble
-from .losses import squared_error, negative_log_likelihood
-
-from gerbilizer.outputs import (
-    ModelOutput,
-    ProbabilisticOutput,
-    ModelOutputFactory,
-    GaussianOutputFixedVariance,
-)
-from gerbilizer.outputs.base import BaseDistributionOutput
+from .losses import negative_log_likelihood, squared_error
 
 
 def __subclasses_recursive(cls):

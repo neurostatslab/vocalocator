@@ -2,18 +2,18 @@
 Functions to construct Datasets and DataLoaders for training and inference
 """
 
+import os
 from itertools import combinations
 from math import comb
-import os
 from typing import Optional, Tuple, Union
 
 import h5py
 import numpy as np
-from scipy.signal import correlate
 import torch
+from scipy.signal import correlate
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import DataLoader, IterableDataset
 
 
 class GerbilVocalizationDataset(IterableDataset):

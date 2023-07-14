@@ -5,25 +5,23 @@ and whether the true value was in that set, etc.
 """
 import argparse
 import logging
-
 from pathlib import Path
 from typing import Union
 
 import h5py
 import numpy as np
 import torch
-from gerbilizer.architectures.base import GerbilizerArchitecture
-
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
+from gerbilizer.architectures.base import GerbilizerArchitecture
 from gerbilizer.architectures.ensemble import GerbilizerEnsemble
 from gerbilizer.calibration import CalibrationAccumulator
-from gerbilizer.training.dataloaders import GerbilVocalizationDataset
+from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from gerbilizer.training.configs import build_config
-from gerbilizer.util import make_xy_grids, subplots
+from gerbilizer.training.dataloaders import GerbilVocalizationDataset
 from gerbilizer.training.models import build_model
-from gerbilizer.outputs.base import ModelOutput, Unit, ProbabilisticOutput
+from gerbilizer.util import make_xy_grids, subplots
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 

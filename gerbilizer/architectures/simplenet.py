@@ -1,12 +1,11 @@
 import logging
-
 from math import comb
 
 import torch
 from torch import nn
 
-from gerbilizer.outputs import ModelOutputFactory
 from gerbilizer.architectures.base import GerbilizerArchitecture
+from gerbilizer.outputs import ModelOutputFactory
 
 logging.basicConfig(level=logging.INFO)
 
