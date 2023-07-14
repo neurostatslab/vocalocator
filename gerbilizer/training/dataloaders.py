@@ -8,6 +8,7 @@ from typing import Optional, Tuple, Union
 import h5py
 import numpy as np
 import torch
+from scipy.signal import correlate
 from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
 

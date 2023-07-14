@@ -1,12 +1,11 @@
 """Loss functions for the DNNs."""
 
 import logging
-
 from typing import Literal, Optional
 
 import torch
-from torch.nn import functional as F
 from torch.distributions import MultivariateNormal
+from torch.nn import functional as F
 
 from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput
 

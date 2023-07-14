@@ -6,12 +6,8 @@ from .util import build_cov_output
 
 from .encodings import LearnedEncoding
 
-
-from itertools import chain
-
 import torch
 from torch import nn
-from torch.distributions.multivariate_normal import MultivariateNormal
 
 from .sparse_transformers import SparseTransformerEncoder, SparseTransformerEncoderLayer
 
@@ -34,9 +30,9 @@ class SparseAttentionNet(nn.Module):
             - d_model: inner dimension size of transformer layers
             - num_heads: Number of attention heads to use
         """
-        super(AttentionNet, self).__init__()
+        super(SparseAttentionNet, self).__init__()
 
-        params = AttentionNet.default_config.copy()
+        params = SparseAttentionNet.default_config.copy()
         params.update(config["MODEL_PARAMS"])
 
         self.n_mics = config["DATA"]["NUM_MICROPHONES"]

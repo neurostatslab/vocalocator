@@ -1,14 +1,13 @@
 import argparse
 import os
-import time
 import pathlib
-
+import time
 from os import path
 
 import h5py
 import numpy as np
-from gerbilizer.outputs.base import Unit
 
+from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
 

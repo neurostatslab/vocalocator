@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory, ProbabilisticOutput, ModelOutput
+from gerbilizer.outputs import ModelOutput, ModelOutputFactory, ProbabilisticOutput
 
 
 # inference only for now
