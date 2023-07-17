@@ -6,7 +6,7 @@ from typing import Generator, NewType, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, SequentialLR
 from torch.utils.data import DataLoader
 
 from ..calibration import CalibrationAccumulator
@@ -207,41 +207,68 @@ class Trainer:
                 else self.model.parameters()
             )
 
-            lr_config = optim_config["LR_PARAMS"]
 
             self.__optim = base_optim(
                 params,
-                lr=lr_config["MAX_LEARNING_RATE"],
+                lr=optim_config['INITIAL_LEARNING_RATE'],
                 **optim_args,
             )
-            # parse + instantiate desired lr scheduler
-            if lr_config["SCHEDULER"] == "COSINE_ANNEALING":
-                base_scheduler = CosineAnnealingLR
-                scheduler_args = {
-                    "T_max": self.num_epochs,
-                    "eta_min": lr_config.get("MIN_LEARNING_RATE", 0),
-                }
-            elif lr_config["SCHEDULER"] == "EXPONENTIAL_DECAY":
-                base_scheduler = ExponentialLR
-                scheduler_args = {
-                    "gamma": lr_config['MULTIPLICATIVE_DECAY_FACTOR']
-                }
-            elif lr_config["SCHEDULER"] == "REDUCE_ON_PLATEAU":
-                base_scheduler = ReduceLROnPlateau
-                scheduler_args = {
-                    "factor": lr_config.get("MULTIPLICATIVE_DECAY_FACTOR", 0.1),
-                    "patience": lr_config.get("PLATEAU_DECAY_PATIENCE", 10),
-                    "threshold_mode": lr_config.get("PLATEAU_THRESHOLD_MODE", 'rel'),
-                    "threshold": lr_config.get("PLATEAU_THRESHOLD", 1e-4),
-                    "min_lr": lr_config.get("MIN_LEARNING_RATE", 0),
-                }
-            else:
-                raise NotImplementedError(
-                    f'Unrecognized scheduler "{lr_config["SCHEDULER"]}"'
-                )
-            self.__scheduler = base_scheduler(
+
+            scheduler_configs = optim_config["SCHEDULERS"]
+
+            schedulers = []
+            epochs_active_per_scheduler = []
+
+            for scheduler_config in scheduler_configs:
+                scheduler_type = scheduler_config["SCHEDULER_TYPE"]
+                # by default, if number of active epochs is not specified, default to
+                # running for the remaining duration.
+                epochs_active = scheduler_config.get("NUM_EPOCHS_ACTIVE")
+                if epochs_active is None:
+                    total_specified_already = sum(epochs_active_per_scheduler)
+                    remaining_dur = self.num_epochs - total_specified_already
+                    self.__logger.info(
+                        "No `NUM_EPOCHS_ACTIVE` parameter passed to scheduler "
+                        f"{scheduler_type}! Defaulting to remaining train duration, "
+                        f"{remaining_dur}."
+                        )
+                    epochs_active = remaining_dur
+                epochs_active_per_scheduler.append(epochs_active)
+
+                # parse lr scheduler
+                if scheduler_type == "COSINE_ANNEALING":
+                    base_scheduler = CosineAnnealingLR
+                    scheduler_args = {
+                        "T_max": epochs_active,
+                        "eta_min": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                elif scheduler_type == "EXPONENTIAL_DECAY":
+                    base_scheduler = ExponentialLR
+                    scheduler_args = {
+                        "gamma": scheduler_config['MULTIPLICATIVE_DECAY_FACTOR']
+                    }
+                elif scheduler_type == "REDUCE_ON_PLATEAU":
+                    base_scheduler = ReduceLROnPlateau
+                    scheduler_args = {
+                        "factor": scheduler_config.get("MULTIPLICATIVE_DECAY_FACTOR", 0.1),
+                        "patience": scheduler_config.get("PLATEAU_DECAY_PATIENCE", 10),
+                        "threshold_mode": scheduler_config.get("PLATEAU_THRESHOLD_MODE", 'rel'),
+                        "threshold": scheduler_config.get("PLATEAU_THRESHOLD", 1e-4),
+                        "min_lr": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                else:
+                    raise NotImplementedError(
+                        f'Unrecognized scheduler "{scheduler_config["SCHEDULER_TYPE"]}"'
+                    )
+                schedulers.append(base_scheduler(self.__optim, **scheduler_args))
+
+            # sequential lr expects the points at which it should switch,
+            # so take the cumulative sum and throw out the endpoint
+            milestones = list(np.cumsum(epochs_active_per_scheduler))[:-1]
+            self.__scheduler = SequentialLR(
                 self.__optim,
-                **scheduler_args
+                schedulers=schedulers,
+                milestones=milestones
             )
 
     def train_epoch(self):
