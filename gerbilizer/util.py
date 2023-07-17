@@ -4,7 +4,6 @@ Utility functions, like for calibration calculation.
 
 import logging
 import math
-
 from typing import Optional, Tuple, Union
 
 import numpy as np

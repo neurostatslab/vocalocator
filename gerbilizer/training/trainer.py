@@ -6,23 +6,30 @@ from typing import Generator, NewType, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    ExponentialLR,
+    ReduceLROnPlateau,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
+from ..calibration import CalibrationAccumulator
 from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
-from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
+from ..training.dataloaders import GerbilVocalizationDataset, build_dataloaders
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
-from ..calibration import CalibrationAccumulator
 
 try:
     # Attempt to use json5 if available
     import pyjson5 as json
+
     using_json5 = True
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
+
     using_json5 = False
 
 
@@ -79,12 +86,11 @@ class Trainer:
             self.device = torch.device("cpu")
         print(f"Using device: {self.device}")
 
-
         if not self.__eval:
             self.__init_output_dir()
             self.__init_dataloaders()
         self.__init_model()
-        
+
         self.augment = build_augmentations(self.__config)
 
         if not self.__eval:
@@ -168,7 +174,7 @@ class Trainer:
         if not self.__eval:
             # The JSON5 library only supports writing in binary mode, but the built-in json library does not
             # Ensure this is written after the model has had the chance to update the config
-            filemode = 'wb' if using_json5 else 'w'
+            filemode = "wb" if using_json5 else "w"
             with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
                 json.dump(self.__config, ctx, indent=4)
 
@@ -183,12 +189,7 @@ class Trainer:
                 }
             elif optim_config["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
-                optim_args = {
-                    "betas": (
-                        optim_config["ADAM_BETA1"],
-                        optim_config["ADAM_BETA2"],
-                    )
-                }
+                optim_args = {"betas": optim_config["ADAM_BETAS"]}
             else:
                 raise NotImplementedError(
                     f'Unrecognized optimizer "{optim_config["OPTIMIZER"]}"'
@@ -200,41 +201,69 @@ class Trainer:
                 else self.model.parameters()
             )
 
-            lr_config = optim_config["LR_PARAMS"]
-
             self.__optim = base_optim(
                 params,
-                lr=lr_config["MAX_LEARNING_RATE"],
+                lr=optim_config["INITIAL_LEARNING_RATE"],
                 **optim_args,
             )
-            # parse + instantiate desired lr scheduler
-            if lr_config["SCHEDULER"] == "COSINE_ANNEALING":
-                base_scheduler = CosineAnnealingLR
-                scheduler_args = {
-                    "T_max": self.num_epochs,
-                    "eta_min": lr_config.get("MIN_LEARNING_RATE", 0),
-                }
-            elif lr_config["SCHEDULER"] == "EXPONENTIAL_DECAY":
-                base_scheduler = ExponentialLR
-                scheduler_args = {
-                    "gamma": lr_config['MULTIPLICATIVE_DECAY_FACTOR']
-                }
-            elif lr_config["SCHEDULER"] == "REDUCE_ON_PLATEAU":
-                base_scheduler = ReduceLROnPlateau
-                scheduler_args = {
-                    "factor": lr_config.get("MULTIPLICATIVE_DECAY_FACTOR", 0.1),
-                    "patience": lr_config.get("PLATEAU_DECAY_PATIENCE", 10),
-                    "threshold_mode": lr_config.get("PLATEAU_THRESHOLD_MODE", 'rel'),
-                    "threshold": lr_config.get("PLATEAU_THRESHOLD", 1e-4),
-                    "min_lr": lr_config.get("MIN_LEARNING_RATE", 0),
-                }
-            else:
-                raise NotImplementedError(
-                    f'Unrecognized scheduler "{lr_config["SCHEDULER"]}"'
-                )
-            self.__scheduler = base_scheduler(
-                self.__optim,
-                **scheduler_args
+
+            scheduler_configs = optim_config["SCHEDULERS"]
+
+            schedulers = []
+            epochs_active_per_scheduler = []
+
+            for scheduler_config in scheduler_configs:
+                scheduler_type = scheduler_config["SCHEDULER_TYPE"]
+                # by default, if number of active epochs is not specified, default to
+                # running for the remaining duration.
+                epochs_active = scheduler_config.get("NUM_EPOCHS_ACTIVE")
+                if epochs_active is None:
+                    total_specified_already = sum(epochs_active_per_scheduler)
+                    remaining_dur = self.num_epochs - total_specified_already
+                    self.__logger.info(
+                        "No `NUM_EPOCHS_ACTIVE` parameter passed to scheduler "
+                        f"{scheduler_type}! Defaulting to remaining train duration, "
+                        f"{remaining_dur}."
+                    )
+                    epochs_active = remaining_dur
+                epochs_active_per_scheduler.append(epochs_active)
+
+                # parse lr scheduler
+                if scheduler_type == "COSINE_ANNEALING":
+                    base_scheduler = CosineAnnealingLR
+                    scheduler_args = {
+                        "T_max": epochs_active,
+                        "eta_min": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                elif scheduler_type == "EXPONENTIAL_DECAY":
+                    base_scheduler = ExponentialLR
+                    scheduler_args = {
+                        "gamma": scheduler_config["MULTIPLICATIVE_DECAY_FACTOR"]
+                    }
+                elif scheduler_type == "REDUCE_ON_PLATEAU":
+                    base_scheduler = ReduceLROnPlateau
+                    scheduler_args = {
+                        "factor": scheduler_config.get(
+                            "MULTIPLICATIVE_DECAY_FACTOR", 0.1
+                        ),
+                        "patience": scheduler_config.get("PLATEAU_DECAY_PATIENCE", 10),
+                        "threshold_mode": scheduler_config.get(
+                            "PLATEAU_THRESHOLD_MODE", "rel"
+                        ),
+                        "threshold": scheduler_config.get("PLATEAU_THRESHOLD", 1e-4),
+                        "min_lr": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                else:
+                    raise NotImplementedError(
+                        f'Unrecognized scheduler "{scheduler_config["SCHEDULER_TYPE"]}"'
+                    )
+                schedulers.append(base_scheduler(self.__optim, **scheduler_args))
+
+            # sequential lr expects the points at which it should switch,
+            # so take the cumulative sum and throw out the endpoint
+            milestones = list(np.cumsum(epochs_active_per_scheduler))[:-1]
+            self.__scheduler = SequentialLR(
+                self.__optim, schedulers=schedulers, milestones=milestones
             )
 
     def train_epoch(self):
@@ -289,12 +318,16 @@ class Trainer:
 
                     outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
-                    for (output, location) in zip(outputs, locations):
+                    for output, location in zip(outputs, locations):
                         # Calculate error in cm
-                        point_estimate = output.point_estimate(units=Unit.CM).cpu().numpy()
-                        location = output._convert(
-                            location, Unit.ARBITRARY, Unit.CM
-                            ).cpu().numpy()
+                        point_estimate = (
+                            output.point_estimate(units=Unit.CM).cpu().numpy()
+                        )
+                        location = (
+                            output._convert(location, Unit.ARBITRARY, Unit.CM)
+                            .cpu()
+                            .numpy()
+                        )
 
                         err = np.linalg.norm(point_estimate - location, axis=-1).item()
                         batch_err += err
@@ -302,7 +335,9 @@ class Trainer:
                         if isinstance(output, ProbabilisticOutput):
                             compute_calibration = True
                             if idx == 0:
-                                ca = CalibrationAccumulator(output.arena_dims[Unit.MM].cpu().numpy())
+                                ca = CalibrationAccumulator(
+                                    output.arena_dims[Unit.MM].cpu().numpy()
+                                )
                             location_mm = location * 10
                             ca.calculate_step(output, location_mm)
 
@@ -310,17 +345,19 @@ class Trainer:
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        batch_err / sounds.shape[0], np.nan, sounds.shape[0] * sounds.shape[1]
+                        batch_err / sounds.shape[0],
+                        np.nan,
+                        sounds.shape[0] * sounds.shape[1],
                     )
 
             # Done with epoch.
             cal_curve = None
             if compute_calibration:
-                cal_curve = ca.results()['calibration_curve']
+                cal_curve = ca.results()["calibration_curve"]
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:
-            val_loss = 0.
+            val_loss = 0.0
 
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
