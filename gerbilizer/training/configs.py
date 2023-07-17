@@ -18,9 +18,14 @@ DEFAULT_CONFIG = {
         "NUM_EPOCHS": 30,
         "OPTIMIZER": "SGD",
         "MOMENTUM": 0.9,
-        "MAX_LEARNING_RATE": 0.0005,
-        "MIN_LEARNING_RATE": 0.0000,
         "CLIP_GRADIENTS": False,
+        "INITIAL_LEARNING_RATE": 0.0005,
+        "SCHEDULERS": [
+            {
+                "SCHEDULER_TYPE": "COSINE_ANNEALING",
+                "MIN_LEARNING_RATE": 0.0
+            }
+        ]
     },
     "ARCHITECTURE": "GerbilizerSimpleNetwork",
     "GENERAL": {
@@ -32,7 +37,7 @@ DEFAULT_CONFIG = {
     },
     "DATA": {
         "NUM_MICROPHONES": 4,
-        "AUDIO_SAMPLE_RATE": 125000,
+        "SAMPLE_RATE": 125000,
         "COMPUTE_XCORRS": False,
         "TRAIN_BATCH_MAX_SAMPLES": 200_000,
         "CROP_LENGTH": 8192,
