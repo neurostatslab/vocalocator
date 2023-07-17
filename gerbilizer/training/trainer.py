@@ -6,7 +6,12 @@ from typing import Generator, NewType, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    ExponentialLR,
+    ReduceLROnPlateau,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
 from ..calibration import CalibrationAccumulator
@@ -147,8 +152,9 @@ class Trainer:
         if self.__testdata is not None:
             self.__logger.info(f"Test set:\t{self.__testdata.dataset}")
 
+        self.num_epochs: int = self.__config["OPTIMIZATION"]["NUM_EPOCHS"]
         self.__progress_log = ProgressLogger(
-            self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
+            self.num_epochs,
             self.__traindata,
             self.__valdata,
             self.__config["GENERAL"]["LOG_INTERVAL"],
@@ -180,23 +186,19 @@ class Trainer:
 
             self.__logger.info(self.model.__repr__())
 
-            if self.__config["OPTIMIZATION"]["OPTIMIZER"] == "SGD":
+            optim_config = self.__config["OPTIMIZATION"]
+            if optim_config["OPTIMIZER"] == "SGD":
                 base_optim = torch.optim.SGD
                 optim_args = {
-                    "momentum": self.__config["OPTIMIZATION"]["MOMENTUM"],
-                    "weight_decay": self.__config["OPTIMIZATION"]["WEIGHT_DECAY"],
+                    "momentum": optim_config["MOMENTUM"],
+                    "weight_decay": optim_config["WEIGHT_DECAY"],
                 }
-            elif self.__config["OPTIMIZATION"]["OPTIMIZER"] == "ADAM":
+            elif optim_config["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
-                optim_args = {
-                    "betas": (
-                        self.__config["OPTIMIZATION"]["ADAM_BETA1"],
-                        self.__config["OPTIMIZATION"]["ADAM_BETA2"],
-                    )
-                }
+                optim_args = {"betas": optim_config["ADAM_BETAS"]}
             else:
                 raise NotImplementedError(
-                    f'Unrecognized optimizer "{self.__config["OPTIMIZATION"]["OPTIMIZER"]}"'
+                    f'Unrecognized optimizer "{optim_config["OPTIMIZER"]}"'
                 )
 
             params = (
@@ -204,15 +206,70 @@ class Trainer:
                 if hasattr(self.model, "trainable_params")
                 else self.model.parameters()
             )
+
             self.__optim = base_optim(
                 params,
-                lr=self.__config["OPTIMIZATION"]["MAX_LEARNING_RATE"],
+                lr=optim_config["INITIAL_LEARNING_RATE"],
                 **optim_args,
             )
-            self.__scheduler = CosineAnnealingLR(
-                self.__optim,
-                T_max=self.__config["OPTIMIZATION"]["NUM_EPOCHS"],
-                eta_min=self.__config["OPTIMIZATION"]["MIN_LEARNING_RATE"],
+
+            scheduler_configs = optim_config["SCHEDULERS"]
+
+            schedulers = []
+            epochs_active_per_scheduler = []
+
+            for scheduler_config in scheduler_configs:
+                scheduler_type = scheduler_config["SCHEDULER_TYPE"]
+                # by default, if number of active epochs is not specified, default to
+                # running for the remaining duration.
+                epochs_active = scheduler_config.get("NUM_EPOCHS_ACTIVE")
+                if epochs_active is None:
+                    total_specified_already = sum(epochs_active_per_scheduler)
+                    remaining_dur = self.num_epochs - total_specified_already
+                    self.__logger.info(
+                        "No `NUM_EPOCHS_ACTIVE` parameter passed to scheduler "
+                        f"{scheduler_type}! Defaulting to remaining train duration, "
+                        f"{remaining_dur}."
+                    )
+                    epochs_active = remaining_dur
+                epochs_active_per_scheduler.append(epochs_active)
+
+                # parse lr scheduler
+                if scheduler_type == "COSINE_ANNEALING":
+                    base_scheduler = CosineAnnealingLR
+                    scheduler_args = {
+                        "T_max": epochs_active,
+                        "eta_min": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                elif scheduler_type == "EXPONENTIAL_DECAY":
+                    base_scheduler = ExponentialLR
+                    scheduler_args = {
+                        "gamma": scheduler_config["MULTIPLICATIVE_DECAY_FACTOR"]
+                    }
+                elif scheduler_type == "REDUCE_ON_PLATEAU":
+                    base_scheduler = ReduceLROnPlateau
+                    scheduler_args = {
+                        "factor": scheduler_config.get(
+                            "MULTIPLICATIVE_DECAY_FACTOR", 0.1
+                        ),
+                        "patience": scheduler_config.get("PLATEAU_DECAY_PATIENCE", 10),
+                        "threshold_mode": scheduler_config.get(
+                            "PLATEAU_THRESHOLD_MODE", "rel"
+                        ),
+                        "threshold": scheduler_config.get("PLATEAU_THRESHOLD", 1e-4),
+                        "min_lr": scheduler_config.get("MIN_LEARNING_RATE", 0),
+                    }
+                else:
+                    raise NotImplementedError(
+                        f'Unrecognized scheduler "{scheduler_config["SCHEDULER_TYPE"]}"'
+                    )
+                schedulers.append(base_scheduler(self.__optim, **scheduler_args))
+
+            # sequential lr expects the points at which it should switch,
+            # so take the cumulative sum and throw out the endpoint
+            milestones = list(np.cumsum(epochs_active_per_scheduler))[:-1]
+            self.__scheduler = SequentialLR(
+                self.__optim, schedulers=schedulers, milestones=milestones
             )
 
     def train_epoch(self):
@@ -251,7 +308,6 @@ class Trainer:
             )
             iter += 1
             # if iter > 10: break
-        self.__scheduler.step()
 
     def eval_validation(self):
         self.__progress_log.start_testing()
@@ -307,7 +363,7 @@ class Trainer:
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:
-            val_loss = 0
+            val_loss = 0.0
 
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
@@ -318,6 +374,27 @@ class Trainer:
             )
             self.save_weights(self.__best_weights_file)
         self.__logger.info(Trainer.__query_mem_usage())
+
+        return val_loss
+
+    def update_learning_rate(self, val_loss: float):
+        """
+        Update the learning rate after epoch completion.
+        """
+        if isinstance(self.__scheduler, ReduceLROnPlateau):
+            self.__scheduler.step(val_loss)
+        else:
+            self.__scheduler.step()
+
+    def train(self):
+        """
+        Train the model for self.num_epochs passes through the dataset.
+        """
+        for _ in range(self.num_epochs):
+            self.train_epoch()
+            val_loss = self.eval_validation()
+            self.update_learning_rate(val_loss)
+        self.finalize()
 
     def eval_on_dataset(
         self,
