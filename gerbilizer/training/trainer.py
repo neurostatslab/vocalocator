@@ -196,10 +196,7 @@ class Trainer:
             elif optim_config["OPTIMIZER"] == "ADAM":
                 base_optim = torch.optim.Adam
                 optim_args = {
-                    "betas": (
-                        optim_config["ADAM_BETA1"],
-                        optim_config["ADAM_BETA2"],
-                    )
+                    "betas": optim_config["ADAM_BETAS"]
                 }
             else:
                 raise NotImplementedError(
