@@ -1,14 +1,13 @@
 import argparse
 import os
-import time
 import pathlib
-
+import time
 from os import path
 
 import h5py
 import numpy as np
-from gerbilizer.outputs.base import Unit
 
+from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
 
@@ -152,7 +151,9 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
                 arena_dims = None
                 source.copy(source["room_dims"], dest["/"], "room_dims")
 
-        preds = dest.create_dataset("point_predictions", shape=(n_vox, 2), dtype=np.float32)
+        preds = dest.create_dataset(
+            "point_predictions", shape=(n_vox, 2), dtype=np.float32
+        )
 
         start_time = time.time()
 
@@ -160,7 +161,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         for result in iter(trainer.eval_on_dataset(data_path, arena_dims=arena_dims)):
             batch_size = result.batch_size
             point_ests = result.point_estimate(units=Unit.MM).cpu().numpy()
-            preds[n_added:n_added + batch_size] = point_ests
+            preds[n_added : n_added + batch_size] = point_ests
             n_added += batch_size
             if (batch_size == 1 and (n_added + 1) % 100 == 0) or batch_size > 1:
                 est_speed = n_added / (time.time() - start_time)

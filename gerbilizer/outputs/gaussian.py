@@ -1,7 +1,6 @@
 from typing import Union
 
 import torch
-
 from torch.nn import functional as F
 
 from gerbilizer.outputs.base import BaseDistributionOutput, Unit
@@ -18,7 +17,7 @@ class GaussianOutput(BaseDistributionOutput):
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
         arena_dim_units: Unit,
-        ):
+    ):
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
         # expect subclasses to provide this instance variable
@@ -27,11 +26,11 @@ class GaussianOutput(BaseDistributionOutput):
 
         if raw_output.shape[-1] != self.N_OUTPUTS_EXPECTED:
             raise ValueError(
-                f'Given Gaussian output class {self.__class__.__name__}, expected '
-                f'output to have dimension {self.N_OUTPUTS_EXPECTED} '
-                f'along final axis, but instead encountered dimension '
-                f'{raw_output.shape[-1]}.'
-                )
+                f"Given Gaussian output class {self.__class__.__name__}, expected "
+                f"output to have dimension {self.N_OUTPUTS_EXPECTED} "
+                f"along final axis, but instead encountered dimension "
+                f"{raw_output.shape[-1]}."
+            )
 
     def _point_estimate(self):
         """
@@ -44,7 +43,7 @@ class GaussianOutput(BaseDistributionOutput):
         """
         Return log p(x) under the Gaussian parameterized by the model
         output.
-        
+
         Expects x to have shape (..., self.batch_size, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^2).
         """
@@ -52,14 +51,13 @@ class GaussianOutput(BaseDistributionOutput):
         # the batch dimension
         if x.shape[-2] != self.batch_size:
             raise ValueError(
-                f'Incorrect shape for input! Since batch size is {self.batch_size}, '
-                f'expected second-to-last dim of input `x` to have the same shape. Instead '
-                f'found shape {x.shape}.'
-                )
-        distr = torch.distributions.MultivariateNormal(
-            loc=self.point_estimate(),
-            scale_tril=self.cholesky_covs
+                f"Incorrect shape for input! Since batch size is {self.batch_size}, "
+                f"expected second-to-last dim of input `x` to have the same shape. Instead "
+                f"found shape {x.shape}."
             )
+        distr = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
         return distr.log_prob(x)
 
     def covs(self, units: Unit) -> torch.Tensor:
@@ -79,11 +77,10 @@ class GaussianOutput(BaseDistributionOutput):
             scaled_cholesky = A @ scaled_cholesky
         return scaled_cholesky @ scaled_cholesky.swapaxes(-2, -1)
 
-                             
-class GaussianOutputFixedVariance(GaussianOutput):
 
+class GaussianOutputFixedVariance(GaussianOutput):
     N_OUTPUTS_EXPECTED = 2
-    config_name = 'GAUSSIAN_FIXED_VARIANCE'
+    config_name = "GAUSSIAN_FIXED_VARIANCE"
 
     def __init__(
         self,
@@ -92,7 +89,7 @@ class GaussianOutputFixedVariance(GaussianOutput):
         arena_dim_units: Unit,
         variance: torch.Tensor,
         units: Union[str, Unit],
-        ):
+    ):
         """
         Construct a GaussianOutput object with fixed spherical covariance
         matrix across all inputs, with diagonal entries given by `variance` in
@@ -102,9 +99,9 @@ class GaussianOutputFixedVariance(GaussianOutput):
 
         if not variance or not units:
             raise ValueError(
-                'For spherical fixed variance parameterization, '
-                'arguments `variance` and `units` are required!'
-                )
+                "For spherical fixed variance parameterization, "
+                "arguments `variance` and `units` are required!"
+            )
         variance = variance.to(self.device)
         if isinstance(units, str):
             units = Unit[units]
@@ -112,22 +109,24 @@ class GaussianOutputFixedVariance(GaussianOutput):
         if units == Unit.ARBITRARY:
             variances = torch.ones(2, device=self.device) * variance
         else:
-            variances = (torch.ones(2, device=self.device) * variance) / self.arena_dims[units]
+            variances = (
+                torch.ones(2, device=self.device) * variance
+            ) / self.arena_dims[units]
 
         cholesky_cov = torch.diag_embed(torch.sqrt(variances))
         self.cholesky_covs = cholesky_cov[None].repeat(self.batch_size, 1, 1)
 
-class GaussianOutputSphericalCov(GaussianOutput):
 
+class GaussianOutputSphericalCov(GaussianOutput):
     N_OUTPUTS_EXPECTED = 3
-    config_name = 'GAUSSIAN_SPHERICAL_COV'
+    config_name = "GAUSSIAN_SPHERICAL_COV"
 
     def __init__(
         self,
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
         arena_dim_units: Unit,
-        ):
+    ):
         """
         Construct a GaussianOutput object with spherical covariance matrices.
 
@@ -142,19 +141,21 @@ class GaussianOutputSphericalCov(GaussianOutput):
         # are positive
         diagonal_entries = F.softplus(self.raw_output[:, 2])
         # (self.batch_size, 1, 1) * (2, 2) -> (self.batch_size, 2, 2)
-        self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(2, device=self.device)
+        self.cholesky_covs = diagonal_entries[:, None, None] * torch.eye(
+            2, device=self.device
+        )
+
 
 class GaussianOutputDiagonalCov(GaussianOutput):
-
     N_OUTPUTS_EXPECTED = 4
-    config_name = 'GAUSSIAN_DIAGONAL_COV'
+    config_name = "GAUSSIAN_DIAGONAL_COV"
 
     def __init__(
         self,
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
         arena_dim_units: Unit,
-        ):
+    ):
         """
         Construct a GaussianOutput object with diagonal covariance matrices.
         """
@@ -163,20 +164,22 @@ class GaussianOutputDiagonalCov(GaussianOutput):
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
-        diagonal_entries = F.softplus(self.raw_output[:, 2:]) # (self.batch_size, 2)
-        self.cholesky_covs = torch.diag_embed(diagonal_entries) # (self.batch_size, 2, 2)
+        diagonal_entries = F.softplus(self.raw_output[:, 2:])  # (self.batch_size, 2)
+        self.cholesky_covs = torch.diag_embed(
+            diagonal_entries
+        )  # (self.batch_size, 2, 2)
+
 
 class GaussianOutputFullCov(GaussianOutput):
-
     N_OUTPUTS_EXPECTED = 5
-    config_name = 'GAUSSIAN_FULL_COV'
+    config_name = "GAUSSIAN_FULL_COV"
 
     def __init__(
         self,
         raw_output: torch.Tensor,
         arena_dims: torch.Tensor,
         arena_dim_units: Unit,
-        ):
+    ):
         """
         Construct a GaussianOutput object with diagonal covariance matrices.
         """

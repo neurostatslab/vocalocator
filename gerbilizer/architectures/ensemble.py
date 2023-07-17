@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory, ProbabilisticOutput, ModelOutput
+from gerbilizer.outputs import ModelOutput, ModelOutputFactory, ProbabilisticOutput
 
 
 # inference only for now
@@ -25,22 +25,24 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
         self,
         config,
         built_models: list[GerbilizerArchitecture],
-        output_factory: ModelOutputFactory
-        ):
+        output_factory: ModelOutputFactory,
+    ):
         """
         Inputs the loaded config dictionary object, as well as each submodel
         built using `build_model`.
         """
         super().__init__(config, output_factory)
 
-        for model_config, model in zip(config["MODEL_PARAMS"]["CONSTITUENT_MODELS"], built_models):
+        for model_config, model in zip(
+            config["MODEL_PARAMS"]["CONSTITUENT_MODELS"], built_models
+        ):
             output_type = model.output_factory.output_type
             if not issubclass(output_type, ProbabilisticOutput):
                 raise ValueError(
-                    'Ensembling not available for models outputting non-probabilistic outputs! '
-                    f'Encountered class: {output_type}, which is not a subclass of '
-                    '`ProbabilisticOutput`.'
-                    )
+                    "Ensembling not available for models outputting non-probabilistic outputs! "
+                    f"Encountered class: {output_type}, which is not a subclass of "
+                    "`ProbabilisticOutput`."
+                )
 
             if "WEIGHTS_PATH" not in model_config:
                 raise ValueError(
@@ -56,9 +58,12 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
 
     # add overload for nice unbatched functionality
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput:
+        ...
+
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]: ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]:
+        ...
 
     def forward(self, x: torch.Tensor, unbatched: bool = False):
         """

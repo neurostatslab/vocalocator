@@ -9,20 +9,22 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from ..calibration import CalibrationAccumulator
 from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
-from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
+from ..training.dataloaders import GerbilVocalizationDataset, build_dataloaders
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
-from ..calibration import CalibrationAccumulator
 
 try:
     # Attempt to use json5 if available
     import pyjson5 as json
+
     using_json5 = True
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
+
     using_json5 = False
 
 
@@ -79,12 +81,11 @@ class Trainer:
             self.device = torch.device("cpu")
         print(f"Using device: {self.device}")
 
-
         if not self.__eval:
             self.__init_output_dir()
             self.__init_dataloaders()
         self.__init_model()
-        
+
         self.augment = build_augmentations(self.__config)
 
         if not self.__eval:
@@ -174,7 +175,7 @@ class Trainer:
         if not self.__eval:
             # The JSON5 library only supports writing in binary mode, but the built-in json library does not
             # Ensure this is written after the model has had the chance to update the config
-            filemode = 'wb' if using_json5 else 'w'
+            filemode = "wb" if using_json5 else "w"
             with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
                 json.dump(self.__config, ctx, indent=4)
 
@@ -295,12 +296,16 @@ class Trainer:
 
                     outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
-                    for (output, location) in zip(outputs, locations):
+                    for output, location in zip(outputs, locations):
                         # Calculate error in cm
-                        point_estimate = output.point_estimate(units=Unit.CM).cpu().numpy()
-                        location = output._convert(
-                            location, Unit.ARBITRARY, Unit.CM
-                            ).cpu().numpy()
+                        point_estimate = (
+                            output.point_estimate(units=Unit.CM).cpu().numpy()
+                        )
+                        location = (
+                            output._convert(location, Unit.ARBITRARY, Unit.CM)
+                            .cpu()
+                            .numpy()
+                        )
 
                         err = np.linalg.norm(point_estimate - location, axis=-1).item()
                         batch_err += err
@@ -308,7 +313,9 @@ class Trainer:
                         if isinstance(output, ProbabilisticOutput):
                             compute_calibration = True
                             if idx == 0:
-                                ca = CalibrationAccumulator(output.arena_dims[Unit.MM].cpu().numpy())
+                                ca = CalibrationAccumulator(
+                                    output.arena_dims[Unit.MM].cpu().numpy()
+                                )
                             location_mm = location * 10
                             ca.calculate_step(output, location_mm)
 
@@ -316,13 +323,15 @@ class Trainer:
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        batch_err / sounds.shape[0], np.nan, sounds.shape[0] * sounds.shape[1]
+                        batch_err / sounds.shape[0],
+                        np.nan,
+                        sounds.shape[0] * sounds.shape[1],
                     )
 
             # Done with epoch.
             cal_curve = None
             if compute_calibration:
-                cal_curve = ca.results()['calibration_curve']
+                cal_curve = ca.results()["calibration_curve"]
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:

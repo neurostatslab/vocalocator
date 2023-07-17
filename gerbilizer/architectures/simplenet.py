@@ -1,12 +1,11 @@
 import logging
-
 from math import comb
 
 import torch
 from torch import nn
 
-from gerbilizer.outputs import ModelOutputFactory
 from gerbilizer.architectures.base import GerbilizerArchitecture
+from gerbilizer.outputs import ModelOutputFactory
 
 logging.basicConfig(level=logging.INFO)
 
@@ -80,7 +79,9 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = GerbilizerSimpleNetwork.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
-        CONFIG["MODEL_PARAMS"] = model_config  # Save the parameters used in this run for backward compatibility
+        CONFIG[
+            "MODEL_PARAMS"
+        ] = model_config  # Save the parameters used in this run for backward compatibility
 
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
@@ -125,8 +126,8 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
 
         if not isinstance(self.n_outputs, int):
             raise ValueError(
-                'Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?'
-                )
+                "Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?"
+            )
         self.coord_readout = torch.nn.Linear(self.n_channels[-1], self.n_outputs)
 
     def _forward(self, x: torch.Tensor) -> torch.Tensor:

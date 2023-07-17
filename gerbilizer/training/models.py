@@ -5,29 +5,32 @@ from typing import Any, Callable, Union
 import numpy as np
 import torch
 
-from gerbilizer.outputs.base import MDNOutput
+from gerbilizer.outputs import (
+    GaussianOutputFixedVariance,
+    ModelOutput,
+    ModelOutputFactory,
+    ProbabilisticOutput,
+)
+from gerbilizer.outputs.base import BaseDistributionOutput, MDNOutput
 
 from ..architectures.base import GerbilizerArchitecture
 from ..architectures.ensemble import GerbilizerEnsemble
-from .losses import squared_error, negative_log_likelihood
-
-from gerbilizer.outputs import (
-    ModelOutput,
-    ProbabilisticOutput,
-    ModelOutputFactory,
-    GaussianOutputFixedVariance
-)
-from gerbilizer.outputs.base import BaseDistributionOutput
+from .losses import negative_log_likelihood, squared_error
 
 
 def __subclasses_recursive(cls):
     return set(cls.__subclasses__()).union(
-        [s for c in cls.__subclasses__() for s in __subclasses_recursive(c)])
+        [s for c in cls.__subclasses__() for s in __subclasses_recursive(c)]
+    )
+
 
 def subclasses(cls):
     return {
-        c.config_name: c for c in list(__subclasses_recursive(cls)) if hasattr(c, 'config_name')
+        c.config_name: c
+        for c in list(__subclasses_recursive(cls))
+        if hasattr(c, "config_name")
     }
+
 
 ARCHITECTURES = {
     model.__name__.lower(): model for model in GerbilizerArchitecture.__subclasses__()
@@ -45,9 +48,9 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
     provided_type = model_params.get("OUTPUT_TYPE", "").upper()
     if provided_type not in OUTPUT_TYPES:
         raise ValueError(
-            f'Unrecognized output type: {provided_type}! '
-            f'Allowable types are: {list(OUTPUT_TYPES.keys())}'
-            )
+            f"Unrecognized output type: {provided_type}! "
+            f"Allowable types are: {list(OUTPUT_TYPES.keys())}"
+        )
     output_type = OUTPUT_TYPES[provided_type]
 
     arena_dims = torch.tensor(config["DATA"]["ARENA_DIMS"])
@@ -55,24 +58,24 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
 
     if not arena_dims_units:
         raise ValueError(
-            'Need to specify units for arena dimensions under key '
-            '`ARENA_DIMS_UNITS`!'
-            )
+            "Need to specify units for arena dimensions under key "
+            "`ARENA_DIMS_UNITS`!"
+        )
 
     # now handle certain subclasses which require additional information
     # to be parsed from config
     additional_kwargs = {}
     if output_type == MDNOutput:
         # check for additional parameter 'CONSTITUENT_DISTRIBUTIONS'
-        if not model_params.get('CONSTITUENT_DISTRIBUTIONS'):
+        if not model_params.get("CONSTITUENT_DISTRIBUTIONS"):
             raise ValueError(
-                'Given mixture density network output type (MDNOutput), '
-                'expected parameter `CONSTITUENT_DISTRIBUTIONS` expressing '
-                'the component distributions for the MDN. This argument '
-                'should be in the `MODEL_PARAMS` subdict of the config '
-                'and should contain a list of valid output type strings.'
-                )
-        provided_constituents = model_params['CONSTITUENT_DISTRIBUTIONS']
+                "Given mixture density network output type (MDNOutput), "
+                "expected parameter `CONSTITUENT_DISTRIBUTIONS` expressing "
+                "the component distributions for the MDN. This argument "
+                "should be in the `MODEL_PARAMS` subdict of the config "
+                "and should contain a list of valid output type strings."
+            )
+        provided_constituents = model_params["CONSTITUENT_DISTRIBUTIONS"]
 
         # only allow subclasses of BaseDistributionOutput now
         base_distr_subclasses = subclasses(BaseDistributionOutput)
@@ -80,32 +83,35 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
         for constituent_type in provided_constituents:
             if constituent_type not in base_distr_subclasses:
                 raise ValueError(
-                    f'Unrecognized output type as constituent for MDN: {constituent_type}! '
-                    f'Allowable types are: {list(base_distr_subclasses.keys())}'
-                    )
+                    f"Unrecognized output type as constituent for MDN: {constituent_type}! "
+                    f"Allowable types are: {list(base_distr_subclasses.keys())}"
+                )
             constituent_types.append(base_distr_subclasses[constituent_type])
 
-        additional_kwargs['constituent_response_types'] = constituent_types
+        additional_kwargs["constituent_response_types"] = constituent_types
         # for more details on this config param, see the MDNOutput constructor
-        additional_kwargs['constituent_extra_kwargs'] = model_params.get('CONSTITUENT_EXTRA_KWARGS', {})
+        additional_kwargs["constituent_extra_kwargs"] = model_params.get(
+            "CONSTITUENT_EXTRA_KWARGS", {}
+        )
 
     elif output_type == GaussianOutputFixedVariance:
         # expect 'VARIANCE' and 'VARIANCE_UNITS'
-        variance = model_params.get('VARIANCE', '')
-        units = model_params.get('VARIANCE_UNITS', '')
+        variance = model_params.get("VARIANCE", "")
+        units = model_params.get("VARIANCE_UNITS", "")
 
-        additional_kwargs['variance'] = torch.tensor(variance)
-        additional_kwargs['units'] = units
+        additional_kwargs["variance"] = torch.tensor(variance)
+        additional_kwargs["units"] = units
 
     return ModelOutputFactory(
         arena_dims=arena_dims,
         arena_dim_units=arena_dims_units,
         output_type=output_type,
-        **additional_kwargs
-        )
+        **additional_kwargs,
+    )
 
 
 LossFunction = Callable[[ModelOutput, torch.Tensor], torch.Tensor]
+
 
 def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFunction]:
     """
