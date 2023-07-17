@@ -21,11 +21,8 @@ DEFAULT_CONFIG = {
         "CLIP_GRADIENTS": False,
         "INITIAL_LEARNING_RATE": 0.0005,
         "SCHEDULERS": [
-            {
-                "SCHEDULER_TYPE": "COSINE_ANNEALING",
-                "MIN_LEARNING_RATE": 0.0
-            }
-        ]
+            {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
+        ],
     },
     "ARCHITECTURE": "GerbilizerSimpleNetwork",
     "GENERAL": {
