@@ -1,7 +1,6 @@
 import logging
 import os
 from os import path
-import time
 from typing import Generator, NewType, Tuple, Union
 
 import h5py
@@ -10,18 +9,22 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
+from ..calibration import CalibrationAccumulator
+from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
-from ..training.dataloaders import build_dataloaders, GerbilVocalizationDataset
+from ..training.dataloaders import GerbilVocalizationDataset, build_dataloaders
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
 
 try:
     # Attempt to use json5 if available
     import pyjson5 as json
+
     using_json5 = True
 except ImportError:
     logging.warn("Warning: json5 not available, falling back to json.")
     import json
+
     using_json5 = False
 
 
@@ -33,16 +36,6 @@ def make_logger(filepath: str) -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.FileHandler(filepath))
     return logger
-
-
-def l2_distance(preds: np.ndarray, labels: np.ndarray, arena_dims) -> np.ndarray:
-    """
-    Unscale predictions and locations, then return the l2 distances
-    across the batch in centimeters.
-    """
-    pred_cm = GerbilVocalizationDataset.unscale_features(preds, arena_dims)
-    label_cm = GerbilVocalizationDataset.unscale_features(labels, arena_dims)
-    return np.linalg.norm(pred_cm - label_cm, axis=-1)
 
 
 class Trainer:
@@ -88,12 +81,11 @@ class Trainer:
             self.device = torch.device("cpu")
         print(f"Using device: {self.device}")
 
-
         if not self.__eval:
             self.__init_output_dir()
             self.__init_dataloaders()
         self.__init_model()
-        
+
         self.augment = build_augmentations(self.__config)
 
         if not self.__eval:
@@ -130,11 +122,11 @@ class Trainer:
         print(f"Saving logs to file: `{log_filepath}`")
 
     def __init_output_dir(self):
-        if path.exists(self.__model_dir):
-            raise ValueError(
-                f"Model directory {self.__model_dir} already exists. Perhaps this job id is taken?"
-            )
-        os.makedirs(self.__model_dir)
+        # if path.exists(self.__model_dir):
+        #     raise ValueError(
+        #         f"Model directory {self.__model_dir} already exists. Perhaps this job id is taken?"
+        #     )
+        # os.makedirs(self.__model_dir)
 
         self.__best_weights_file = os.path.join(self.__model_dir, "best_weights.pt")
         self.__init_weights_file = os.path.join(self.__model_dir, "init_weights.pt")
@@ -182,7 +174,7 @@ class Trainer:
         if not self.__eval:
             # The JSON5 library only supports writing in binary mode, but the built-in json library does not
             # Ensure this is written after the model has had the chance to update the config
-            filemode = 'wb' if using_json5 else 'w'
+            filemode = "wb" if using_json5 else "w"
             with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
                 json.dump(self.__config, ctx, indent=4)
 
@@ -228,6 +220,7 @@ class Trainer:
         self.__progress_log.start_training()
         self.model.train()
 
+        iter = 0
         for sounds, locations in self.__traindata:
             # Move data to device
             sounds = sounds.to(self.device)
@@ -256,42 +249,63 @@ class Trainer:
             self.__progress_log.log_train_batch(
                 mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1]
             )
+            iter += 1
+            # if iter > 10: break
         self.__scheduler.step()
 
     def eval_validation(self):
         self.__progress_log.start_testing()
         self.model.eval()
-        arena_dims = self.__config["DATA"]["ARENA_DIMS"]
         if self.__valdata is not None:
             with torch.no_grad():
+                idx = 0
+                compute_calibration = False
                 for sounds, locations in self.__valdata:
-                    # Move data to gpu
-                    sounds = sounds.to(self.device)
-                    locations = locations.numpy()
+                    if self.__config["GENERAL"]["DEVICE"] == "GPU":
+                        sounds = sounds.to(self.device)
 
-                    # Forward pass.
-                    outputs = self.model(sounds).cpu().numpy()
+                    batch_err = 0
 
-                    # Convert outputs and labels to centimeters from arb. unit
-                    # But only if the outputs are x,y coordinate pairs
-                    if outputs.ndim == 2 and outputs.shape[1] == 2:
-                        mean_loss = l2_distance(outputs, locations, arena_dims).mean()
-                    elif outputs.ndim == 3 and outputs.shape[1:] == (3, 2):
-                        predicted_locations = outputs[:, 0]
-                        mean_loss = l2_distance(
-                            predicted_locations, locations, arena_dims
-                        ).mean()
-                    else:
-                        losses = self.__loss_fn(outputs, locations)
-                        mean_loss = torch.mean(losses).item()
+                    outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
+
+                    for output, location in zip(outputs, locations):
+                        # Calculate error in cm
+                        point_estimate = (
+                            output.point_estimate(units=Unit.CM).cpu().numpy()
+                        )
+                        location = (
+                            output._convert(location, Unit.ARBITRARY, Unit.CM)
+                            .cpu()
+                            .numpy()
+                        )
+
+                        err = np.linalg.norm(point_estimate - location, axis=-1).item()
+                        batch_err += err
+
+                        if isinstance(output, ProbabilisticOutput):
+                            compute_calibration = True
+                            if idx == 0:
+                                ca = CalibrationAccumulator(
+                                    output.arena_dims[Unit.MM].cpu().numpy()
+                                )
+                            location_mm = location * 10
+                            ca.calculate_step(output, location_mm)
+
+                        idx += 1
 
                     # Log progress
                     self.__progress_log.log_val_batch(
-                        mean_loss / 10.0, np.nan, sounds.shape[0] * sounds.shape[1]
+                        batch_err / sounds.shape[0],
+                        np.nan,
+                        sounds.shape[0] * sounds.shape[1],
                     )
 
             # Done with epoch.
-            val_loss = self.__progress_log.finish_epoch()
+            cal_curve = None
+            if compute_calibration:
+                cal_curve = ca.results()["calibration_curve"]
+            val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
+
         else:
             val_loss = 0
 
@@ -309,7 +323,7 @@ class Trainer:
         self,
         dataset: Union[str, h5py.File],
         arena_dims: Tuple[float, float],
-    ) -> Generator[np.ndarray, None, None]:
+    ) -> Generator[ModelOutput, None, None]:
         """Creates an iterator to perform inference on a given dataset
         Parameters:
         - dataset: Either an h5py File or path to an h5 file
@@ -335,9 +349,9 @@ class Trainer:
         self.model.eval()
         self.model.to(self.device)
         with torch.no_grad():
-            for data in dloader:
-                data = data.to(self.device) # (bsz, seq, channels)
-                output = self.model(data).cpu().numpy()
+            for batch in dloader:
+                data = batch  # (1, channels, seq)
+                output = self.model(data.to(self.device))
                 yield output
 
         if should_close_file:

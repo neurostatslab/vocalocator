@@ -1,11 +1,11 @@
 import logging
-
 from math import comb
 
 import torch
 from torch import nn
 
-from gerbilizer.architectures.util import build_cov_output
+from gerbilizer.architectures.base import GerbilizerArchitecture
+from gerbilizer.outputs import ModelOutputFactory
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,7 +57,7 @@ def ceiling_division(n, d):
     return q + bool(r)
 
 
-class GerbilizerSimpleNetwork(torch.nn.Module):
+class GerbilizerSimpleNetwork(GerbilizerArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True, True, True, True, True, False],
@@ -68,8 +68,8 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         "REGULARIZE_COV": False,
     }
 
-    def __init__(self, CONFIG):
-        super(GerbilizerSimpleNetwork, self).__init__()
+    def __init__(self, CONFIG, output_factory: ModelOutputFactory):
+        super(GerbilizerSimpleNetwork, self).__init__(CONFIG, output_factory)
 
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
@@ -79,7 +79,9 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = GerbilizerSimpleNetwork.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
-        CONFIG["MODEL_PARAMS"] = model_config  # Save the parameters used in this run for backward compatibility
+        CONFIG[
+            "MODEL_PARAMS"
+        ] = model_config  # Save the parameters used in this run for backward compatibility
 
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
@@ -122,21 +124,20 @@ class GerbilizerSimpleNetwork(torch.nn.Module):
 
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
-        # Final linear layer to reduce the number of channels.
-        # self.coord_readout = torch.nn.Linear(self.n_channels[-1], 2)
-        self.output_cov = model_config["OUTPUT_COV"]
-        N_OUTPUTS = 5 if self.output_cov else 2
+        if not isinstance(self.n_outputs, int):
+            raise ValueError(
+                "Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?"
+            )
+        self.coord_readout = torch.nn.Linear(self.n_channels[-1], self.n_outputs)
 
-        self.coord_readout = torch.nn.Linear(self.n_channels[-1], N_OUTPUTS)
-
-    def forward(self, x):
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(
             -1, -2
         )  # (batch, seq_len, channels) -> (batch, channels, seq_len) needed by conv1d
         h1 = self.conv_layers(x)
         h2 = torch.squeeze(self.final_pooling(h1), dim=-1)
         coords = self.coord_readout(h2)
-        return build_cov_output(coords, x.device) if self.output_cov else coords
+        return coords
 
     def clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)

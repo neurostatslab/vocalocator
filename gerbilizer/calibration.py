@@ -6,9 +6,9 @@ import logging
 from typing import Tuple, Union
 
 import numpy as np
+import torch
 
-from scipy.stats import multivariate_normal
-
+from gerbilizer.outputs.base import ProbabilisticOutput, Unit
 from gerbilizer.util import assign_to_bin_2d, digitize, make_xy_grids
 
 logger = logging.getLogger(__name__)
@@ -154,12 +154,11 @@ class CalibrationAccumulator:
         """
         Initialize a CalibrationAccumulator object, which is a helper class
         to simplify the calculation of calibration in an online manner (iterating
-        through or asynchronously going through a dataset). Currently only
-        defined for models outputting a mean and a covariance matrix.
+        through or asynchronously going through a dataset).
         """
         self.n_calibration_bins = n_calibration_bins
 
-        self.arena_dims = arena_dims
+        self.arena_dims = arena_dims  # expected to be in MM.
 
         # initialize the internal mass counts tracking arrays
         self.mass_counts = np.zeros(n_calibration_bins)
@@ -172,7 +171,9 @@ class CalibrationAccumulator:
         self.location_in_confidence_set = []
         self.distances_to_furthest_point = []
 
-    def calculate_step(self, model_output: np.ndarray, true_location: np.ndarray):
+    def calculate_step(
+        self, model_output: ProbabilisticOutput, true_location: np.ndarray
+    ):
         """
         Perform one step of the calibration process on `model_output`.
 
@@ -181,47 +182,20 @@ class CalibrationAccumulator:
         regions are defined by progressively taking the location bins to which
         the model assigns the highest probability mass.
         """
-        if model_output.shape == (2,):
+        if not isinstance(model_output, ProbabilisticOutput):
             raise ValueError(
-                f"Encountered output with shape {model_output.shape}. "
-                "Calibration only supported for models that output a mean and covariance "
-                "or a probability mass function."
+                "Model output passed to calibration expected to be a subclass of "
+                f"`ProbabilisticOutput`! Instead encountered object of type: {type(model_output)}."
             )
-        elif model_output.shape == (3, 2):
-            # assume model_output[0] is the mean
-            # and model_output[1:] is the Cholesky factor
-            # of the covariance matrix
-            coords = self._make_coord_array()
+        # NOTE: true location expected in MM
 
-            mean, cov = model_output[0], model_output[1:]
-            # PREVIOUSLY INPUTTED CHOLESKY COV, NOW INPUTS COV.
-            # mean, cholesky_cov = model_output[0], model_output[1:]
-            # cov = cholesky_cov @ cholesky_cov.T
-
-            # evaluate distribution at the gridpoints
-            pmf = multivariate_normal(mean=mean, cov=cov).pdf(coords)
-            # and renormalize
-            pmf /= pmf.sum()
-        elif model_output.shape[1:] == (3, 2):
-            # if we have a batch of means and covariance matrices
-            # make the mixture density pmf
-            coords = self._make_coord_array()
-
-            means, covs = model_output[:, 0], model_output[:, 1:]
-
-            gaussian_pmfs = [
-                multivariate_normal(mean=mean, cov=cov).pdf(coords)
-                for mean, cov in zip(means, covs)
-            ]
-            # average the pdfs with uniform weights to get the outputted density
-            pmf = np.mean(gaussian_pmfs, axis=0)
-            pmf /= pmf.sum()
-        elif model_output.ndim == 2:
-            # assume the model output is just a pmf
-            pmf = model_output
-            pmf /= pmf.sum()
-        else:
-            raise ValueError(f"Model output shape {model_output.shape} not understood!")
+        # get the pmf
+        coords = self._make_coord_array()
+        # add a batch dimension to match expected shape from `ProbabilisticOutput.pmf`
+        coords = np.expand_dims(coords, -2)
+        pmf = model_output.pmf(torch.tensor(coords), Unit.MM).cpu().numpy()
+        # get rid of the extra batch dimension
+        pmf = pmf.squeeze()
 
         # calculate the confidence set for this prediction
         # and store useful stats about it

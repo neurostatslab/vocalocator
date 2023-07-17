@@ -4,6 +4,7 @@ training progress in a deep learning setting.
 """
 import os
 from time import time
+
 import numpy as np
 
 
@@ -73,6 +74,7 @@ class ProgressLogger:
 
         self.train_loss_filepath = os.path.join(output_dir, "train_loss.txt")
         self.val_loss_filepath = os.path.join(output_dir, "val_loss.txt")
+        self.val_calibration_filepath = os.path.join(output_dir, "val_calibration.txt")
 
         self.logger = logger
 
@@ -153,7 +155,7 @@ class ProgressLogger:
                 + "[{}/{}]".format(self.val_accumulator.imagecount, self.num_val_images)
             )
 
-    def finish_epoch(self):
+    def finish_epoch(self, calibration_curve=None):
         """Log statistics on the test set."""
         self.logger.info(
             ">> FINISHED EPOCH IN: " + format_seconds(time() - self.epoch_start_time)
@@ -167,6 +169,10 @@ class ProgressLogger:
 
         with open(self.val_loss_filepath, "a") as f:
             f.write(f"{val_loss}\n")
+
+        if calibration_curve is not None:
+            with open(self.val_calibration_filepath, "a") as f:
+                f.write(f"{calibration_curve}\n")
 
         return val_loss
 

@@ -7,7 +7,7 @@ from torch.nn import functional as F
 
 from gerbilizer.architectures.util import build_cov_output
 
-from .encodings import LearnedEncoding, FixedEncoding
+from .encodings import FixedEncoding, LearnedEncoding
 from .sparse_attn import SparseTransformerEncoder, SparseTransformerEncoderLayer
 
 

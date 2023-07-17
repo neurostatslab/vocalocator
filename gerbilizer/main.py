@@ -1,11 +1,13 @@
 import argparse
 import os
-from os import path
+import pathlib
 import time
+from os import path
 
 import h5py
 import numpy as np
 
+from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
 
@@ -108,6 +110,8 @@ def validate_args(args):
     # place output directly into directory user provides if bare flag is enabled
     if args.bare:
         args.model_dir = args.save_path
+        if not path.exists(args.model_dir):
+            pathlib.Path(args.model_dir).mkdir(exist_ok=True, parents=True)
     else:
         if not path.exists(args.save_path):
             os.makedirs(args.save_path)
@@ -123,7 +127,7 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
     # expects args.data to point toward a file rather than a directory
     # In this case, all three h5py.File objects held by the Trainer are None
     data_path = args.data
-    arena_dims = args.config_data["DATA"]["ARENA_DIMS"]
+    arena_dims: tuple[float, float] = args.config_data["DATA"]["ARENA_DIMS"]
     if not (data_path.endswith(".h5") or data_path.endswith(".hdf5")):
         raise ValueError(
             "--data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
@@ -147,15 +151,19 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
                 arena_dims = None
                 source.copy(source["room_dims"], dest["/"], "room_dims")
 
-        shape = (n_vox, 3, 2)
-        preds = dest.create_dataset("predictions", shape=shape, dtype=np.float32)
+        preds = dest.create_dataset(
+            "point_predictions", shape=(n_vox, 2), dtype=np.float32
+        )
 
         start_time = time.time()
+
         n_added = 0
         for result in iter(trainer.eval_on_dataset(data_path, arena_dims=arena_dims)):
-            preds[n_added:n_added + len(result)] = result
-            n_added += len(result)
-            if (len(result) == 1 and (n_added + 1) % 100 == 0) or len(result) > 1:
+            batch_size = result.batch_size
+            point_ests = result.point_estimate(units=Unit.MM).cpu().numpy()
+            preds[n_added : n_added + batch_size] = point_ests
+            n_added += batch_size
+            if (batch_size == 1 and (n_added + 1) % 100 == 0) or batch_size > 1:
                 est_speed = n_added / (time.time() - start_time)
                 remaining_items = n_vox - n_added
                 remaining_time = remaining_items / est_speed

@@ -5,7 +5,7 @@
 #SBATCH -c 1
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --time=2:00:00
+#SBATCH --time=48:00:00
 #SBATCH -o slurm_logs/train_model_%j.log
 pwd; hostname; date;
 
@@ -34,7 +34,7 @@ if [ -z $CONFIG ]; then
     exit 1
 fi
 
-if [-z $OUTPUT_DIR ]; then
+if [ -z $OUTPUT_DIR ]; then
     echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/gerbilizer."
     OUTPUT_DIR=/mnt/home/${USER}/ceph/gerbilizer
 fi
@@ -43,6 +43,7 @@ fi
 python -u -m gerbilizer.main \
     --config $CONFIG \
     --data $DATA_DIR \
-    --save_path $OUTPUT_DIR
+    --save_path $OUTPUT_DIR \
+    --bare
 
 date;
