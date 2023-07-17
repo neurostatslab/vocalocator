@@ -6,7 +6,12 @@ from typing import Generator, NewType, Tuple, Union
 import h5py
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import CosineAnnealingLR, ExponentialLR, ReduceLROnPlateau, SequentialLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    ExponentialLR,
+    ReduceLROnPlateau,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
 from ..calibration import CalibrationAccumulator
@@ -207,10 +212,9 @@ class Trainer:
                 else self.model.parameters()
             )
 
-
             self.__optim = base_optim(
                 params,
-                lr=optim_config['INITIAL_LEARNING_RATE'],
+                lr=optim_config["INITIAL_LEARNING_RATE"],
                 **optim_args,
             )
 
@@ -231,7 +235,7 @@ class Trainer:
                         "No `NUM_EPOCHS_ACTIVE` parameter passed to scheduler "
                         f"{scheduler_type}! Defaulting to remaining train duration, "
                         f"{remaining_dur}."
-                        )
+                    )
                     epochs_active = remaining_dur
                 epochs_active_per_scheduler.append(epochs_active)
 
@@ -245,14 +249,18 @@ class Trainer:
                 elif scheduler_type == "EXPONENTIAL_DECAY":
                     base_scheduler = ExponentialLR
                     scheduler_args = {
-                        "gamma": scheduler_config['MULTIPLICATIVE_DECAY_FACTOR']
+                        "gamma": scheduler_config["MULTIPLICATIVE_DECAY_FACTOR"]
                     }
                 elif scheduler_type == "REDUCE_ON_PLATEAU":
                     base_scheduler = ReduceLROnPlateau
                     scheduler_args = {
-                        "factor": scheduler_config.get("MULTIPLICATIVE_DECAY_FACTOR", 0.1),
+                        "factor": scheduler_config.get(
+                            "MULTIPLICATIVE_DECAY_FACTOR", 0.1
+                        ),
                         "patience": scheduler_config.get("PLATEAU_DECAY_PATIENCE", 10),
-                        "threshold_mode": scheduler_config.get("PLATEAU_THRESHOLD_MODE", 'rel'),
+                        "threshold_mode": scheduler_config.get(
+                            "PLATEAU_THRESHOLD_MODE", "rel"
+                        ),
                         "threshold": scheduler_config.get("PLATEAU_THRESHOLD", 1e-4),
                         "min_lr": scheduler_config.get("MIN_LEARNING_RATE", 0),
                     }
@@ -266,9 +274,7 @@ class Trainer:
             # so take the cumulative sum and throw out the endpoint
             milestones = list(np.cumsum(epochs_active_per_scheduler))[:-1]
             self.__scheduler = SequentialLR(
-                self.__optim,
-                schedulers=schedulers,
-                milestones=milestones
+                self.__optim, schedulers=schedulers, milestones=milestones
             )
 
     def train_epoch(self):
@@ -362,7 +368,7 @@ class Trainer:
             val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
 
         else:
-            val_loss = 0.
+            val_loss = 0.0
 
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
