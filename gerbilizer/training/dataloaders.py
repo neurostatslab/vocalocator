@@ -13,10 +13,10 @@ import torch
 from scipy.signal import correlate
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, IterableDataset
+from torch.utils.data import DataLoader, Dataset
 
 
-class GerbilVocalizationDataset(IterableDataset):
+class GerbilVocalizationDataset(Dataset):
     def __init__(
         self,
         datapath: str,
