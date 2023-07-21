@@ -253,13 +253,6 @@ class Trainer:
                         "threshold": scheduler_config.get("PLATEAU_THRESHOLD", 1e-4),
                         "min_lr": scheduler_config.get("MIN_LEARNING_RATE", 0),
                     }
-                    if len(scheduler_configs) != 1:
-                        raise ValueError(
-                            "ReduceLROnPlateau not supported by SequentialLR scheduling! "
-                            f"Encountered configs of types: {[c['SCHEDULER_TYPE'] for c in scheduler_configs]}"
-                            )
-                    self.__scheduler = base_scheduler(self.__optim, **scheduler_args)
-                    return
                 else:
                     raise NotImplementedError(
                         f'Unrecognized scheduler "{scheduler_config["SCHEDULER_TYPE"]}"'
