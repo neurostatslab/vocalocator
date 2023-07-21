@@ -297,7 +297,7 @@ class Trainer:
 
             # Count batch as completed.
             self.__progress_log.log_train_batch(
-                mean_loss.item(), np.nan, sounds.shape[0] * sounds.shape[1]
+                mean_loss.item(), np.nan, sounds.shape[0]
             )
             iter += 1
             # if iter > 10: break
@@ -346,7 +346,7 @@ class Trainer:
                     self.__progress_log.log_val_batch(
                         batch_err / sounds.shape[0],
                         np.nan,
-                        sounds.shape[0] * sounds.shape[1],
+                        sounds.shape[0],
                     )
 
             # Done with epoch.
