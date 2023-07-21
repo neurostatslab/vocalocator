@@ -206,8 +206,6 @@ class Trainer:
                 lr=optim_config["INITIAL_LEARNING_RATE"],
                 **optim_args,
             )
-            for group in self.__optim.param_groups:
-                group.setdefault('initial_lr', group['lr'])
 
             scheduler_configs = optim_config["SCHEDULERS"]
 
