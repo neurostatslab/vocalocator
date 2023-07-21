@@ -156,7 +156,6 @@ class GerbilVocalizationDataset(Dataset):
 
         return scaled_audio, scaled_labels
 
-    @staticmethod
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
         sound = torch.from_numpy(sound)  # Padding numpy arrays yields an error
