@@ -129,13 +129,17 @@ class ProbabilisticOutput(ModelOutput):
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
-    def pmf(self, coordinate_grid: torch.Tensor, units: Unit) -> torch.Tensor:
+    def pmf(self, coordinate_grid: torch.Tensor, units: Unit, temperature: float = 1.) -> torch.Tensor:
         """
         Calculate p(x) at each point on the coordinate grid for the
         distribution p parameterized by this model output instance, in a
         vectorized and numerically stable way. Normalizes to sum to 1.
+
+        Optionally, provide a `temperature` parameter to adjust the entropy of
+        the distribution. Higher temperatures shift the distribution towards uniform,
+        lower temperatures towards a point mass at the mode.
         """
-        probs = torch.exp(self.log_p(coordinate_grid, units=units))
+        probs = torch.exp(self.log_p(coordinate_grid, units=units) / temperature)
         # normalize to 1
         return probs / probs.sum()
 
