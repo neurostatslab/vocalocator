@@ -92,6 +92,7 @@ def assess_model(
     arena_dims: Union[np.ndarray, tuple[float, float]],
     device="cuda:0",
     visualize=False,
+    temperature=1.,
 ):
     """
     Assess the provided model with uncertainty, storing model output as well as
@@ -105,7 +106,8 @@ def assess_model(
         dataloader: DataLoader object on which the model should be assessed
         outfile: path to an h5 file in which output should be saved
         arena_dims: arena dimensions, *in millimeters*.
-        visualize: optional argument expressing whether the first few
+        visualize: optional, indicates whether first few outputs should be plotted
+        temperature: optional, adjusts entropy of probabilistic model outputs
     """
     outfile = Path(outfile)
 
@@ -169,7 +171,7 @@ def assess_model(
                     # other useful info
                     if isinstance(output, ProbabilisticOutput):
                         should_compute_calibration = True
-                        ca.calculate_step(output, scaled_location)
+                        ca.calculate_step(output, scaled_location, temperature=temperature)
 
                         if visualize and idx == FIRST_N_VOX_TO_PLOT:
                             # plot the densities
@@ -271,6 +273,14 @@ if __name__ == "__main__":
         help="Include flag use the FINAL model weights, not the best.",
     )
 
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        required=False,
+        default=1.,
+        help="Optional flag to apply temperature scaling to a model with probabilistic output.",
+    )
+
     args = parser.parse_args()
 
     if not Path(args.config).exists():
@@ -330,4 +340,5 @@ if __name__ == "__main__":
         arena_dims,
         device=device,
         visualize=args.visualize,
+        temperature=args.temperature
     )
