@@ -13,7 +13,7 @@ import torch
 from scipy.signal import correlate
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, ConcatDataset, Subset
 
 
 class GerbilVocalizationDataset(Dataset):
@@ -182,6 +182,56 @@ class GerbilVocalizationDataset(Dataset):
         if self.inference:
             return sound
         return sound, location
+
+class GerbilConcatDataset(ConcatDataset):
+    def __init__(
+        self,
+        datapaths: list[str],
+        proportions: list[float],
+        selection_random_seed: int = 2023,
+        *,
+        make_xcorrs: bool = False,
+        inference: bool = False,
+        crop_length: int = 8192,
+        arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
+    ):
+        """Utility class to help concatenate subsets of GerbilVocalizationDataset objects.
+
+        Args:
+            datapaths: Paths to HDF5 representations of GerbilVocalizationDataset objects
+            proportions: Indicates what size subset to select from each constituent dataset.
+            selection_random_seed: Seed used to randomly select subsets of each constituent dataset.
+            make_xcorrs (bool, optional): Triggers computation of pairwise correlations between input channels. Defaults to False.
+            inference (bool, optional): When true, labels will be returned in addition to data. Defaults to False.
+            crop_length (int): When provided, will serve random crops of fixed length instead of full vocalizations
+        """
+        full_datasets = [
+            GerbilVocalizationDataset(
+                path,
+                arena_dims=arena_dims,
+                make_xcorrs=make_xcorrs,
+                crop_length=crop_length,
+                inference=inference
+            ) for path in datapaths
+        ]
+        # sample the subsets, storing indices to test reproducibility
+        rng = np.random.default_rng(seed=selection_random_seed)
+        self.subset_indices = []
+        subsets = []
+        for dataset, proportion in zip(full_datasets, proportions):
+            n_to_choose = int(proportion * len(dataset))
+            indices = rng.choice(len(dataset), size=n_to_choose, replace=False).tolist()
+            self.subset_indices.append(indices)
+            # and create the Subset
+            subsets.append(Subset(dataset, indices))
+        super().__init__(subsets)
+
+    @property
+    def n_vocalizations(self):
+        """
+        The number of vocalizations contained in this Dataset object.
+        """
+        return len(self)
 
 
 def build_dataloaders(path_to_data: str, config: dict):
