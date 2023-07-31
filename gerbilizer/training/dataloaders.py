@@ -3,6 +3,8 @@ Functions to construct Datasets and DataLoaders for training and inference
 """
 
 import os
+import typing
+
 from itertools import combinations
 from math import comb
 from typing import Optional, Tuple, Union
@@ -232,6 +234,90 @@ class GerbilConcatDataset(ConcatDataset):
         The number of vocalizations contained in this Dataset object.
         """
         return len(self)
+
+def build_single_source_datasets(
+    config: dict,
+    data_dir: str
+    ) -> tuple[GerbilVocalizationDataset, GerbilVocalizationDataset, GerbilVocalizationDataset]:
+    """
+    Construct three GerbilVocalizationDataset objects (train, val, test) from
+    files in a single source directory `data_dir`, which should point to directory
+    containing files `train_set.h5`, `val_set.h5` and `test_set.h5`.
+
+    Example usage:
+        ```
+        >>> from gerbilizer.training.configs import build_config
+        >>> config = build_config('/path/to/model_config.json')
+        >>> data_dir = '/path/to/data/set/directory'
+        >>> train, val, test = build_single_source_datasets(config, data_dir)
+        ```
+    """
+    arena_dims = config["DATA"]["ARENA_DIMS"]
+    make_xcorrs = config["DATA"]["COMPUTE_XCORRS"]
+    crop_length = config["DATA"]["CROP_LENGTH"]
+
+    data_filenames = ("train_set.h5", "val_set.h5", "test_set.h5")
+    use_inference_flags = (False, False, True)
+
+    datasets = []
+    for filename, use_inference in zip(data_filenames, use_inference_flags):
+        datasets.append(GerbilVocalizationDataset(
+            os.path.join(data_dir, filename),
+            arena_dims=arena_dims,
+            make_xcorrs=make_xcorrs,
+            crop_length=crop_length,
+            inference=use_inference
+        ))
+
+    return tuple(datasets)
+
+def build_multi_source_datasets(
+    config: dict,
+    data_dirs: list[str],
+    proportions: list[float],
+    selection_random_seed: int = 2023
+    ) -> tuple[GerbilConcatDataset, GerbilConcatDataset, GerbilConcatDataset]:
+    """
+    Construct three `GerbilConcatDataset` objects (train, val, test) from
+    files in a list of source directories `data_dirs`.
+
+    Args:
+        config: Loaded model configuration dictionary.
+        data_dirs: A list of directories, with each directory containing `train_set.h5`, `val_set.h5`, and `test_set.h5`.
+        proportions: Floats indicating the proportion of each source to include.
+        selection_random_seed: Random seed used to select subsets of each dataset.
+
+    Example usage:
+        ```
+        >>> from gerbilizer.training.configs import build_config
+        >>> config = build_config('/path/to/model_config.json')
+        >>> data_dirs = ['/data/set/number/one', '/data/set/number/two']
+        >>> # include 90% of dataset 1, 30% of dataset 2
+        >>> proportions = [0.9, 0.3]
+        >>> train, val, test = build_multi_source_datasets(config, data_dirs, proportions)
+        ```
+    """
+    arena_dims = config["DATA"]["ARENA_DIMS"]
+    make_xcorrs = config["DATA"]["COMPUTE_XCORRS"]
+    crop_length = config["DATA"]["CROP_LENGTH"]
+
+    data_filenames = ("train_set.h5", "val_set.h5", "test_set.h5")
+    use_inference_flags = (False, False, True)
+
+    datasets = []
+    for filename, use_inference in zip(data_filenames, use_inference_flags):
+        datapaths = [os.path.join(dirname, filename) for dirname in data_dirs]
+        datasets.append(GerbilConcatDataset(
+            datapaths=datapaths,
+            proportions=proportions,
+            selection_random_seed=selection_random_seed,
+            arena_dims=arena_dims,
+            make_xcorrs=make_xcorrs,
+            crop_length=crop_length,
+            inference=use_inference
+        ))
+
+    return tuple(datasets)
 
 
 def build_dataloaders(path_to_data: str, config: dict):

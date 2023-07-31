@@ -2,7 +2,9 @@ import argparse
 import os
 import pathlib
 import time
+
 from os import path
+from typing import optional
 
 import h5py
 import numpy as np
@@ -10,6 +12,7 @@ import numpy as np
 from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
+from gerbilizer.training.dataloaders import build_single_source_datasets, build_multi_source_datasets
 
 
 def get_args():
@@ -170,14 +173,46 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         print("Done")
 
 
+def build_datasets(
+    config,
+    datapath: Optional[str] = None,
+    datapaths: Optional[list[str]] = None,
+    proportions: Optional[list[float]] = None,
+    selection_random_seed: int = 2023,
+    ):
+    """
+    Utility function to build train/val/test datasets from CLI arguments.
+
+    Expects `config` and either the `datapath` argument, which causes this
+    function to return `GerbilVocalizationDataset` instances; or both the
+    `datapaths` and `proportions` arguments, which causes the function to
+    return `GerbilConcatDataset` instances.
+    """
+    if datapath is not None:
+        return build_single_source_datasets(config, datapath)
+    elif datapaths is not None and proportions is not None:
+        return build_multi_source_datasets(config, datapaths, proportions, selection_random_seed)
+    else:
+        raise ValueError(
+            'Invalid argument combination encountered! Expects `config` and '
+            'either `datapath` or both of `datapaths`, `proportions`.'
+            )
+
 def run(args):
     weights = args.config_data.get("WEIGHTS_PATH", None)
 
+    train_set, val_set, test_set = build_datasets(
+        config=args.config_data,
+        datapath=args.data
+        )
+
     # This modifies args.config_data['WEIGHTS_PATH']
     trainer = Trainer(
-        data_dir=args.data,
         model_dir=args.model_dir,
         config_data=args.config_data,
+        train_set=train_set,
+        val_set=val_set,
+        test_set=test_set,
         eval_mode=args.eval,
     )
 
