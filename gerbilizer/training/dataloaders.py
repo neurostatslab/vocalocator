@@ -47,9 +47,9 @@ class GerbilVocalizationDataset(Dataset):
         self.arena_dims = arena_dims
         self.crop_length = crop_length
         self.n_channels = None
-    
+
     def __len__(self):
-        return len(self.dataset['len_idx']) - 1
+        return len(self.dataset["len_idx"]) - 1
 
     def __getitem__(self, idx):
         return self.__processed_data_for_index__(idx)
@@ -217,7 +217,9 @@ def build_dataloaders(path_to_data: str, config: dict):
             make_xcorrs=make_xcorrs,
             crop_length=crop_length,
         )
-        val_dataloader = DataLoader(valdata, batch_size=batch_size, num_workers=avail_cpus, shuffle=False)
+        val_dataloader = DataLoader(
+            valdata, batch_size=batch_size, num_workers=avail_cpus, shuffle=False
+        )
     else:
         val_dataloader = None
 
@@ -229,7 +231,9 @@ def build_dataloaders(path_to_data: str, config: dict):
             make_xcorrs=make_xcorrs,
             inference=True,
         )
-        test_dataloader = DataLoader(testdata, shuffle=False, batch_size=batch_size, num_workers=avail_cpus)
+        test_dataloader = DataLoader(
+            testdata, shuffle=False, batch_size=batch_size, num_workers=avail_cpus
+        )
     else:
         test_dataloader = None
 

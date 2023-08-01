@@ -151,7 +151,9 @@ class Trainer:
 
     def __init_dataloaders(self):
         # Load training set, validation set, test set.
-        self.__traindata, self.__valdata, self.__testdata = build_dataloaders(self.__datafile, self.__config)
+        self.__traindata, self.__valdata, self.__testdata = build_dataloaders(
+            self.__datafile, self.__config
+        )
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
@@ -250,7 +252,7 @@ class Trainer:
                         raise ValueError(
                             "ReduceLROnPlateau not supported by SequentialLR scheduling! "
                             f"Encountered configs of types: {[c['SCHEDULER_TYPE'] for c in scheduler_configs]}"
-                            )
+                        )
                     self.__scheduler = base_scheduler(self.__optim, **scheduler_args)
                     return
                 else:
