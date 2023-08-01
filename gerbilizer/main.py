@@ -4,7 +4,6 @@ import pathlib
 import time
 
 from os import path
-from typing import optional
 
 import h5py
 import numpy as np
@@ -12,7 +11,7 @@ import numpy as np
 from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
-from gerbilizer.training.dataloaders import build_single_source_datasets, build_multi_source_datasets
+from gerbilizer.training.dataloaders import build_multi_source_datasets
 
 
 def get_args():
@@ -31,7 +30,23 @@ def get_args():
     parser.add_argument(
         "--data",
         type=str,
-        help="Path to directory containing train, test, and validation datasets or single h5 file for inference",
+        nargs='+',
+        help="Path to directory (or multiple directories) containing train, test, and validation datasets or one single h5 file for inference",
+    )
+
+    parser.add_argument(
+        "--proportions",
+        type=float,
+        required=False,
+        nargs='+',
+        help="Optional, proportions of each dataset given to train on. If not provided, will use all of each provided dataset.",
+    )
+
+    parser.add_argument(
+        "--data_random_seed",
+        type=int,
+        default=2023,
+        help="Optional, random seed used to select data subsets, if arg `proportions` is provided.",
     )
 
     parser.add_argument(
@@ -103,6 +118,16 @@ def validate_args(args):
         else:
             args.data = args.config_data["DATA"]["DATAFILE_PATH"]
 
+    # if proportions isn't provided, by default use all of each provided dataset
+    if args.proportions is None:
+        args.proportions = [1. for _ in range(len(args.data))]
+    elif len(args.proportions) != len(args.data):
+        raise ValueError(
+            'Must provide one proportion value per dataset in kwarg `data`! '
+            f'Instead encountered {len(args.proportions)} proportions and '
+            f'{len(args.data)} datasets. '
+           )
+
     args.job_id = next_available_job_id(
         args.config_data["GENERAL"]["CONFIG_NAME"], args.save_path
     )
@@ -126,11 +151,11 @@ def validate_args(args):
 def run_eval(args: argparse.Namespace, trainer: Trainer):
     # expects args.data to point toward a file rather than a directory
     # In this case, all three h5py.File objects held by the Trainer are None
-    data_path = args.data
+    data_path = args.data[0] # args.data is always a list bc of the `nargs` flag
     arena_dims: tuple[float, float] = args.config_data["DATA"]["ARENA_DIMS"]
     if not (data_path.endswith(".h5") or data_path.endswith(".hdf5")):
         raise ValueError(
-            "--data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
+            "In eval mode, --data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
         )
     if args.output_path is not None:
         dest_path = args.output_path
@@ -173,37 +198,14 @@ def run_eval(args: argparse.Namespace, trainer: Trainer):
         print("Done")
 
 
-def build_datasets(
-    config,
-    datapath: Optional[str] = None,
-    datapaths: Optional[list[str]] = None,
-    proportions: Optional[list[float]] = None,
-    selection_random_seed: int = 2023,
-    ):
-    """
-    Utility function to build train/val/test datasets from CLI arguments.
-
-    Expects `config` and either the `datapath` argument, which causes this
-    function to return `GerbilVocalizationDataset` instances; or both the
-    `datapaths` and `proportions` arguments, which causes the function to
-    return `GerbilConcatDataset` instances.
-    """
-    if datapath is not None:
-        return build_single_source_datasets(config, datapath)
-    elif datapaths is not None and proportions is not None:
-        return build_multi_source_datasets(config, datapaths, proportions, selection_random_seed)
-    else:
-        raise ValueError(
-            'Invalid argument combination encountered! Expects `config` and '
-            'either `datapath` or both of `datapaths`, `proportions`.'
-            )
-
 def run(args):
     weights = args.config_data.get("WEIGHTS_PATH", None)
 
-    train_set, val_set, test_set = build_datasets(
+    train_set, val_set, test_set = build_multi_source_datasets(
         config=args.config_data,
-        datapath=args.data
+        data_dirs=args.data,
+        proportions=args.proportions,
+        selection_random_seed=args.data_random_seed
         )
 
     # This modifies args.config_data['WEIGHTS_PATH']

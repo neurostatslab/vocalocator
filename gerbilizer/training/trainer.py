@@ -138,8 +138,6 @@ class Trainer:
 
         # Write the active configuration to disk
         self.__config["WEIGHTS_PATH"] = self.__best_weights_file
-        # Found that it's helpful to keep track of this
-        self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
 
         self.__init_logger()
 
