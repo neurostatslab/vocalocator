@@ -303,6 +303,16 @@ if __name__ == "__main__":
             f"Requested config JSON file could not be found: {args.config}"
         )
 
+    # if proportions isn't provided, by default use all of each provided dataset
+    if args.proportions is None:
+        args.proportions = [1. for _ in range(len(args.data))]
+    elif len(args.proportions) != len(args.data):
+        raise ValueError(
+            'Must provide one proportion value per dataset in kwarg `data`! '
+            f'Instead encountered {len(args.proportions)} proportions and '
+            f'{len(args.data)} datasets. '
+           )
+
     config_data = build_config(args.config)
 
     model, _ = build_model(config_data)
