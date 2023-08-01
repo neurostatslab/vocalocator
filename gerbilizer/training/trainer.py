@@ -107,12 +107,6 @@ class Trainer:
 
             self.__best_loss = float("inf")
 
-    def load_weights(self, weights: Union[dict, str]):
-        device = self.device
-        if isinstance(weights, str):
-            weights = torch.load(weights, map_location=device)
-        self.model.load_state_dict(weights, strict=False)
-
     def save_weights(self, weight_path: str):
         torch.save(self.model.state_dict(), weight_path)
 
