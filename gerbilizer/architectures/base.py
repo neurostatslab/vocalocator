@@ -16,37 +16,38 @@ class GerbilizerArchitecture(torch.nn.Module):
         self.output_factory = output_factory
         self.n_outputs = self.output_factory.n_outputs_expected
 
-    def load_weights(self, best_weights_path = None, use_final_weights: bool = False):
+    def load_weights(self, best_weights_path=None, use_final_weights: bool = False):
         """
         Load in the weights of the model, where use of `best_weights.pt` or
         `final_weights.pt` is specified by `use_final_weights`.
         """
         if best_weights_path is None:
             # try checking config for a weights path
-            print('No weights path provided, checking model config.')
+            print("No weights path provided, checking model config.")
             try:
-                best_weights_path = self.config['WEIGHTS_PATH']
+                best_weights_path = self.config["WEIGHTS_PATH"]
             except KeyError:
                 raise ValueError(
-                    'Couldn\'t load model weights! No `best_weights_path` kwarg provided '
+                    "Couldn't load model weights! No `best_weights_path` kwarg provided "
                     'to `load_weights`, and could not find "WEIGHTS_PATH" in model config.'
-                    )
+                )
 
         weights_path = best_weights_path
         if use_final_weights:
             filename = Path(weights_path).name
-            if 'best' not in filename:
+            if "best" not in filename:
                 raise ValueError(
                     "Since best weights path isn't of the form /.../best_weights.pt, "
                     "cannot locate a corresponding final weights file!"
-                    )
+                )
             else:
-                filename = filename.replace('best', 'final')
+                filename = filename.replace("best", "final")
                 weights_path = Path(weights_path).parent / filename
 
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.to(device)
 
+        print(f"Loading weights from path {weights_path}.")
         weights = torch.load(weights_path, map_location=device)
         self.load_state_dict(weights)
 

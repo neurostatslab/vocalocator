@@ -284,9 +284,8 @@ if __name__ == "__main__":
 
     best_weights_path = config_data.get("WEIGHTS_PATH", None)
     model.load_weights(
-        best_weights_path=best_weights_path,
-        use_final_weights=args.use_final
-        )
+        best_weights_path=best_weights_path, use_final_weights=args.use_final
+    )
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if device == "cpu":

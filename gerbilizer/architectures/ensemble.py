@@ -45,7 +45,7 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
 
         self.models = nn.ModuleList(built_models)
 
-    def load_weights(self, best_weights_path = None, use_final_weights: bool = False):
+    def load_weights(self, best_weights_path=None, use_final_weights: bool = False):
         """
         Load the weights for each constituent model of the ensemble.
         """
