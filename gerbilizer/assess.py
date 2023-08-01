@@ -284,9 +284,8 @@ if __name__ == "__main__":
 
     best_weights_path = config_data.get("WEIGHTS_PATH", None)
     model.load_weights(
-        best_weights_path=best_weights_path,
-        use_final_weights=args.use_final
-        )
+        best_weights_path=best_weights_path, use_final_weights=args.use_final
+    )
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
@@ -304,15 +303,12 @@ if __name__ == "__main__":
         str(args.data),
         arena_dims=arena_dims,
         make_xcorrs=config_data["DATA"]["COMPUTE_XCORRS"],
-        crop_length=config_data["DATA"].get("CROP_LENGTH", None),
-        sequential=True,
+        crop_length=config_data["DATA"]["CROP_LENGTH"],
     )
 
-    # function that torch dataloader uses to assemble batches.
-    # in our case, applying this is necessary because of the structure of the
-    # dataset class (which was created to accomodate variable length batches, so it's a little wonky)
+    batch_size = config_data["DATA"]["BATCH_SIZE"]
     dataloader = DataLoader(
-        dataset, batch_size=1, shuffle=False, collate_fn=dataset.collate_fn
+        dataset, batch_size=batch_size, shuffle=False
     )
 
     # make the parent directories for the desired outfile if they don't exist
