@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal, overload
 
 import torch
@@ -33,7 +34,15 @@ class GerbilizerArchitecture(torch.nn.Module):
 
         weights_path = best_weights_path
         if use_final_weights:
-            weights_path = weights_path.replace('best', 'final')
+            filename = Path(weights_path).name
+            if 'best' not in filename:
+                raise ValueError(
+                    "Since best weights path isn't of the form /.../best_weights.pt, "
+                    "cannot locate a corresponding final weights file!"
+                    )
+            else:
+                filename = filename.replace('best', 'final')
+                weights_path = Path(weights_path).parent / filename
 
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.to(device)
