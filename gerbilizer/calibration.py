@@ -172,7 +172,10 @@ class CalibrationAccumulator:
         self.distances_to_furthest_point = []
 
     def calculate_step(
-        self, model_output: ProbabilisticOutput, true_location: np.ndarray
+        self,
+        model_output: ProbabilisticOutput,
+        true_location: np.ndarray,
+        temperature: float = 1.,
     ):
         """
         Perform one step of the calibration process on `model_output`.
@@ -181,6 +184,9 @@ class CalibrationAccumulator:
         smallest region in the xy plane containing the true location. These
         regions are defined by progressively taking the location bins to which
         the model assigns the highest probability mass.
+
+        Optionally, temperature scale the model output before calculating
+        calibration, as per "On Calibration of Modern Neural Networks" (Guo, 2017).
         """
         if not isinstance(model_output, ProbabilisticOutput):
             raise ValueError(
@@ -193,7 +199,7 @@ class CalibrationAccumulator:
         coords = self._make_coord_array()
         # add a batch dimension to match expected shape from `ProbabilisticOutput.pmf`
         coords = np.expand_dims(coords, -2)
-        pmf = model_output.pmf(torch.tensor(coords), Unit.MM).cpu().numpy()
+        pmf = model_output.pmf(torch.tensor(coords), Unit.MM, temperature=temperature).cpu().numpy()
         # get rid of the extra batch dimension
         pmf = pmf.squeeze()
 
