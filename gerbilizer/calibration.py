@@ -268,6 +268,14 @@ class CalibrationAccumulator:
         xdim = self.arena_dims[0]
         ydim = self.arena_dims[1]
 
+        # adjust xdim and ydim to take into account how gerbils rearing
+        # at the corners are handled — currently, this leads to labels
+        # outside the arena dimensions, so make a larger grid to compensate
+        x_adjustment = 0.5 * xdim
+        y_adjustment = 0.5 * ydim
+        xdim += x_adjustment
+        ydim += y_adjustment
+
         # change xgrid / ygrid size to preserve aspect ratio
         ratio = ydim / xdim
         desired_shape = (int(ratio * 100), 100)
@@ -275,4 +283,8 @@ class CalibrationAccumulator:
             (xdim, ydim), shape=desired_shape, return_center_pts=True
         )
         coords = np.dstack((xgrid, ygrid))
+        # recenter coordinates so we have extra room on each side,
+        # not just at the top right corner of the arena.
+        recentering = np.array([x_adjustment / 2, y_adjustment / 2])
+        coords -= recentering
         return coords
