@@ -195,11 +195,8 @@ def assess_model(
                                 if should_compute_calibration:
                                     set_to_plot = ca.confidence_sets[i]
 
-                                    xgrid, ygrid = make_xy_grids(
-                                        arena_dims,
-                                        shape=set_to_plot.shape,
-                                        return_center_pts=True,
-                                    )
+                                    xgrid, ygrid = ca._make_coord_grids()
+
                                     ax.contourf(
                                         xgrid,
                                         ygrid,
