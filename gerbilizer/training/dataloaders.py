@@ -3,6 +3,7 @@ Functions to construct Datasets and DataLoaders for training and inference
 """
 
 import os
+import pathlib
 import typing
 
 from itertools import combinations
@@ -36,10 +37,11 @@ class GerbilVocalizationDataset(Dataset):
             inference (bool, optional): When true, labels will be returned in addition to data. Defaults to False.
             crop_length (int): When provided, will serve random crops of fixed length instead of full vocalizations
         """
-        if isinstance(datapath, str):
+        if isinstance(datapath, str) or isinstance(datapath, pathlib.Path):
+            self.datapath = datapath
             self.dataset = h5py.File(datapath, "r")
         else:
-            self.dataset = datapath
+            raise ValueError('Expected arg `datapath` to be a str or Path pointing to an HDF5 dataset!')
 
         if "len_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
@@ -49,6 +51,9 @@ class GerbilVocalizationDataset(Dataset):
         self.arena_dims = arena_dims
         self.crop_length = crop_length
         self.n_channels = None
+
+    def __str__(self):
+        return f'<GerbilVocalizationDataset object from path {self.datapath}>'
     
     def __len__(self):
         return len(self.dataset['len_idx']) - 1
@@ -207,6 +212,10 @@ class GerbilConcatDataset(ConcatDataset):
             inference (bool, optional): When true, labels will be returned in addition to data. Defaults to False.
             crop_length (int): When provided, will serve random crops of fixed length instead of full vocalizations
         """
+        self.datapaths = datapaths
+        self.proportions = proportions
+        self.selection_random_seed = selection_random_seed
+
         full_datasets = [
             GerbilVocalizationDataset(
                 path,
@@ -234,6 +243,19 @@ class GerbilConcatDataset(ConcatDataset):
         The number of vocalizations contained in this Dataset object.
         """
         return len(self)
+
+    def __str__(self):
+        display_strs = [
+            f"{prop * 100}% of data from path {datapath}"
+            for prop, datapath in zip(self.proportions, self.datapaths)
+            ]
+        # human readability!
+        if len(display_strs) > 1:
+            display_strs[-1] = 'and ' + display_strs[-1]
+        display = ", ".join(display_strs)
+        return (f"<GerbilConcatDataset object, containing {display}, "
+                f"with random seed {self.selection_random_seed}>")
+
 
 def build_single_source_datasets(
     config: dict,

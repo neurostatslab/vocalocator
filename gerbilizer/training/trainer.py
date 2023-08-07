@@ -153,6 +153,10 @@ class Trainer:
         )
 
     def __init_dataloaders(self, train_set, val_set, test_set):
+        # Save info in config, helpful especially for multi source datasets
+        self.__config["DATA"]["TRAIN_SET_INFO"] = str(train_set)
+        self.__config["DATA"]["VAL_SET_INFO"] = str(val_set)
+
         batch_size = self.__config["DATA"]["BATCH_SIZE"]
 
         avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
