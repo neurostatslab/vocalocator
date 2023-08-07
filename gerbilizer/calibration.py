@@ -196,7 +196,7 @@ class CalibrationAccumulator:
         # NOTE: true location expected in MM
 
         # get the pmf
-        coords = self._make_coord_array()
+        coords = np.dstack(self._make_coord_grids())
         # add a batch dimension to match expected shape from `ProbabilisticOutput.pmf`
         coords = np.expand_dims(coords, -2)
         pmf = model_output.pmf(torch.tensor(coords), Unit.MM, temperature=temperature).cpu().numpy()
@@ -219,11 +219,9 @@ class CalibrationAccumulator:
         self.location_in_confidence_set.append(loc_in_confidence_set)
         self.distances_to_furthest_point.append(dist_to_furthest_point)
 
-        # get our x and ygrids to match the shape of the pmfs
-        # since the grids track the edge points, we should have
-        # one more point in each coordinate direction.
-        grid_shape = np.array(pmf.shape) + 1
-        xgrid, ygrid = make_xy_grids(self.arena_dims[:2], shape=grid_shape)
+        # get arrays tracking the edge points of the previously
+        # calculated discretization `coords`
+        xgrid, ygrid = self._make_coord_grids(return_center=False)
 
         # reshape location to (1, 2) if necessary
         # we do this so the repeat function works out correctly
@@ -261,18 +259,39 @@ class CalibrationAccumulator:
 
         return results
 
-    def _make_coord_array(self):
+    def _make_coord_grids(self, return_center=True) -> tuple[np.ndarray, np.ndarray]:
         """
         Return a grid of evenly spaced points on the arena floor.
         """
         xdim = self.arena_dims[0]
         ydim = self.arena_dims[1]
 
+        # adjust xdim and ydim to take into account how gerbils rearing
+        # at the corners are handled — currently, this leads to labels
+        # outside the arena dimensions, so make a larger grid to compensate
+        x_adjustment = 0.5 * xdim
+        y_adjustment = 0.5 * ydim
+        xdim += x_adjustment
+        ydim += y_adjustment
+
         # change xgrid / ygrid size to preserve aspect ratio
         ratio = ydim / xdim
-        desired_shape = (int(ratio * 100), 100)
-        xgrid, ygrid = make_xy_grids(
-            (xdim, ydim), shape=desired_shape, return_center_pts=True
-        )
-        coords = np.dstack((xgrid, ygrid))
-        return coords
+        desired_shape = np.array((int(ratio * 100), 100))
+
+        if return_center:
+            xgrid, ygrid = make_xy_grids(
+                (xdim, ydim), shape=desired_shape, return_center_pts=True
+            )
+        else:
+            # add one point in each direction since we're
+            # looking to return the edge points
+            xgrid, ygrid = make_xy_grids(
+                (xdim, ydim), shape=(desired_shape + 1) 
+            )
+
+        # recenter coordinates so we have extra room on each side,
+        # not just at the top right corner of the arena.
+        xgrid -= x_adjustment / 2
+        ygrid -= y_adjustment / 2
+
+        return (xgrid, ygrid)
