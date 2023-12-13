@@ -1,8 +1,6 @@
 # Gerbilizer
 ==============================
 
-## Gerbil audio localization
-
 ## Project Organization
 ------------
 
