@@ -1,7 +1,7 @@
 import logging
 import os
 from os import path
-from typing import Generator, NewType, Tuple, Union
+from typing import Generator, NewType, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -12,12 +12,12 @@ from torch.optim.lr_scheduler import (
     ReduceLROnPlateau,
     SequentialLR,
 )
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from ..calibration import CalibrationAccumulator
 from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
-from ..training.dataloaders import GerbilVocalizationDataset, build_dataloaders
+from ..training.dataloaders import GerbilVocalizationDataset
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
 
@@ -57,24 +57,29 @@ class Trainer:
 
     def __init__(
         self,
-        data_dir: str,
         model_dir: str,
         config_data: JSON,
+        train_set: Dataset,
+        val_set: Optional[Dataset] = None,
+        test_set: Optional[Dataset] = None,
         *,
         eval_mode: bool = False,
     ):
         """Parameters:
-        - data_dir:
-            Path to directory containing train/test/val files named train_set.h5, etc...
         - model_dir:
             Path to the directory that will hold model weights and logs
         - config_data:
             Contents of model config as a JSON object (python dictionary-like)
+        - train_set:
+            Dataset object storing train data
+        - val_set:
+            Optional, Dataset object storing validation data
+        - test_set:
+            Optional, Dataset object storing test data
         - eval_mode:
             Should be false when training and true when performing inference.
         """
         self.__eval = eval_mode
-        self.__datafile = data_dir
         self.__model_dir = model_dir
         self.__config = config_data
 
@@ -87,7 +92,7 @@ class Trainer:
         print(f"Using device: {self.device}")
 
         if not self.__eval:
-            self.__init_dataloaders()
+            self.__init_dataloaders(train_set, val_set, test_set)
             self.__init_output_dir()
         self.__init_model()
 
@@ -127,8 +132,6 @@ class Trainer:
 
         # Write the active configuration to disk
         self.__config["WEIGHTS_PATH"] = self.__best_weights_file
-        # Found that it's helpful to keep track of this
-        self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
 
         self.__init_logger()
 
@@ -149,9 +152,33 @@ class Trainer:
             self.__logger,
         )
 
-    def __init_dataloaders(self):
-        # Load training set, validation set, test set.
-        self.__traindata, self.__valdata, self.__testdata = build_dataloaders(self.__datafile, self.__config)
+    def __init_dataloaders(self, train_set, val_set, test_set):
+        # Save info in config, helpful especially for multi source datasets
+        self.__config["DATA"]["TRAIN_SET_INFO"] = str(train_set)
+        self.__config["DATA"]["VAL_SET_INFO"] = str(val_set)
+
+        batch_size = self.__config["DATA"]["BATCH_SIZE"]
+
+        avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
+
+        self.__traindata = DataLoader(
+            train_set,
+            batch_size=batch_size,
+            num_workers=avail_cpus,
+            shuffle=True
+            )
+        self.__valdata = DataLoader(
+            val_set,
+            batch_size=batch_size,
+            num_workers=avail_cpus,
+            shuffle=False
+            )
+        self.__testdata = DataLoader(
+            test_set,
+            batch_size=batch_size,
+            num_workers=avail_cpus,
+            shuffle=False
+            )
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""

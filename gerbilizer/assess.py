@@ -19,7 +19,7 @@ from gerbilizer.architectures.ensemble import GerbilizerEnsemble
 from gerbilizer.calibration import CalibrationAccumulator
 from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from gerbilizer.training.configs import build_config
-from gerbilizer.training.dataloaders import GerbilVocalizationDataset
+from gerbilizer.training.dataloaders import GerbilConcatDataset
 from gerbilizer.training.models import build_model
 from gerbilizer.util import make_xy_grids, subplots
 
@@ -249,8 +249,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data",
         type=str,
-        required=True,
-        help="Path to an h5 file on which to assess the model",
+        nargs='+',
+        help="Path(s) to h5 file(s) on which to evaluate the model.",
+    )
+
+    parser.add_argument(
+        "--proportions",
+        type=float,
+        required=False,
+        nargs='+',
+        help="Optional, proportions of each dataset given to evaluate on. If not provided, will use all of each provided dataset.",
+    )
+
+    parser.add_argument(
+        "--data_random_seed",
+        type=int,
+        default=2023,
+        help="Optional, random seed used to select data subsets, if arg `proportions` is provided.",
     )
 
     parser.add_argument(
@@ -288,6 +303,16 @@ if __name__ == "__main__":
             f"Requested config JSON file could not be found: {args.config}"
         )
 
+    # if proportions isn't provided, by default use all of each provided dataset
+    if args.proportions is None:
+        args.proportions = [1. for _ in range(len(args.data))]
+    elif len(args.proportions) != len(args.data):
+        raise ValueError(
+            'Must provide one proportion value per dataset in kwarg `data`! '
+            f'Instead encountered {len(args.proportions)} proportions and '
+            f'{len(args.data)} datasets. '
+           )
+
     config_data = build_config(args.config)
 
     model, _ = build_model(config_data)
@@ -309,8 +334,13 @@ if __name__ == "__main__":
     if arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
 
-    dataset = GerbilVocalizationDataset(
-        str(args.data),
+    make_xcorrs = config_data["DATA"]["COMPUTE_XCORRS"]
+    crop_length = config_data["DATA"]["CROP_LENGTH"]
+
+    dataset = GerbilConcatDataset(
+        datapaths=args.data,
+        proportions=args.proportions,
+        selection_random_seed=args.data_random_seed,
         arena_dims=arena_dims,
         make_xcorrs=config_data["DATA"]["COMPUTE_XCORRS"],
         crop_length=config_data["DATA"]["CROP_LENGTH"],
