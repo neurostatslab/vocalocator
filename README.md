@@ -31,7 +31,7 @@
 | /audio     | (*, n_channels) | float     | All sound events concatenated along axis 0                                                                                                     |
 | /length_idx           | (n + 1,)          | int       | Index into audio dataset. Sound event `i` should span the half open interval [`length_idx[i]`, `length_idx[i+1]`) and the first element should be 0. |
 | /locations         | (n, 2)            | float     | Locations associated with each sound event. Only required for training.                                                                        |
-1. Optionally, partition the dataset into a test set, validation set, and training set. Otherwise, place the dataset in an appropriate directory and rename it to **train_set.h5**
+1. Optionally, partition the dataset into a test set, validation set, and training set with the names `train_set.h5`, `val_set.h5`, and `test_set.h5`. Alternatively, the complete dataset can be passed in as a single .h5 file and an 80/20 train/val split will be automatically generated and saved.
 2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm.
 3. Train a model:
    1. With SLURM: `sbatch run_gpu.sh /path/to/directory/containing/trainset/ /path/to/config.json`. Note that the first argument is expected to be a directory and the second argument is expected to be a file
@@ -42,3 +42,13 @@
    2. Without SLURM: `python -m gerbilizer --eval --data /path/to/hdf5/dataset.h5 --config /path/to/model_dir/trained_models/config_name/#####/config.json -o /optional/output/path.h5`.
    3. Note that here, the data argument is a file rather than a directory and the config should point toward a config.json in a trained model's directory, just as in the finetuning step. If no output path is provided, predictions will be stored in the same directory as the input dataset.
    4. Output predictions will be stored in a dataset labeled "predictions" at the root of the HDF5 hierarchy
+
+## Public datasets
+Robot dataset:
+  - [Processed H5](https://users.flatironinstitute.org/~atanelus/datasets/robot_dataset_full.h5) 44GiB
+
+Adolescent dataset:
+  - [Processed H5](https://users.flatironinstitute.org/~atanelus/datasets/adolescent_dataset_full.h5) 1.8GiB
+
+Speaker dataset:
+  - [Processed H5](https://users.flatironinstitute.org/~atanelus/datasets/speaker_dataset_full.h5) (Includes `stimulus_identities`, and `stimulus_names` datasets) 11GiB
