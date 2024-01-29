@@ -146,7 +146,7 @@ def build_dataloaders(
 
     avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
 
-    if path_to_data.isdir():
+    if path_to_data.is_dir():
         train_path = path_to_data / "train_set.h5"
         val_path = path_to_data / "val_set.h5"
     else:

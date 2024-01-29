@@ -47,7 +47,7 @@ def validate_args(args):
             f"Requested config JSON file could not be found: {args.config}"
         )
 
-    if args.save - path is None:
+    if args.save_path is None:
         raise ValueError("No save path (trained model storage location) provided.")
 
     if args.data is None:
@@ -55,7 +55,7 @@ def validate_args(args):
 
     args.config_data = build_config(args.config)
 
-    Path(args.save - path).mkdir(parents=True, exist_ok=True)
+    Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
 
 def run(args):
@@ -64,7 +64,7 @@ def run(args):
     # This modifies args.config_data['WEIGHTS_PATH']
     trainer = Trainer(
         data_dir=args.data,
-        model_dir=args.save - path,
+        model_dir=args.save_path,
         config_data=args.config_data,
         eval_mode=False,
     )

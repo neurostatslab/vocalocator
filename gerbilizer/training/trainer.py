@@ -138,8 +138,6 @@ class Trainer:
             self.__logger.info(f"Training set:\t{self.__traindata.dataset}")
         if self.__valdata is not None:
             self.__logger.info(f"Validation set:\t{self.__valdata.dataset}")
-        if self.__testdata is not None:
-            self.__logger.info(f"Test set:\t{self.__testdata.dataset}")
 
         self.num_epochs: int = self.__config["OPTIMIZATION"]["NUM_EPOCHS"]
         self.__progress_log = ProgressLogger(
@@ -153,7 +151,7 @@ class Trainer:
 
     def __init_dataloaders(self, index_dir: Optional[Path]):
         # Load training set, validation set, test set.
-        self.__traindata, self.__valdata, self.__testdata = build_dataloaders(
+        self.__traindata, self.__valdata = build_dataloaders(
             self.__datafile, self.__config, index_dir
         )
 
