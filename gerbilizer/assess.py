@@ -114,7 +114,7 @@ def assess_model(
     """
     outfile = Path(outfile)
 
-    N = dataloader.dataset.n_vocalizations
+    N = len(dataloader.dataset)
 
     with h5py.File(outfile, "w") as f:
         # Save the config data in the h5 file for future reference

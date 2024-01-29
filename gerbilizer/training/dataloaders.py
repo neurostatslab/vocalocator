@@ -26,8 +26,7 @@ class GerbilVocalizationDataset(Dataset):
         arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         index: Optional[np.ndarray] = None,
     ):
-        """A dataloader designed to return batches of vocalizations with similar lengths
-
+        """
         Args:
             datapath (Path): Path to HDF5 dataset
             inference (bool, optional): When true, data will be cropped deterministically. Defaults to False.
@@ -45,7 +44,7 @@ class GerbilVocalizationDataset(Dataset):
         if not isinstance(arena_dims, np.ndarray):
             arena_dims = np.array(arena_dims)
 
-        if "len_idx" not in self.dataset:
+        if "length_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
 
         self.inference = inference
@@ -56,17 +55,10 @@ class GerbilVocalizationDataset(Dataset):
     def __len__(self):
         if self.index is not None:
             return len(self.index)
-        return len(self.dataset["len_idx"]) - 1
+        return len(self.dataset["length_idx"]) - 1
 
     def __getitem__(self, idx):
         return self.__processed_data_for_index__(idx)
-
-    @property
-    def n_vocalizations(self):
-        """
-        The number of instances contained in this Dataset object.
-        """
-        return len(self)
 
     def __del__(self):
         self.dataset.close()
@@ -92,7 +84,7 @@ class GerbilVocalizationDataset(Dataset):
         """Gets an audio sample from the dataset. Will determine the format
         of the dataset and handle it appropriately.
         """
-        start, end = dataset["len_idx"][idx : idx + 2]
+        start, end = dataset["length_idx"][idx : idx + 2]
         audio = dataset["audio"][start:end, ...]
         audio = (audio - audio.mean()) / audio.std()
         return audio
@@ -163,7 +155,7 @@ def build_dataloaders(
         if index_dir is None:
             # manually create train/val split
             with h5py.File(train_path, "r") as f:
-                dset_size = len(f["len_idx"]) - 1
+                dset_size = len(f["length_idx"]) - 1
             full_index = np.arange(dset_size)
             rng = np.random.default_rng(0)
             rng.shuffle(full_index)

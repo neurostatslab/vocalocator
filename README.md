@@ -28,8 +28,8 @@
 
 | Dataset group/name | Shape             | Data type | Description                                                                                                                                    |
 |--------------------|-------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| /vocalizations     | (*, n_channels) | float     | All sound events concatenated along axis 0                                                                                                     |
-| /len_idx           | (n + 1,)          | int       | Index into vocalizations. Sound event `i` should span the half open interval [`len_idx[i]`, `len_idx[i+1]`) and the first element should be 0. |
+| /audio     | (*, n_channels) | float     | All sound events concatenated along axis 0                                                                                                     |
+| /length_idx           | (n + 1,)          | int       | Index into audio dataset. Sound event `i` should span the half open interval [`length_idx[i]`, `length_idx[i+1]`) and the first element should be 0. |
 | /locations         | (n, 2)            | float     | Locations associated with each sound event. Only required for training.                                                                        |
 1. Optionally, partition the dataset into a test set, validation set, and training set. Otherwise, place the dataset in an appropriate directory and rename it to **train_set.h5**
 2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm.
