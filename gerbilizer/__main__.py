@@ -1,8 +1,8 @@
 import argparse
 import os
-import pathlib
 import time
 from os import path
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -51,31 +51,9 @@ def get_args():
         help="When performing inference, location to store model output.",
     )
 
-    parser.add_argument(
-        "--bare",
-        action="store_true",
-        required=False,
-        help=(
-            "By default, this script creates a nested directory structure in "
-            "which to store model output. This flag overrides this behavior, placing "
-            "output like saved weights directly in the directory provided."
-        ),
-    )
-
     args = parser.parse_args()
     validate_args(args)
     return args
-
-
-def next_available_job_id(model_name, save_dir):
-    job_dir = path.join(save_dir, "trained_models", model_name)
-    if not path.exists(job_dir):
-        return 1
-    else:
-        dirs = [f for f in os.listdir(job_dir) if path.isdir(path.join(job_dir, f))]
-        # Finds the highest job id and adds 1, defualts to 1 if there are no existing jobs
-        # TODO: is it worth removing the assumption that all of these names will be parsable as ints?
-        return 1 if not dirs else 1 + max(int(d) for d in dirs)
 
 
 def validate_args(args):
@@ -90,34 +68,12 @@ def validate_args(args):
     if args.save_path is None:
         raise ValueError("No save path (trained model storage location) provided.")
 
-    # Although it's somewhat inappropriate, I've elected to load config JSON here because a
-    # thorough validation of the user input involves validating the presently unloaded JSON
+    if args.data is None:
+        raise ValueError("No data path provided.")
+
     args.config_data = build_config(args.config)
 
-    if args.data is None:
-        if "DATAFILE_PATH" not in args.config_data["DATA"]:
-            raise ValueError(f"Error: no data files provided")
-        else:
-            args.data = args.config_data["DATA"]["DATAFILE_PATH"]
-
-    args.job_id = next_available_job_id(
-        args.config_data["GENERAL"]["CONFIG_NAME"], args.save_path
-    )
-    # Useful for sweeps
-    if "JOB_ID" in args.config_data["GENERAL"]:
-        args.job_id = args.config_data["GENERAL"]["JOB_ID"]
-
-    # place output directly into directory user provides if bare flag is enabled
-    if args.bare:
-        args.model_dir = args.save_path
-    else:
-        args.model_dir = path.join(
-            args.save_path,
-            "trained_models",
-            args.config_data["GENERAL"]["CONFIG_NAME"],
-            f"{args.job_id:0>5d}",
-        )
-    pathlib.Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+    Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
 
 def run_eval(args: argparse.Namespace, trainer: Trainer):
@@ -176,7 +132,7 @@ def run(args):
     # This modifies args.config_data['WEIGHTS_PATH']
     trainer = Trainer(
         data_dir=args.data,
-        model_dir=args.model_dir,
+        model_dir=args.save_path,
         config_data=args.config_data,
         eval_mode=args.eval,
     )
