@@ -1,6 +1,7 @@
 """Initialize model and loss function from configuration."""
 
 import json
+from pathlib import Path
 from typing import Any, Callable, Union
 
 import numpy as np
