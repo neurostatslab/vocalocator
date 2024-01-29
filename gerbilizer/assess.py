@@ -4,7 +4,9 @@ area of the 95% confidence set for each prediction
 and whether the true value was in that set, etc.
 """
 import argparse
+import json
 import logging
+from itertools import repeat
 from pathlib import Path
 from typing import Union
 
@@ -90,9 +92,10 @@ def assess_model(
     dataloader: DataLoader,
     outfile: Union[Path, str],
     arena_dims: Union[np.ndarray, tuple[float, float]],
-    device="cuda:0",
-    visualize=False,
-    temperature=1.,
+    device: Union[str, torch.device] = "cuda:0",
+    visualize: bool = False,
+    temperature: float = 1.0,
+    inference: bool = False,
 ):
     """
     Assess the provided model with uncertainty, storing model output as well as
@@ -114,7 +117,14 @@ def assess_model(
     N = dataloader.dataset.n_vocalizations
 
     with h5py.File(outfile, "w") as f:
-        scaled_locations_dataset = f.create_dataset("scaled_locations", shape=(N, 2))
+        # Save the config data in the h5 file for future reference
+        config_string = json.dumps(model.config)
+        f.attrs["model_config"] = config_string
+
+        if not inference:
+            scaled_locations_dataset = f.create_dataset(
+                "scaled_locations", shape=(N, 2)
+            )
 
         if isinstance(model, GerbilizerEnsemble):
             raw_output_dataset = []
@@ -141,6 +151,8 @@ def assess_model(
             idx = 0
             for sounds, locations in iter(dataloader):
                 sounds = sounds.to(device)
+                # If inference, locations will be None
+
                 outputs: list[ModelOutput] = model(sounds, unbatched=True)
                 for output, location in zip(outputs, locations):
                     # add batch dimension back
@@ -161,62 +173,68 @@ def assess_model(
                     )
 
                     # unscale location from [-1, 1] square to units in arena (in mm)
-                    scaled_location = (
-                        output._convert(location[None], Unit.ARBITRARY, Unit.MM)
-                        .cpu()
-                        .numpy()
-                    )
-                    scaled_locations_dataset[idx] = scaled_location
+                    if not inference:
+                        scaled_location = (
+                            output._convert(location[None], Unit.ARBITRARY, Unit.MM)
+                            .cpu()
+                            .numpy()
+                        )
+                        scaled_locations_dataset[idx] = scaled_location
 
-                    # other useful info
-                    if isinstance(output, ProbabilisticOutput):
-                        should_compute_calibration = True
-                        ca.calculate_step(output, scaled_location, temperature=temperature)
-
-                        if visualize and idx == FIRST_N_VOX_TO_PLOT:
-                            # plot the densities
-                            visualize_dir = outfile.parent / "pmfs_visualized"
-                            visualize_dir.mkdir(exist_ok=True, parents=True)
-                            visualize_outfile = (
-                                visualize_dir / f"{outfile.stem}_visualized.png"
+                        # other useful info
+                        if isinstance(output, ProbabilisticOutput):
+                            should_compute_calibration = True
+                            ca.calculate_step(
+                                output, scaled_location, temperature=temperature
                             )
 
-                            _, axs = subplots(FIRST_N_VOX_TO_PLOT)
-
-                            for i, ax in enumerate(axs):
-                                ax.set_title(f"vocalization {i}")
-                                ax.plot(*point_predictions[i], "ro", label="predicted")
-                                # add a green dot indicating the true location
-                                ax.plot(
-                                    *scaled_locations_dataset[i], "go", label="true"
+                            if visualize and idx == FIRST_N_VOX_TO_PLOT:
+                                # plot the densities
+                                visualize_dir = outfile.parent / "pmfs_visualized"
+                                visualize_dir.mkdir(exist_ok=True, parents=True)
+                                visualize_outfile = (
+                                    visualize_dir / f"{outfile.stem}_visualized.png"
                                 )
-                                ax.set_aspect("equal", "box")
 
-                                if should_compute_calibration:
-                                    set_to_plot = ca.confidence_sets[i]
+                                _, axs = subplots(FIRST_N_VOX_TO_PLOT)
 
-                                    xgrid, ygrid = make_xy_grids(
-                                        arena_dims,
-                                        shape=set_to_plot.shape,
-                                        return_center_pts=True,
+                                for i, ax in enumerate(axs):
+                                    ax.set_title(f"vocalization {i}")
+                                    ax.plot(
+                                        *point_predictions[i], "ro", label="predicted"
                                     )
-                                    ax.contourf(
-                                        xgrid,
-                                        ygrid,
-                                        set_to_plot,
-                                        label="95% confidence set",
+                                    # add a green dot indicating the true location
+                                    ax.plot(
+                                        *scaled_locations_dataset[i], "go", label="true"
                                     )
-                                ax.legend()
+                                    ax.set_aspect("equal", "box")
 
-                            plt.savefig(visualize_outfile)
-                            print(
-                                f"Model output visualized at file {visualize_outfile}"
-                            )
+                                    if should_compute_calibration:
+                                        set_to_plot = ca.confidence_sets[i]
+
+                                        xgrid, ygrid = make_xy_grids(
+                                            arena_dims,
+                                            shape=set_to_plot.shape,
+                                            return_center_pts=True,
+                                        )
+                                        ax.contourf(
+                                            xgrid,
+                                            ygrid,
+                                            set_to_plot,
+                                            label="95% confidence set",
+                                        )
+                                    ax.legend()
+
+                                plt.savefig(visualize_outfile)
+                                print(
+                                    f"Model output visualized at file {visualize_outfile}"
+                                )
 
                     # update number of vocalizations seen
                     idx += 1
 
-        if should_compute_calibration:
+        # Cannot compute calibration curve on inference data
+        if should_compute_calibration and not inference:
             results = ca.results()
             f.attrs["calibration_curve"] = results["calibration_curve"]
 
@@ -230,9 +248,10 @@ def assess_model(
             for output_name in OUTPUTS:
                 f.create_dataset(output_name, data=results[output_name])
 
-        _, axs = plot_results(f)
-        plt.tight_layout()
-        plt.savefig(Path(outfile).parent / f"{Path(outfile).stem}.png")
+        if not inference:
+            _, axs = plot_results(f)
+            plt.tight_layout()
+            plt.savefig(Path(outfile).parent / f"{Path(outfile).stem}.png")
 
     print(f"Model output saved to {outfile}")
 
@@ -268,7 +287,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--use_final",
+        "--use-final",
         action="store_true",
         help="Include flag use the FINAL model weights, not the best.",
     )
@@ -277,8 +296,21 @@ if __name__ == "__main__":
         "--temperature",
         type=float,
         required=False,
-        default=1.,
+        default=1.0,
         help="Optional flag to apply temperature scaling to a model with probabilistic output.",
+    )
+
+    parser.add_argument(
+        "--inference",
+        action="store_true",
+        help="Include flag to evaluate the model on datasets without ground truth.",
+    )
+
+    parser.add_argument(
+        "--index",
+        type=Path,
+        required=False,
+        help="Optional path to an index file to use for assessement. Should be a numpy int array of indices into the dataset.",
     )
 
     args = parser.parse_args()
@@ -309,17 +341,22 @@ if __name__ == "__main__":
     if arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
 
+    index = None
+    if args.index is not None:
+        if not Path(args.index).exists():
+            raise ValueError(f"Requested index file could not be found: {args.index}")
+        index = np.load(args.index)
+
     dataset = GerbilVocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
-        make_xcorrs=config_data["DATA"]["COMPUTE_XCORRS"],
         crop_length=config_data["DATA"]["CROP_LENGTH"],
+        inference=args.inference,
+        index=index,
     )
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]
-    dataloader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=False
-    )
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent
@@ -332,5 +369,6 @@ if __name__ == "__main__":
         arena_dims,
         device=device,
         visualize=args.visualize,
-        temperature=args.temperature
+        temperature=args.temperature,
+        inference=args.inference,
     )

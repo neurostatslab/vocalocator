@@ -1,13 +1,7 @@
 import argparse
-import os
-import time
 from os import path
 from pathlib import Path
 
-import h5py
-import numpy as np
-
-from gerbilizer.outputs.base import Unit
 from gerbilizer.training.configs import build_config
 from gerbilizer.training.trainer import Trainer
 
@@ -39,18 +33,6 @@ def get_args():
         help="Directory for trained models' weights",
     )
 
-    parser.add_argument(
-        "--eval", action="store_true", help="Flag for running inference on the model."
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output_path",
-        type=str,
-        required=False,
-        help="When performing inference, location to store model output.",
-    )
-
     args = parser.parse_args()
     validate_args(args)
     return args
@@ -76,56 +58,6 @@ def validate_args(args):
     Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
 
-def run_eval(args: argparse.Namespace, trainer: Trainer):
-    # expects args.data to point toward a file rather than a directory
-    # In this case, all three h5py.File objects held by the Trainer are None
-    data_path = args.data
-    arena_dims: tuple[float, float] = args.config_data["DATA"]["ARENA_DIMS"]
-    if not (data_path.endswith(".h5") or data_path.endswith(".hdf5")):
-        raise ValueError(
-            "--data argument should point to an HDF5 file with .h5 or .hdf5 file extension"
-        )
-    if args.output_path is not None:
-        dest_path = args.output_path
-    else:
-        dest_path = data_path.split(".h5")[0] + "_preds.h5"
-
-    with h5py.File(dest_path, "w") as dest:
-        # Copy true locations, if available
-        with h5py.File(data_path, "r") as source:
-            n_vox = (
-                len(source["len_idx"]) - 1
-                if "len_idx" in source
-                else len(source["vocalizations"])
-            )
-            if "locations" in source:
-                source.copy(source["locations"], dest["/"], "locations")
-            if "room_dims" in source:
-                arena_dims = None
-                source.copy(source["room_dims"], dest["/"], "room_dims")
-
-        preds = dest.create_dataset(
-            "point_predictions", shape=(n_vox, 2), dtype=np.float32
-        )
-
-        start_time = time.time()
-
-        n_added = 0
-        for result in iter(trainer.eval_on_dataset(data_path, arena_dims=arena_dims)):
-            batch_size = result.batch_size
-            point_ests = result.point_estimate(units=Unit.MM).cpu().numpy()
-            preds[n_added : n_added + batch_size] = point_ests
-            n_added += batch_size
-            if (batch_size == 1 and (n_added + 1) % 100 == 0) or batch_size > 1:
-                est_speed = n_added / (time.time() - start_time)
-                remaining_items = n_vox - n_added
-                remaining_time = remaining_items / est_speed
-                print(
-                    f"Evaluation progress: {n_added+1}/{n_vox}. Est. remaining time: {int(remaining_time):d}s"
-                )
-        print("Done")
-
-
 def run(args):
     weights = args.config_data.get("WEIGHTS_PATH", None)
 
@@ -134,16 +66,13 @@ def run(args):
         data_dir=args.data,
         model_dir=args.save_path,
         config_data=args.config_data,
-        eval_mode=args.eval,
+        eval_mode=False,
     )
 
     if weights is not None:
         trainer.model.load_weights(best_weights_path=weights)
 
-    if args.eval:
-        run_eval(args, trainer)
-    else:
-        trainer.train()
+    trainer.train()
 
 
 if __name__ == "__main__":
