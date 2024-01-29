@@ -35,7 +35,7 @@
 2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm.
 3. Train a model:
    1. With SLURM: `sbatch run_gpu.sh /path/to/directory/containing/trainset/ /path/to/config.json`. Note that the first argument is expected to be a directory and the second argument is expected to be a file
-   2. Without SLURM: `python -m gerbilizer --data /path/to/directory/containing/trainset/ --config /path/to/config.json --save_path /path/to/model/weight/directory/`
+   2. Without SLURM: `python -m gerbilizer --data /path/to/directory/containing/trainset/ --config /path/to/config.json --save-path /path/to/model/weight/directory/`
 4. Optionally, run with pretrained weights by pointing to the config.json within the model weight directory of the pretrained model.
 5. Perform inference:
    1. With SLURM: `sbatch run_eval.sh /path/to/hdf5/dataset.h5 /path/to/model_dir/trained_models/config_name/#####/config.json /optional/output/path.h5`. 

@@ -37,6 +37,6 @@ FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/script_package/local_scripts/pad_inte
 # Else this will crash
 pipenv run python -u -m gerbilizer \
     --config $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
-    --save_path $OUTPUT_DIR
+    --save-path $OUTPUT_DIR
 
 date;

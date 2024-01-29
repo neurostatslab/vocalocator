@@ -43,7 +43,6 @@ fi
 python -u -m gerbilizer \
     --config $CONFIG \
     --data $DATA_DIR \
-    --save_path $OUTPUT_DIR \
-    --bare
+    --save-path $OUTPUT_DIR \
 
 date;

@@ -73,7 +73,7 @@ PRETRAIN_RESULT_DIR=$OUTPUT_DIR/pretrain
 python -u -m gerbilizer \
     --config $CONFIG \
     --data $PRETRAIN_DIR \
-    --save_path $PRETRAIN_RESULT_DIR \
+    --save-path $PRETRAIN_RESULT_DIR \
     --bare
 
 # get the new config file with updated WEIGHTS_PATH
@@ -119,7 +119,7 @@ fi
 python -u -m gerbilizer \
     --config $CONFIG_FOR_FINETUNING \
     --data $FINETUNE_DIR \
-    --save_path $FINETUNE_RESULT_DIR \
+    --save-path $FINETUNE_RESULT_DIR \
     --bare
 
 # get the new config file with updated WEIGHTS_PATH
