@@ -155,6 +155,16 @@ class Trainer:
             self.__datafile, self.__config, index_dir
         )
 
+        # save indices for reproducibility
+        train_idx = self.__traindata.dataset.index
+        val_idx = self.__valdata.dataset.index
+
+        if train_idx is not None:
+            index_dir = Path(self.__model_dir) / "indices"
+            index_dir.mkdir(parents=True, exist_ok=True)
+            np.save(index_dir / "train_set.npy", train_idx)
+            np.save(index_dir / "val_set.npy", val_idx)
+
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
         # Set random seeds.

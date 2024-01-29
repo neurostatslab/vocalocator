@@ -27,10 +27,18 @@ def get_args():
 
     parser.add_argument(
         "--save-path",
-        type=str,
+        type=Path,
         required=False,
         default=path.abspath("."),
         help="Directory for trained models' weights",
+    )
+
+    parser.add_argument(
+        "--indices",
+        type=Path,
+        required=False,
+        default=None,
+        help="Path to directory containing train/val indices. Should be provided as train_set.npy and val_set.npy",
     )
 
     args = parser.parse_args()
@@ -67,6 +75,7 @@ def run(args):
         model_dir=args.save_path,
         config_data=args.config_data,
         eval_mode=False,
+        index_dir=args.indices,
     )
 
     if weights is not None:
