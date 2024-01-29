@@ -15,11 +15,11 @@ except ImportError:
 JSON = NewType("JSON", dict)
 DEFAULT_CONFIG = {
     "OPTIMIZATION": {
-        "NUM_EPOCHS": 30,
+        "NUM_EPOCHS": 50,
         "OPTIMIZER": "SGD",
-        "MOMENTUM": 0.9,
+        "MOMENTUM": 0.7,
         "CLIP_GRADIENTS": False,
-        "INITIAL_LEARNING_RATE": 0.0005,
+        "INITIAL_LEARNING_RATE": 0.037,
         "SCHEDULERS": [
             {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
         ],
@@ -35,7 +35,6 @@ DEFAULT_CONFIG = {
     "DATA": {
         "NUM_MICROPHONES": 4,
         "SAMPLE_RATE": 125000,
-        "COMPUTE_XCORRS": False,
         "BATCH_SIZE": 32,
         "CROP_LENGTH": 8192,
         "AUGMENT_DATA": True,
@@ -47,8 +46,8 @@ DEFAULT_CONFIG = {
             "PROB": 0.5,
         },
         "NOISE": {
-            "MIN_SNR": 0,
-            "MAX_SNR": 10,
+            "MIN_SNR": 3,
+            "MAX_SNR": 15,
             "PROB": 0.5,
         },
         "MASK": {
