@@ -40,7 +40,7 @@ if [ -z $OUTPUT_DIR ]; then
 fi
 
 
-python -u -m gerbilizer.main \
+python -u -m gerbilizer \
     --config $CONFIG \
     --data $DATA_DIR \
     --save_path $OUTPUT_DIR \

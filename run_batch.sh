@@ -35,7 +35,7 @@ FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/script_package/local_scripts/pad_inte
 
 # Note, config file should include path to data file under DATAFILE_PATH key
 # Else this will crash
-pipenv run python -u -m gerbilizer.main \
+pipenv run python -u -m gerbilizer \
     --config $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
     --save_path $OUTPUT_DIR
 
