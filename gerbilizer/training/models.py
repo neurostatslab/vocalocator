@@ -1,5 +1,7 @@
 """Initialize model and loss function from configuration."""
 
+import json
+from pathlib import Path
 from typing import Any, Callable, Union
 
 import numpy as np
@@ -151,6 +153,14 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFun
         # None out the other parameters
         built_submodels = []
         for sub_model_config in config["MODEL_PARAMS"]["CONSTITUENT_MODELS"]:
+            if not isinstance(sub_model_config, dict):
+                # A path to a config was passed instead of the config contents
+                with open(sub_model_config, "r") as f:
+                    if not Path(sub_model_config).exists():
+                        raise ValueError(
+                            f"Path to submodel config {sub_model_config} does not exist!"
+                        )
+                    sub_model_config = json.load(f)
             submodel, _ = build_model(sub_model_config)
             built_submodels.append(submodel)
         model = GerbilizerEnsemble(config, built_submodels, output_factory)

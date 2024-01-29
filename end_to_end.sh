@@ -70,10 +70,10 @@ echo "Pretraining model with config at path ${CONFIG} on simulated data in direc
 
 PRETRAIN_RESULT_DIR=$OUTPUT_DIR/pretrain
 # pretrain the model
-python -u -m gerbilizer.main \
+python -u -m gerbilizer \
     --config $CONFIG \
     --data $PRETRAIN_DIR \
-    --save_path $PRETRAIN_RESULT_DIR \
+    --save-path $PRETRAIN_RESULT_DIR \
     --bare
 
 # get the new config file with updated WEIGHTS_PATH
@@ -116,10 +116,10 @@ if [ ! -z $FINETUNE_CHANGES ]; then
 fi
 
 # finetune the model
-python -u -m gerbilizer.main \
+python -u -m gerbilizer \
     --config $CONFIG_FOR_FINETUNING \
     --data $FINETUNE_DIR \
-    --save_path $FINETUNE_RESULT_DIR \
+    --save-path $FINETUNE_RESULT_DIR \
     --bare
 
 # get the new config file with updated WEIGHTS_PATH

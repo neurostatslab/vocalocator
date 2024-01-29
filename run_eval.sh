@@ -31,12 +31,12 @@ if [ -z $CONFIG ]; then
 fi
 
 if [ -z $OUT_PATH ]; then
-    pipenv run python -u -m gerbilizer.main \
+    pipenv run python -u -m gerbilizer \
         --eval \
         --data $DATA_FILE \
         --config $CONFIG
 else
-    pipenv run python -u -m gerbilizer.main \
+    pipenv run python -u -m gerbilizer \
         --eval \
         --data $DATA_FILE \
         --config $CONFIG \

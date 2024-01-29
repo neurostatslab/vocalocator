@@ -1,9 +1,8 @@
 import logging
 import os
-from os import path
-from typing import Generator, NewType, Tuple, Union
+from pathlib import Path
+from typing import NewType, Optional
 
-import h5py
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import (
@@ -12,12 +11,11 @@ from torch.optim.lr_scheduler import (
     ReduceLROnPlateau,
     SequentialLR,
 )
-from torch.utils.data import DataLoader
 
 from ..calibration import CalibrationAccumulator
 from ..outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from ..training.augmentations import build_augmentations
-from ..training.dataloaders import GerbilVocalizationDataset, build_dataloaders
+from ..training.dataloaders import build_dataloaders
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
 
@@ -62,6 +60,7 @@ class Trainer:
         config_data: JSON,
         *,
         eval_mode: bool = False,
+        index_dir: Optional[Path] = None,
     ):
         """Parameters:
         - data_dir:
@@ -78,16 +77,19 @@ class Trainer:
         self.__model_dir = model_dir
         self.__config = config_data
 
-        if torch.cuda.is_available():
+        if self.__config["GENERAL"]["DEVICE"] == "CPU":
+            self.device = torch.device("cpu")
+        elif torch.cuda.is_available():
             self.device = torch.device("cuda")
         elif torch.backends.mps.is_available():
             self.device = torch.device("mps")
         else:
-            self.device = torch.device("cpu")
+            # fall back
+            torch.device = torch.device("cpu")
         print(f"Using device: {self.device}")
 
         if not self.__eval:
-            self.__init_dataloaders()
+            self.__init_dataloaders(index_dir)
             self.__init_output_dir()
         self.__init_model()
 
@@ -136,8 +138,6 @@ class Trainer:
             self.__logger.info(f"Training set:\t{self.__traindata.dataset}")
         if self.__valdata is not None:
             self.__logger.info(f"Validation set:\t{self.__valdata.dataset}")
-        if self.__testdata is not None:
-            self.__logger.info(f"Test set:\t{self.__testdata.dataset}")
 
         self.num_epochs: int = self.__config["OPTIMIZATION"]["NUM_EPOCHS"]
         self.__progress_log = ProgressLogger(
@@ -149,9 +149,21 @@ class Trainer:
             self.__logger,
         )
 
-    def __init_dataloaders(self):
+    def __init_dataloaders(self, index_dir: Optional[Path]):
         # Load training set, validation set, test set.
-        self.__traindata, self.__valdata, self.__testdata = build_dataloaders(self.__datafile, self.__config)
+        self.__traindata, self.__valdata = build_dataloaders(
+            self.__datafile, self.__config, index_dir
+        )
+
+        # save indices for reproducibility
+        train_idx = self.__traindata.dataset.index
+        val_idx = self.__valdata.dataset.index
+
+        if train_idx is not None:
+            index_dir = Path(self.__model_dir) / "indices"
+            index_dir.mkdir(parents=True, exist_ok=True)
+            np.save(index_dir / "train_set.npy", train_idx)
+            np.save(index_dir / "val_set.npy", val_idx)
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
@@ -304,8 +316,7 @@ class Trainer:
                 idx = 0
                 compute_calibration = False
                 for sounds, locations in self.__valdata:
-                    if self.__config["GENERAL"]["DEVICE"] == "GPU":
-                        sounds = sounds.to(self.device)
+                    sounds = sounds.to(self.device)
 
                     batch_err = 0
 
@@ -382,42 +393,3 @@ class Trainer:
             val_loss = self.eval_validation()
             self.update_learning_rate(val_loss)
         self.finalize()
-
-    def eval_on_dataset(
-        self,
-        dataset: Union[str, h5py.File],
-        arena_dims: Tuple[float, float],
-    ) -> Generator[ModelOutput, None, None]:
-        """Creates an iterator to perform inference on a given dataset
-        Parameters:
-        - dataset: Either an h5py File or path to an h5 file
-        - arena_dims: dimensions of the arena, used to rescale data to real-world
-            units. If not provided, outputs will remain unscaled.
-        - samples_per_vocalization: Number of independant samples evaluated from each vocalization
-        """
-        should_close_file = False
-        if isinstance(dataset, str):
-            dataset = h5py.File(dataset, "r")
-            should_close_file = True
-
-        dset = GerbilVocalizationDataset(
-            datapath=dataset,
-            make_xcorrs=self.__config["DATA"]["COMPUTE_XCORRS"],
-            arena_dims=arena_dims,
-            crop_length=self.__config["DATA"].get("CROP_LENGTH", None),
-            inference=True,
-        )
-
-        batch_size = self.__config["DATA"]["BATCH_SIZE"]
-        dloader = DataLoader(dset, batch_size=batch_size, shuffle=False)
-
-        self.model.eval()
-        self.model.to(self.device)
-        with torch.no_grad():
-            for batch in dloader:
-                data = batch  # (1, channels, seq)
-                output = self.model(data.to(self.device))
-                yield output
-
-        if should_close_file:
-            dataset.close()

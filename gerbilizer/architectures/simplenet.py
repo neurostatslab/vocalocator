@@ -7,19 +7,17 @@ from torch import nn
 from gerbilizer.architectures.base import GerbilizerArchitecture
 from gerbilizer.outputs import ModelOutputFactory
 
-logging.basicConfig(level=logging.INFO)
-
 
 class GerbilizerSimpleLayer(torch.nn.Module):
     def __init__(
         self,
-        channels_in,
-        channels_out,
-        filter_size,
+        channels_in: int,
+        channels_out: int,
+        filter_size: int,
         *,
-        downsample,
-        dilation,
-        use_bn=True
+        downsample: bool,
+        dilation: int,
+        use_bn: bool = True
     ):
         super(GerbilizerSimpleLayer, self).__init__()
 
@@ -27,8 +25,6 @@ class GerbilizerSimpleLayer(torch.nn.Module):
             channels_in,
             channels_out,
             filter_size,
-            # padding=(filter_size * dilation - 1) // 2,
-            padding=0,
             stride=(2 if downsample else 1),
             dilation=dilation,
         )
@@ -36,8 +32,6 @@ class GerbilizerSimpleLayer(torch.nn.Module):
             channels_in,
             channels_out,
             filter_size,
-            # padding=(filter_size * dilation - 1) // 2,
-            padding=0,
             stride=(2 if downsample else 1),
             dilation=dilation,
         )
@@ -47,23 +41,22 @@ class GerbilizerSimpleLayer(torch.nn.Module):
 
     def forward(self, x):
         fcx = self.fc(x)
-        return self.batch_norm(
-            (torch.tanh(fcx) + 0.05 * fcx) * torch.sigmoid(self.gc(x))
-        )
+        fcx_activated = torch.tanh(fcx) * 0.95 + fcx * 0.05
 
+        gcx = self.gc(x)
+        gcx_activated = torch.sigmoid(gcx)
 
-def ceiling_division(n, d):
-    q, r = divmod(n, d)
-    return q + bool(r)
+        prod = fcx_activated * gcx_activated
+        return self.batch_norm(prod)
 
 
 class GerbilizerSimpleNetwork(GerbilizerArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
-        "SHOULD_DOWNSAMPLE": [False, True, True, True, True, True, False],
-        "CONV_FILTER_SIZES": [19, 7, 39, 41, 23, 29, 33],
-        "CONV_NUM_CHANNELS": [16, 16, 16, 32, 32, 32, 64],
-        "CONV_DILATIONS": [1, 1, 1, 1, 1, 1, 1],
+        "SHOULD_DOWNSAMPLE": [False, True] * 5,
+        "CONV_FILTER_SIZES": [33] * 10,
+        "CONV_NUM_CHANNELS": [16, 16, 32, 32, 64, 64, 128, 128, 256, 256],
+        "CONV_DILATIONS": [1] * 10,
         "OUTPUT_COV": True,
         "REGULARIZE_COV": False,
     }
@@ -72,9 +65,6 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
         super(GerbilizerSimpleNetwork, self).__init__(CONFIG, output_factory)
 
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
-
-        if CONFIG["DATA"].get("COMPUTE_XCORRS", False):
-            N += comb(N, 2)
 
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = GerbilizerSimpleNetwork.defaults.copy()
