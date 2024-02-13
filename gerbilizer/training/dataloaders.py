@@ -105,8 +105,6 @@ class GerbilVocalizationDataset(Dataset):
 
         scaled_labels = None
         if labels is not None and self.arena_dims is not None:
-            scaled_labels = np.empty_like(labels)
-
             # Shift range to [-1, 1]
             x_scale = self.arena_dims[0] / 2  # Arena half-width (mm)
             y_scale = self.arena_dims[1] / 2
@@ -141,8 +139,8 @@ def build_dataloaders(
 
     index_arrays = {"train": None, "val": None}
     if index_dir is not None:
-        index_arrays["train"] = np.load(index_dir / "train.npy")
-        index_arrays["val"] = np.load(index_dir / "val.npy")
+        index_arrays["train"] = np.load(index_dir / "train_set.npy")
+        index_arrays["val"] = np.load(index_dir / "val_set.npy")
 
     avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
 
