@@ -42,7 +42,7 @@ class GerbilVocalizationDataset(Dataset):
             self.dataset = datapath
 
         if not isinstance(arena_dims, np.ndarray):
-            arena_dims = np.array(arena_dims)
+            arena_dims = np.array(arena_dims).astype(np.float32)
 
         if "length_idx" not in self.dataset:
             raise ValueError("Improperly formatted dataset")
@@ -87,12 +87,12 @@ class GerbilVocalizationDataset(Dataset):
         start, end = dataset["length_idx"][idx : idx + 2]
         audio = dataset["audio"][start:end, ...]
         audio = (audio - audio.mean()) / audio.std()
-        return audio
+        return torch.from_numpy(audio.astype(np.float32))
 
     def __label_for_index(self, dataset: h5py.File, idx: int):
         if "locations" not in dataset:
             return None
-        return dataset["locations"][idx]
+        return torch.from_numpy(dataset["locations"][idx].astype(np.float32))
 
     def scale_features(
         self,
@@ -106,17 +106,14 @@ class GerbilVocalizationDataset(Dataset):
         scaled_labels = None
         if labels is not None and self.arena_dims is not None:
             # Shift range to [-1, 1]
-            x_scale = self.arena_dims[0] / 2  # Arena half-width (mm)
-            y_scale = self.arena_dims[1] / 2
-            scaled_labels = labels / np.array([x_scale, y_scale])
+            scaled_labels = labels / torch.from_numpy(self.arena_dims) * 2
 
         scaled_audio = (audio - audio.mean()) / audio.std()
 
         return scaled_audio, scaled_labels
 
     def __processed_data_for_index__(self, idx: int):
-        sound = self.__audio_for_index(self.dataset, idx).astype(np.float32)
-        sound = torch.from_numpy(sound)  # Padding numpy arrays yields an error
+        sound = self.__audio_for_index(self.dataset, idx)
         sound = self.__make_crop(sound, self.crop_length)
 
         location = self.__label_for_index(self.dataset, idx)
