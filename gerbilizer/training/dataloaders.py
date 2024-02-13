@@ -3,15 +3,12 @@ Functions to construct Datasets and DataLoaders for training and inference
 """
 
 import os
-from itertools import combinations
-from math import comb
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import h5py
 import numpy as np
 import torch
-from scipy.signal import correlate
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 
@@ -122,6 +119,18 @@ class GerbilVocalizationDataset(Dataset):
 
         return sound, location
 
+    def collate(self, batch) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Collate function for the dataloader. Takes a list of (audio, label) tuples and returns
+        a batch of audio and labels.
+        """
+        audio, labels = [x[0] for x in batch], [x[1] for x in batch]
+        audio = torch.stack(audio)
+        if labels[0] is not None:
+            labels = torch.stack(labels)
+        else:
+            labels = [None] * len(audio)
+        return audio, labels
+
 
 def build_dataloaders(
     path_to_data: Union[Path, str], config: dict, index_dir: Optional[Path]
@@ -163,9 +172,6 @@ def build_dataloaders(
         crop_length=crop_length,
         index=index_arrays["train"],
     )
-    train_dataloader = DataLoader(
-        traindata, batch_size=batch_size, shuffle=True, num_workers=avail_cpus
-    )
 
     valdata = GerbilVocalizationDataset(
         val_path,
@@ -174,8 +180,20 @@ def build_dataloaders(
         inference=True,
         index=index_arrays["val"],
     )
+    train_dataloader = DataLoader(
+        traindata,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=avail_cpus,
+        collate_fn=traindata.collate,
+    )
+
     val_dataloader = DataLoader(
-        valdata, batch_size=batch_size, num_workers=avail_cpus, shuffle=False
+        valdata,
+        batch_size=batch_size,
+        num_workers=avail_cpus,
+        shuffle=False,
+        collate_fn=valdata.collate,
     )
 
     return train_dataloader, val_dataloader
