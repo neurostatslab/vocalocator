@@ -129,7 +129,9 @@ class ProbabilisticOutput(ModelOutput):
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
-    def pmf(self, coordinate_grid: torch.Tensor, units: Unit, temperature: float = 1.) -> torch.Tensor:
+    def pmf(
+        self, coordinate_grid: torch.Tensor, units: Unit, temperature: float = 1.0
+    ) -> torch.Tensor:
         """
         Calculate p(x) at each point on the coordinate grid for the
         distribution p parameterized by this model output instance, in a
@@ -331,6 +333,7 @@ class MDNOutput(ProbabilisticOutput):
 
         point_estimates = torch.stack(to_include, dim=1)  # (self.batch_size, R, 2)
         weights = torch.exp(self.log_weights)  # (self.batch_size, R)
+        print(weights)
         reweighted_estimates = (
             point_estimates * weights[..., None]
         )  # (self.batch_size, R, 2)

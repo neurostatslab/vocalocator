@@ -8,5 +8,5 @@ setup(
     author="NeuroStats Lab",
     license="MIT",
     packages=["gerbilizer", "gerbilizer.training", "gerbilizer.architectures"],
-    install_requires=["h5py", "numpy", "torch"],
+    install_requires=["h5py", "numpy", "torch", "tqdm"],
 )
