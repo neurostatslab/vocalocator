@@ -55,6 +55,8 @@ class GerbilVocalizationDataset(Dataset):
         return len(self.dataset["length_idx"]) - 1
 
     def __getitem__(self, idx):
+        if self.index is not None:
+            idx = self.index[idx]
         return self.__processed_data_for_index__(idx)
 
     def __del__(self):
