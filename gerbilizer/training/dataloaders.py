@@ -25,6 +25,7 @@ class GerbilRIRDataset(Dataset):
         inference: bool = False,
         arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         index: Optional[np.ndarray] = None,
+        normalize_data: bool = True,
     ):
         """Construct a dataset from a set of Room Impulse Responses (RIRs) and audio to be played through them.
         The audio should be provided as a directory of wav files at 125kHz. The RIR dataset should be a path to
@@ -35,6 +36,7 @@ class GerbilRIRDataset(Dataset):
         """
         self.rir_dataset = h5py.File(rir_dataset_path, "r")
         self.sample_vocalization_dir = sample_vocalization_dir
+        self.normalize_data = normalize_data
         # Load sample vocalizations
         self.sample_vocalizations = []
         for wavfile_path in self.sample_vocalization_dir.glob("*.wav"):
@@ -46,8 +48,11 @@ class GerbilRIRDataset(Dataset):
                 continue
             if len(data.shape) > 1:
                 # scipy reads stereo files as (n_samples, n_channels)
-                data = data[:, 0]
-            self.sample_vocalizations.append(torch.from_numpy(data))
+                channel_powers = np.sum(data**2, axis=0)
+                data = data[:, np.argmax(channel_powers)]
+            # Don't want some vocalizations to be louder than others
+            data = (data - data.mean()) / data.std()
+            self.sample_vocalizations.append(torch.from_numpy(data).float())
 
         if not self.sample_vocalizations:
             raise ValueError("No valid vocalizations found")
@@ -66,7 +71,7 @@ class GerbilRIRDataset(Dataset):
         """Converts audio to float32 and scales it to the range [-1, 1]"""
         float_types = (np.float32, np.float64)
         if audio.dtype in float_types:
-            return audio
+            return audio.astype(np.float32)
 
         int_types = (np.int8, np.int16, np.int32)
         if audio.dtype not in int_types:
@@ -84,6 +89,8 @@ class GerbilRIRDataset(Dataset):
         return len(self.rir_dataset["rir_length_idx"]) - 1
 
     def __getitem__(self, idx):
+        if self.index is not None:
+            idx = self.index[idx]
         return self.__processed_data_for_index__(idx)
 
     def __rir_for_index(self, idx):
@@ -125,13 +132,13 @@ class GerbilRIRDataset(Dataset):
         from millimeter units to an arbitrary unit with range [-1, 1].
         """
 
-        scaled_labels = None
         if labels is not None and self.arena_dims is not None:
             half_arena_dims = self.arena_dims / 2
-            scaled_labels = labels / half_arena_dims
+            labels = labels / half_arena_dims
 
-        scaled_audio = (audio - audio.mean()) / audio.std()
-        return scaled_audio, scaled_labels
+        if self.normalize_data:
+            audio = (audio - audio.mean()) / audio.std()
+        return audio, labels
 
     def __processed_data_for_index__(self, idx: int):
         # rir: (n_channels, n_samples)
@@ -171,6 +178,7 @@ class GerbilVocalizationDataset(Dataset):
         inference: bool = False,
         arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         index: Optional[np.ndarray] = None,
+        normalize_data: bool = True,
     ):
         """
         Args:
@@ -197,6 +205,7 @@ class GerbilVocalizationDataset(Dataset):
         self.arena_dims = arena_dims
         self.crop_length = crop_length
         self.index = index
+        self.normalize_data = normalize_data
 
     def __len__(self):
         if self.index is not None:
@@ -234,8 +243,7 @@ class GerbilVocalizationDataset(Dataset):
         """
         start, end = dataset["length_idx"][idx : idx + 2]
         audio = dataset["audio"][start:end, ...]
-        audio = (audio - audio.mean()) / audio.std()
-        return torch.from_numpy(audio.astype(np.float32))
+        return torch.from_numpy(audio).float()
 
     def __label_for_index(self, dataset: h5py.File, idx: int):
         if "locations" not in dataset:
@@ -244,23 +252,19 @@ class GerbilVocalizationDataset(Dataset):
             return torch.from_numpy(dataset["locations"][idx, 0]).float()
         return torch.from_numpy(dataset["locations"][idx]).float()
 
-    def scale_features(
-        self,
-        audio: np.ndarray,
-        labels: np.ndarray,
-    ):
+    def scale_features(self, audio: torch.Tensor, labels: torch.Tensor):
         """Scales the inputs to have zero mean and unit variance. Labels are scaled
         from millimeter units to an arbitrary unit with range [-1, 1].
         """
 
-        scaled_labels = None
         if labels is not None and self.arena_dims is not None:
             # Shift range to [-1, 1]
-            scaled_labels = labels / torch.from_numpy(self.arena_dims) * 2
+            labels = labels / torch.from_numpy(self.arena_dims) * 2
 
-        scaled_audio = (audio - audio.mean()) / audio.std()
+        if self.normalize_data:
+            audio = (audio - audio.mean()) / audio.std()
 
-        return scaled_audio, scaled_labels
+        return audio, labels
 
     def __processed_data_for_index__(self, idx: int):
         sound = self.__audio_for_index(self.dataset, idx)
@@ -295,6 +299,7 @@ def build_dataloaders(
     arena_dims = config["DATA"]["ARENA_DIMS"]
     batch_size = config["DATA"]["BATCH_SIZE"]
     crop_length = config["DATA"]["CROP_LENGTH"]
+    normalize_data = config["DATA"].get("NORMALIZE_DATA", True)
 
     index_arrays = {"train": None, "val": None}
     if index_dir is not None:
@@ -335,6 +340,7 @@ def build_dataloaders(
             arena_dims=arena_dims,
             crop_length=crop_length,
             index=index_arrays["train"],
+            normalize_data=normalize_data,
         )
         valdata = GerbilVocalizationDataset(
             val_path,
@@ -342,6 +348,7 @@ def build_dataloaders(
             crop_length=crop_length,
             inference=True,
             index=index_arrays["val"],
+            normalize_data=normalize_data,
         )
     else:
         traindata = GerbilRIRDataset(
@@ -351,6 +358,7 @@ def build_dataloaders(
             inference=False,
             arena_dims=arena_dims,
             index=index_arrays["train"],
+            normalize_data=normalize_data,
         )
         valdata = GerbilRIRDataset(
             val_path,
@@ -359,6 +367,7 @@ def build_dataloaders(
             inference=True,
             arena_dims=arena_dims,
             index=index_arrays["val"],
+            normalize_data=normalize_data,
         )
 
     train_dataloader = DataLoader(

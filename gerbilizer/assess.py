@@ -362,7 +362,15 @@ if __name__ == "__main__":
         crop_length=config_data["DATA"]["CROP_LENGTH"],
         inference=args.inference,
         index=index,
+        normalize_data=config_data["DATA"].get("NORMALIZE_DATA", True),
     )
+
+    if hasattr(model, "init_norm") and "audio_channel_means" in dataset.dataset:
+        print("Initializing normalization layers with dataset statistics")
+        means = dataset.dataset["audio_channel_means"][:]
+        vars = dataset.dataset["audio_channel_vars"][:]
+        model.init_norm.running_mean = torch.tensor(means).float().to(device)
+        model.init_norm.running_var = torch.tensor(vars).float().to(device)
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]
     dataloader = DataLoader(
