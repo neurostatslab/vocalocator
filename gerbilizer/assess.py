@@ -178,10 +178,6 @@ def assess_model(
                             .cpu()
                             .numpy()
                         )
-<<<<<<< HEAD
-
-=======
->>>>>>> remove-inconsistency
                         if scaled_locations_dataset is None:
                             scaled_locations_dataset = f.create_dataset(
                                 "scaled_locations", shape=(N, 2)
