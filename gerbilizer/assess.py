@@ -178,7 +178,10 @@ def assess_model(
                             .cpu()
                             .numpy()
                         )
+<<<<<<< HEAD
 
+=======
+>>>>>>> remove-inconsistency
                         if scaled_locations_dataset is None:
                             scaled_locations_dataset = f.create_dataset(
                                 "scaled_locations", shape=(N, 2)
@@ -344,6 +347,12 @@ if __name__ == "__main__":
     # if provided in cm, convert to MM
     if arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
+    elif arena_dims_units == "M":
+        arena_dims = np.array(arena_dims) * 1000
+    else:
+        raise ValueError(
+            "ARENA_DIMS_UNITS must be one of 'CM' or 'M' to specify the units of the arena dimensions."
+        )
 
     index = None
     if args.index is not None:
