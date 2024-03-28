@@ -170,7 +170,8 @@ class Trainer:
 
         # Specify network architecture and loss function.
         self.model, self.__loss_fn = build_model(self.__config)
-        self.__config["WEIGHTS_PATH"] = self.__best_weights_file
+        if not self.__eval:
+            self.__config["WEIGHTS_PATH"] = self.__best_weights_file
         self.model.to(self.device)
 
         # In inference mode, there is no logger
