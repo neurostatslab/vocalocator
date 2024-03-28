@@ -23,7 +23,7 @@ from gerbilizer.architectures.ensemble import GerbilizerEnsemble
 from gerbilizer.calibration import CalibrationAccumulator
 from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from gerbilizer.training.configs import build_config
-from gerbilizer.training.dataloaders import GerbilVocalizationDataset
+from gerbilizer.training.dataloaders import GerbilRIRDataset, GerbilVocalizationDataset
 from gerbilizer.training.models import build_model
 from gerbilizer.util import make_xy_grids, subplots
 
@@ -345,9 +345,11 @@ if __name__ == "__main__":
         arena_dims = np.array(arena_dims) * 10
     elif arena_dims_units == "M":
         arena_dims = np.array(arena_dims) * 1000
+    elif arena_dims_units == "MM":
+        pass
     else:
         raise ValueError(
-            "ARENA_DIMS_UNITS must be one of 'CM' or 'M' to specify the units of the arena dimensions."
+            "ARENA_DIMS_UNITS must be one of 'CM', 'M', or 'MM' to specify the units of the arena dimensions."
         )
 
     index = None
@@ -356,14 +358,31 @@ if __name__ == "__main__":
             raise ValueError(f"Requested index file could not be found: {args.index}")
         index = np.load(args.index)
 
-    dataset = GerbilVocalizationDataset(
-        str(args.data),
-        arena_dims=arena_dims,
-        crop_length=config_data["DATA"]["CROP_LENGTH"],
-        inference=args.inference,
-        index=index,
-        normalize_data=config_data["DATA"].get("NORMALIZE_DATA", True),
-    )
+    with h5py.File(args.data, "r") as ctx:
+        is_rir = "rir_length_idx" in ctx
+    if is_rir:
+        vocalization_dir = config_data["DATA"].get(
+            "VOCALIZATION_DIR",
+            "/mnt/home/atanelus/ceph/vocalizations_for_rir/speaker_resampled",
+        )
+        dataset = GerbilRIRDataset(
+            str(args.data),
+            sample_vocalization_dir=vocalization_dir,
+            crop_length=config_data["DATA"]["CROP_LENGTH"],
+            inference=args.inference,
+            index=index,
+            normalize_data=config_data["DATA"].get("NORMALIZE_DATA", True),
+            arena_dims=arena_dims,
+        )
+    else:
+        dataset = GerbilVocalizationDataset(
+            str(args.data),
+            arena_dims=arena_dims,
+            crop_length=config_data["DATA"]["CROP_LENGTH"],
+            inference=args.inference,
+            index=index,
+            normalize_data=config_data["DATA"].get("NORMALIZE_DATA", True),
+        )
 
     if hasattr(model, "init_norm") and "audio_channel_means" in dataset.dataset:
         print("Initializing normalization layers with dataset statistics")
