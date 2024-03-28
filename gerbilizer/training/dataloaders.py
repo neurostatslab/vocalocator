@@ -26,6 +26,7 @@ class GerbilRIRDataset(Dataset):
         arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         index: Optional[np.ndarray] = None,
         normalize_data: bool = True,
+        sample_rate: int = 125000,
     ):
         """Construct a dataset from a set of Room Impulse Responses (RIRs) and audio to be played through them.
         The audio should be provided as a directory of wav files at 125kHz. The RIR dataset should be a path to
@@ -41,7 +42,7 @@ class GerbilRIRDataset(Dataset):
         self.sample_vocalizations = []
         for wavfile_path in self.sample_vocalization_dir.glob("*.wav"):
             fs, data = wavfile.read(wavfile_path)
-            if fs != 125000:
+            if fs != sample_rate:
                 continue
             data = self.convert_audio_to_float(data)
             if data is None:
@@ -226,7 +227,7 @@ class GerbilVocalizationDataset(Dataset):
         """
         audio_len, _ = audio.shape
         valid_range = audio_len - crop_length
-        if valid_range <= 0:  # Audio is shorter than desired crop length, pad right
+        if valid_range <= 0:  # Audio is shortero than desired crop length, pad right
             pad_size = crop_length - audio_len
             # will fail if input is numpy array
             return F.pad(audio, (0, 0, 0, pad_size))
@@ -300,6 +301,12 @@ def build_dataloaders(
     batch_size = config["DATA"]["BATCH_SIZE"]
     crop_length = config["DATA"]["CROP_LENGTH"]
     normalize_data = config["DATA"].get("NORMALIZE_DATA", True)
+    sample_rate = config["DATA"].get("SAMPLE_RATE", 125000)
+
+    vocalization_dir = config["DATA"].get(
+        "VOCALIZATION_DIR",
+        "/mnt/home/atanelus/ceph/vocalazations_for_rir/c3_vocalizations",
+    )
 
     index_arrays = {"train": None, "val": None}
     if index_dir is not None:
@@ -332,7 +339,9 @@ def build_dataloaders(
             rng = np.random.default_rng()
             rng.shuffle(full_index)
             index_arrays["train"] = full_index[: int(0.8 * dset_size)]
-            index_arrays["val"] = full_index[int(0.8 * dset_size) :]
+            index_arrays["val"] = full_index[
+                int(0.8 * dset_size) : int(0.9 * dset_size)
+            ]
 
     if not use_rir_dataset:
         traindata = GerbilVocalizationDataset(
@@ -353,21 +362,23 @@ def build_dataloaders(
     else:
         traindata = GerbilRIRDataset(
             train_path,
-            Path("/mnt/home/atanelus/ceph/good_gerbil_vocalizations"),
+            Path(vocalization_dir),
             crop_length=crop_length,
             inference=False,
             arena_dims=arena_dims,
             index=index_arrays["train"],
             normalize_data=normalize_data,
+            sample_rate=sample_rate,
         )
         valdata = GerbilRIRDataset(
             val_path,
-            Path("/mnt/home/atanelus/ceph/good_gerbil_vocalizations"),
+            Path(vocalization_dir),
             crop_length=crop_length,
             inference=True,
             arena_dims=arena_dims,
             index=index_arrays["val"],
             normalize_data=normalize_data,
+            sample_rate=sample_rate,
         )
 
     train_dataloader = DataLoader(
