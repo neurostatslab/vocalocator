@@ -333,7 +333,6 @@ class MDNOutput(ProbabilisticOutput):
 
         point_estimates = torch.stack(to_include, dim=1)  # (self.batch_size, R, 2)
         weights = torch.exp(self.log_weights)  # (self.batch_size, R)
-        print(weights)
         reweighted_estimates = (
             point_estimates * weights[..., None]
         )  # (self.batch_size, R, 2)
