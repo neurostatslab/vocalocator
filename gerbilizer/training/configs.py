@@ -27,7 +27,6 @@ DEFAULT_CONFIG = {
     },
     "ARCHITECTURE": "GerbilizerSimpleNetwork",
     "GENERAL": {
-        "CONFIG_NAME": "simple_network",
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
         "TORCH_SEED": 888,  # rng seeds for reproducibility
         "NUMPY_SEED": 777,
@@ -39,7 +38,10 @@ DEFAULT_CONFIG = {
         "BATCH_SIZE": 32,
         "CROP_LENGTH": 8192,
         "AUGMENT_DATA": True,
+        "NORMALIZE_DATA": True,
+        "VOCALIZATION_DIR": None,
         "ARENA_DIMS": [572, 356],
+        "ARENA_DIMS_UNITS": "MM",
     },
     "AUGMENTATIONS": {
         # Data augmentations: involves performing augmentations to the audio to which the model should be invariant
