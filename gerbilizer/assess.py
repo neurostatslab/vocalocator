@@ -180,7 +180,8 @@ def assess_model(
                         )
                         if scaled_locations_dataset is None:
                             scaled_locations_dataset = f.create_dataset(
-                                "scaled_locations", shape=(N, scaled_location.shape[-1])
+                                "scaled_locations",
+                                shape=(N, *scaled_location.shape[1:]),
                             )
                         scaled_locations_dataset[idx] = scaled_location
 
@@ -348,13 +349,15 @@ if __name__ == "__main__":
     )
 
     # if provided in cm, convert to MM
-    if arena_dims_units == "CM":
+    if arena_dims_units == "MM":
+        pass
+    elif arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
     elif arena_dims_units == "M":
         arena_dims = np.array(arena_dims) * 1000
     else:
         raise ValueError(
-            "ARENA_DIMS_UNITS must be one of 'CM' or 'M' to specify the units of the arena dimensions."
+            "ARENA_DIMS_UNITS must be one of 'MM,' 'CM,' or 'M' to specify the units of the arena dimensions."
         )
 
     index = None
@@ -371,7 +374,7 @@ if __name__ == "__main__":
         index=index,
         normalize_data=normalize_data,
         sample_rate=sample_rate,
-        vocalization_dir=vocalization_dir,
+        sample_vocalization_dir=vocalization_dir,
     )
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]
