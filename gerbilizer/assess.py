@@ -23,7 +23,7 @@ from gerbilizer.architectures.ensemble import GerbilizerEnsemble
 from gerbilizer.calibration import CalibrationAccumulator
 from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from gerbilizer.training.configs import build_config
-from gerbilizer.training.dataloaders import GerbilVocalizationDataset
+from gerbilizer.training.dataloaders import VocalizationDataset
 from gerbilizer.training.models import build_model
 from gerbilizer.util import make_xy_grids, subplots
 
@@ -339,6 +339,13 @@ if __name__ == "__main__":
 
     arena_dims = np.array(config_data["DATA"]["ARENA_DIMS"])
     arena_dims_units = config_data["DATA"].get("ARENA_DIMS_UNITS")
+    sample_rate = config_data["DATA"]["SAMPLE_RATE"]
+    crop_length = config_data["DATA"]["CROP_LENGTH"]
+    normalize_data = config_data["DATA"].get("NORMALIZE_DATA", True)
+    vocalization_dir = config_data["DATA"].get(
+        "VOCALIZATION_DIR",
+        None,
+    )
 
     # if provided in cm, convert to MM
     if arena_dims_units == "CM":
@@ -356,12 +363,15 @@ if __name__ == "__main__":
             raise ValueError(f"Requested index file could not be found: {args.index}")
         index = np.load(args.index)
 
-    dataset = GerbilVocalizationDataset(
+    dataset = VocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
-        crop_length=config_data["DATA"]["CROP_LENGTH"],
+        crop_length=crop_length,
         inference=args.inference,
         index=index,
+        normalize_data=normalize_data,
+        sample_rate=sample_rate,
+        vocalization_dir=vocalization_dir,
     )
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]
