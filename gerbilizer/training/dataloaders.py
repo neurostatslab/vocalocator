@@ -186,10 +186,10 @@ class VocalizationDataset(Dataset):
 
             sound = AF.convolve(rir, sample_vocalization[None, :], mode="full").T
         else:
-            sound = self.__audio_for_index(self.dataset, idx)
+            sound = self.__audio_for_index(idx)
 
         sound = self.__make_crop(sound, self.crop_length)
-        location = self.__label_for_index(self.dataset, idx)
+        location = self.__label_for_index(idx)
 
         sound, location = self.scale_features(sound, location)
 
