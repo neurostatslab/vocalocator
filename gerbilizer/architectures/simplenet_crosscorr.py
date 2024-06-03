@@ -32,14 +32,13 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         "REGULARIZE_COV": False,
         "CPS_NUM_LAYERS": 3,
         "CPS_HIDDEN_SIZE": 1024,
+        "XCORR_LENGTH": 256,
     }
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
         super(CorrSimpleNetwork, self).__init__(CONFIG, output_factory)
 
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
-
-        self.xcorr_length = 256
 
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = CorrSimpleNetwork.defaults.copy()
@@ -48,6 +47,7 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
             model_config  # Save the parameters used in this run for backward compatibility
         )
 
+        self.xcorr_length = model_config["XCORR_LENGTH"]
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
         filter_sizes = model_config["CONV_FILTER_SIZES"]
@@ -90,7 +90,9 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
         # layers for the cps branch of the network:
-        cps_initial_channels = comb(N, 2) * 256  # Number of microphone pairs
+        cps_initial_channels = (
+            comb(N, 2) * self.xcorr_length
+        )  # Number of microphone pairs
         cps_num_layers = model_config["CPS_NUM_LAYERS"]
         cps_hidden_size = model_config["CPS_HIDDEN_SIZE"]
 
