@@ -66,9 +66,19 @@ class ModelOutput:
         elif in_units == Unit.CM and out_units == Unit.MM:
             return x * 10
         elif in_units == Unit.ARBITRARY:
-            return (x + 1) * 0.5 * self.arena_dims[out_units].to(x.device)
+            dims = self.arena_dims[out_units]
+            if dims.shape[-1] == x.shape[-1]:
+                return 0.5 * (x + 1) * dims.to(x.device)
+            else:
+                xy = 0.5 * (x[..., :2] + 1) * dims.to(x.device)
+                return torch.cat([xy, x[..., 2:]], dim=-1)
         elif out_units == Unit.ARBITRARY:
-            return 2 * (x / self.arena_dims[in_units].to(x.device)) - 1
+            dims = self.arena_dims[in_units]
+            if dims.shape[-1] == x.shape[-1]:
+                return 2 * (x / dims.to(x.device)) - 1
+            else:
+                xy = 2 * (x[..., :2] / dims.to(x.device)) - 1
+                return torch.cat([xy, x[..., 2:]], dim=-1)
         else:
             raise ValueError(
                 "Expected both `in_units` and `out_units` to be instances of "
@@ -129,7 +139,9 @@ class ProbabilisticOutput(ModelOutput):
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
-    def pmf(self, coordinate_grid: torch.Tensor, units: Unit, temperature: float = 1.) -> torch.Tensor:
+    def pmf(
+        self, coordinate_grid: torch.Tensor, units: Unit, temperature: float = 1.0
+    ) -> torch.Tensor:
         """
         Calculate p(x) at each point on the coordinate grid for the
         distribution p parameterized by this model output instance, in a

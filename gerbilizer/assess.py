@@ -180,12 +180,12 @@ def assess_model(
                         )
                         if scaled_locations_dataset is None:
                             scaled_locations_dataset = f.create_dataset(
-                                "scaled_locations", shape=(N, 2)
+                                "scaled_locations", shape=(N, scaled_location.shape[-1])
                             )
                         scaled_locations_dataset[idx] = scaled_location
 
                         # other useful info
-                        if isinstance(output, ProbabilisticOutput):
+                        if isinstance(output, ProbabilisticOutput) and not inference:
                             should_compute_calibration = True
                             ca.calculate_step(
                                 output, scaled_location, temperature=temperature
