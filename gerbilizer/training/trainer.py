@@ -334,6 +334,9 @@ class Trainer:
                             .numpy()
                         )
 
+                        # Ensure the same number of dimensions are being used
+                        location = location[: point_estimate.shape[-1]]
+
                         err = np.linalg.norm(point_estimate - location, axis=-1).item()
                         batch_err += err
 
