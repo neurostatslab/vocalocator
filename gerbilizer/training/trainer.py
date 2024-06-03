@@ -38,6 +38,7 @@ def make_logger(filepath: str) -> logging.Logger:
     logger = logging.getLogger("train_log")
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.FileHandler(filepath))
+    logger.addHandler(logging.StreamHandler())
     return logger
 
 
@@ -127,8 +128,6 @@ class Trainer:
         self.__init_weights_file = os.path.join(self.__model_dir, "init_weights.pt")
         self.__final_weights_file = os.path.join(self.__model_dir, "final_weights.pt")
 
-        # Write the active configuration to disk
-        self.__config["WEIGHTS_PATH"] = self.__best_weights_file
         # Found that it's helpful to keep track of this
         self.__config["DATA"]["DATAFILE_PATH"] = self.__datafile
 
@@ -173,6 +172,8 @@ class Trainer:
 
         # Specify network architecture and loss function.
         self.model, self.__loss_fn = build_model(self.__config)
+        if not self.__eval:
+            self.__config["WEIGHTS_PATH"] = self.__best_weights_file
         self.model.to(self.device)
 
         # In inference mode, there is no logger
