@@ -49,6 +49,19 @@ class GaussianOutput(BaseDistributionOutput):
         Expects x to have shape (..., self.batch_size, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^2).
         """
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+        if x.shape[-1] > self.n_dims:
+            x = x[..., : self.n_dims]
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if (
+            len(x.shape) > 2
+            and x.shape[-2] != self.batch_size
+            and x.shape[-3] == self.batch_size
+        ):
+            x = x[:, 0, :]  # select one node arbitrarily
+
         # check that the second-to-last dimension is the same as
         # the batch dimension
         if x.shape[-2] != self.batch_size:
@@ -60,7 +73,8 @@ class GaussianOutput(BaseDistributionOutput):
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
-        return distr.log_prob(x[..., : self.n_dims])
+
+        return distr.log_prob(x)
 
     def covs(self, units: Unit) -> torch.Tensor:
         """
