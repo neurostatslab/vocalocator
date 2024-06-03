@@ -94,10 +94,5 @@ def build_config(filepath: str) -> JSON:
                 f"Could not parse JSON file at {filepath}. Perhaps a JSON5 file was provided without the necessary libraries installed?"
             )
 
-    if "CONFIG_NAME" not in config["GENERAL"]:
-        raise ValueError(
-            "Configurations provided as JSON files should include a 'CONFIG_NAME' string."
-        )
-
     config = update_recursively(config, DEFAULT_CONFIG)
     return keys_to_uppercase(config)
