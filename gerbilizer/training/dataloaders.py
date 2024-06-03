@@ -70,7 +70,7 @@ class VocalizationDataset(Dataset):
 
         self.sample_vocalizations = []
         if self.is_rir_dataset:
-            for wavfile_path in self.sample_vocalization_dir.glob("*.wav"):
+            for wavfile_path in Path(self.sample_vocalization_dir).glob("*.wav"):
                 fs, data = wavfile.read(wavfile_path)
                 if fs != sample_rate:
                     continue
@@ -137,7 +137,7 @@ class VocalizationDataset(Dataset):
     def __rir_for_index(self, idx: int):
         if self.is_rir_dataset:
             start, end = self.dataset["rir_length_idx"][idx : idx + 2]
-            return self.dataset["rir"][start:end, ...]
+            return torch.from_numpy(self.dataset["rir"][start:end, ...]).float()
         raise ValueError("Dataset does not contain RIRs")
 
     def __audio_for_index(self, idx: int):
@@ -184,7 +184,7 @@ class VocalizationDataset(Dataset):
                 self.rng.integers(len(self.sample_vocalizations))
             ]
 
-            sound = AF.convolve(rir, sample_vocalization[None, :], mode="full").T
+            sound = AF.convolve(rir.T, sample_vocalization[None, :], mode="full").T
         else:
             sound = self.__audio_for_index(idx)
 
@@ -242,7 +242,12 @@ def build_dataloaders(
         if index_dir is None:
             # manually create train/val split
             with h5py.File(train_path, "r") as f:
-                dset_size = len(f["length_idx"]) - 1
+                if "length_idx" in f:
+                    dset_size = len(f["length_idx"]) - 1
+                elif "rir_length_idx" in f:
+                    dset_size = len(f["rir_length_idx"]) - 1
+                else:
+                    raise ValueError("Improperly formatted dataset")
             full_index = np.arange(dset_size)
             rng = np.random.default_rng(0)
             rng.shuffle(full_index)
