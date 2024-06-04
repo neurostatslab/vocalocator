@@ -27,15 +27,15 @@ if [ -z $BATCH_DIR ]; then
 fi
 
 if [-z $OUTPUT_DIR ]; then
-    echo "No output directory provided. Defaulting to /mnt/home/${USER}/ceph/gerbilizer."
-    OUTPUT_DIR=/mnt/home/${USER}/ceph/gerbilizer
+    echo "No output directory provided. Defaulting to /mnt/home/${USER}/ceph/vocalocator."
+    OUTPUT_DIR=/mnt/home/${USER}/ceph/vocalocator
 fi
 
 FMT_BATCH_IDX=$(python3 /mnt/home/atanelus/script_package/local_scripts/pad_integer.py 4 ${SLURM_ARRAY_TASK_ID})
 
 # Note, config file should include path to data file under DATAFILE_PATH key
 # Else this will crash
-pipenv run python -u -m gerbilizer \
+pipenv run python -u -m vocalocator \
     --config $BATCH_DIR/batch_config_${FMT_BATCH_IDX}.json \
     --save-path $OUTPUT_DIR
 

@@ -1,12 +1,16 @@
-from gerbilizer.outputs.base import (
+from vocalocator.outputs.base import (
     MDNOutput,
     ModelOutput,
     PointOutput,
     ProbabilisticOutput,
     UniformOutput,
 )
-from gerbilizer.outputs.factory import ModelOutputFactory
-from gerbilizer.outputs.gaussian import (
+
+vocalvocalocator
+from vocalocator.outputs.factory import ModelOutputFactory
+
+vocalocator
+from vocalocator.outputs.gaussian import (
     GaussianOutputDiagonalCov,
     GaussianOutputFixedVariance,
     GaussianOutputFullCov,

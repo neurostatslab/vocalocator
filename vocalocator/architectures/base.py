@@ -2,15 +2,14 @@ from pathlib import Path
 from typing import Literal, overload
 
 import torch
+from vocalocator.outputs import ModelOutput, ModelOutputFactory
 
-from gerbilizer.outputs import ModelOutput, ModelOutputFactory
 
-
-class GerbilizerArchitecture(torch.nn.Module):
+class VocalocatorArchitecture(torch.nn.Module):
     defaults: dict
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
-        super(GerbilizerArchitecture, self).__init__()
+        super(VocalocatorArchitecture, self).__init__()
 
         self.config = CONFIG
         self.output_factory = output_factory
@@ -56,12 +55,12 @@ class GerbilizerArchitecture(torch.nn.Module):
 
     # add overload for nice unbatched functionality
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput:
-        ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
 
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]:
-        ...
+    def forward(
+        self, x: torch.Tensor, unbatched: Literal[True]
+    ) -> list[ModelOutput]: ...
 
     def forward(self, x: torch.Tensor, unbatched: bool = False):
         """

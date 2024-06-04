@@ -6,8 +6,7 @@ from typing import Literal, Optional
 import torch
 from torch.distributions import MultivariateNormal
 from torch.nn import functional as F
-
-from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput
+from vocalocator.outputs.base import ModelOutput, ProbabilisticOutput
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

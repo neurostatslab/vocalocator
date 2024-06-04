@@ -7,9 +7,8 @@ from typing import Tuple, Union
 
 import numpy as np
 import torch
-
-from gerbilizer.outputs.base import ProbabilisticOutput, Unit
-from gerbilizer.util import assign_to_bin_2d, digitize, make_xy_grids
+from vocalocator.outputs.base import ProbabilisticOutput, Unit
+from vocalocator.util import assign_to_bin_2d, digitize, make_xy_grids
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +174,7 @@ class CalibrationAccumulator:
         self,
         model_output: ProbabilisticOutput,
         true_location: np.ndarray,
-        temperature: float = 1.,
+        temperature: float = 1.0,
     ):
         """
         Perform one step of the calibration process on `model_output`.
@@ -199,7 +198,11 @@ class CalibrationAccumulator:
         coords = self._make_coord_array()
         # add a batch dimension to match expected shape from `ProbabilisticOutput.pmf`
         coords = np.expand_dims(coords, -2)
-        pmf = model_output.pmf(torch.tensor(coords), Unit.MM, temperature=temperature).cpu().numpy()
+        pmf = (
+            model_output.pmf(torch.tensor(coords), Unit.MM, temperature=temperature)
+            .cpu()
+            .numpy()
+        )
         # get rid of the extra batch dimension
         pmf = pmf.squeeze()
 

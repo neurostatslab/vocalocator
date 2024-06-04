@@ -17,15 +17,14 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.architectures.ensemble import GerbilizerEnsemble
-from gerbilizer.calibration import CalibrationAccumulator
-from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
-from gerbilizer.training.configs import build_config
-from gerbilizer.training.dataloaders import VocalizationDataset
-from gerbilizer.training.models import build_model
-from gerbilizer.util import make_xy_grids, subplots
+from vocalocator.architectures.base import vocalocatorArchitecture
+from vocalocator.architectures.ensemble import vocalocatorEnsemble
+from vocalocator.calibration import CalibrationAccumulator
+from vocalocator.outputs.base import ModelOutput, ProbabilisticOutput, Unit
+from vocalocator.training.configs import build_config
+from vocalocator.training.dataloaders import VocalizationDataset
+from vocalocator.training.models import build_model
+from vocalocator.util import make_xy_grids, subplots
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -90,7 +89,7 @@ def plot_results(f: h5py.File):
 
 
 def assess_model(
-    model: GerbilizerArchitecture,
+    model: VocalocatorArchitecture,
     dataloader: DataLoader,
     outfile: Union[Path, str],
     arena_dims: Union[np.ndarray, tuple[float, float]],
@@ -107,7 +106,7 @@ def assess_model(
     Optionally, visualize confidence sets a few times throughout training.
 
     Args:
-        model: instantiated GerbilizerArchitecture object
+        model: instantiated VocalocatorArchitecture object
         dataloader: DataLoader object on which the model should be assessed
         outfile: path to an h5 file in which output should be saved
         arena_dims: arena dimensions, *in millimeters*.
@@ -125,7 +124,7 @@ def assess_model(
 
         scaled_locations_dataset = None
 
-        if isinstance(model, GerbilizerEnsemble):
+        if isinstance(model, VocalocatorEnsemble):
             raw_output_dataset = []
             for i, constituent in enumerate(model.models):
                 raw_output_dataset.append(
@@ -155,7 +154,7 @@ def assess_model(
                 outputs: list[ModelOutput] = model(sounds, unbatched=True)
                 for output, location in zip(outputs, locations):
                     # add batch dimension back
-                    if isinstance(model, GerbilizerEnsemble):
+                    if isinstance(model, VocalocatorEnsemble):
                         for out_dataset, constituent_output in zip(
                             raw_output_dataset, output.raw_output
                         ):

@@ -5,14 +5,8 @@ Test the build model functions.
 import unittest
 
 import torch
-from gerbilizer.training.models import build_model
-
-from constants import (
-    SIMPLENET_BASE,
-    SIMPLENET_COV,
-    ENSEMBLE,
-    ENSEMBLE_MISSING_COV,
-)
+from constants import ENSEMBLE, ENSEMBLE_MISSING_COV, SIMPLENET_BASE, SIMPLENET_COV
+from vocalocator.training.models import build_model
 
 
 class TestOuptutShapes(unittest.TestCase):

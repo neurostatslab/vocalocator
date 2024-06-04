@@ -6,17 +6,16 @@ from typing import Any, Callable, Union
 
 import numpy as np
 import torch
-
-from gerbilizer.outputs import (
+from vocalocator.outputs import (
     GaussianOutputFixedVariance,
     ModelOutput,
     ModelOutputFactory,
     ProbabilisticOutput,
 )
-from gerbilizer.outputs.base import BaseDistributionOutput, MDNOutput
+from vocalocator.outputs.base import BaseDistributionOutput, MDNOutput
 
-from ..architectures.base import GerbilizerArchitecture
-from ..architectures.ensemble import GerbilizerEnsemble
+from ..architectures.base import VocalocatorArchitecture
+from ..architectures.ensemble impVocalocatorizerEnsemble
 from .losses import negative_log_likelihood, squared_error
 
 
@@ -35,7 +34,7 @@ def subclasses(cls):
 
 
 ARCHITECTURES = {
-    model.__name__.lower(): model for model in GerbilizerArchitecture.__subclasses__()
+    model.__name__.lower(): model for model in VocalocatorArchitecture.__subclasses__()
 }
 
 OUTPUT_TYPES = subclasses(ModelOutput)
@@ -115,7 +114,7 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
 LossFunction = Callable[[ModelOutput, torch.Tensor], torch.Tensor]
 
 
-def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFunction]:
+def build_model(config: dict[str, Any]) -> tuple[VocalocatorArchitecture, LossFunction]:
     """
     Specifies model and loss funciton.
 
@@ -126,7 +125,7 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFun
 
     Returns
     -------
-    model : GerbilizerArchitecture
+    model : VocalocatorArchitecture
         Model instance with hyperparameters specified
         in config.
 
@@ -149,7 +148,7 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFun
 
     arch: str = config["ARCHITECTURE"].lower()
 
-    if arch == "gerbilizerensemble":
+    if arch == "vocalocatorensemble":
         # None out the other parameters
         built_submodels = []
         for sub_model_config in config["MODEL_PARAMS"]["CONSTITUENT_MODELS"]:
@@ -163,7 +162,7 @@ def build_model(config: dict[str, Any]) -> tuple[GerbilizerArchitecture, LossFun
                     sub_model_config = json.load(f)
             submodel, _ = build_model(sub_model_config)
             built_submodels.append(submodel)
-        model = GerbilizerEnsemble(config, built_submodels, output_factory)
+        model = VocalocatorEnsemble(config, built_submodels, output_factory)
     elif arch.lower() in ARCHITECTURES:
         model = ARCHITECTURES[arch]
         model = model(config, output_factory)

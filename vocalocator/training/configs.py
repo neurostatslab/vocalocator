@@ -25,7 +25,7 @@ DEFAULT_CONFIG = {
             {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
         ],
     },
-    "ARCHITECTURE": "GerbilizerSimpleNetwork",
+    "ARCHITECTURE": "VocalocatorSimpleNetwork",
     "GENERAL": {
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
         "TORCH_SEED": 888,  # rng seeds for reproducibility

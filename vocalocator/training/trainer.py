@@ -43,7 +43,7 @@ def make_logger(filepath: str) -> logging.Logger:
 
 
 class Trainer:
-    """A helper class for training and performing inference with Gerbilizer models"""
+    """A helper class for training and performing inference with Vocalocator models"""
 
     @staticmethod
     def __query_mem_usage():

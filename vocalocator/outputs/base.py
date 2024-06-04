@@ -237,7 +237,7 @@ class MDNOutput(ProbabilisticOutput):
         Inits MDNOutput.
 
         Args:
-            raw_output: batched tensor output from a GerbilizerArchitecture model
+            raw_output: batched tensor output from a VocalocatorArchitecture model
             arena_dims: array-like (x, y) storing arena dimensions in either CM or MM
             arena_dim_units: str or Unit indicating which unit the arena dimensions are provided in
             constituent_response_types: a list of class names indicating the distributions

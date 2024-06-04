@@ -2,8 +2,7 @@ from typing import Union
 
 import torch
 from torch.nn import functional as F
-
-from gerbilizer.outputs.base import BaseDistributionOutput, Unit
+from vocalocator.outputs.base import BaseDistributionOutput, Unit
 
 
 class GaussianOutput(BaseDistributionOutput):

@@ -1,9 +1,8 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.outputs import ModelOutputFactory
 
 
 class WavenetBlock(nn.Module):
@@ -51,8 +50,8 @@ def gradsafe_sum(x_list: list[torch.Tensor]) -> torch.Tensor:
     return result
 
 
-class Wavenet(GerbilizerArchitecture):
-    defaults = {
+class Wavenet(VocalocatorArchitecture):
+    defaults =Vocalocator
         "NUM_BLOCKS": 10,
         "CONV_CHANNELS": 64,
         "KERNEL_SIZE": 7,

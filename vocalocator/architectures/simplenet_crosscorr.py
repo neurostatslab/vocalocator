@@ -5,11 +5,12 @@ from typing import Tuple, Union
 import torch
 from torch import nn
 from torch.nn import functional as F
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.outputs import ModelOutputFactory
 
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory
+from .simplenet import VocalocatorSimpleLayer
 
-from .simplenet import GerbilizerSimpleLayer
+Vocalocator
 
 
 class SkipConnection(torch.nn.Module):
@@ -21,7 +22,10 @@ class SkipConnection(torch.nn.Module):
         return x + self.submodule(x)
 
 
-class CorrSimpleNetwork(GerbilizerArchitecture):
+Vocalocator
+
+
+class CorrSimpleNetwork(VocalocatorArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True] * 5,
@@ -65,11 +69,11 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         dilations = dilations[:min_len]
 
         use_batch_norm = model_config["USE_BATCH_NORM"]
-
+Vocalocator
         self.n_channels.insert(0, N)
 
         convolutions = [
-            GerbilizerSimpleLayer(
+            VocalocatorSimpleLayer(
                 in_channels,
                 out_channels,
                 filter_size,
