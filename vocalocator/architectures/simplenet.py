@@ -1,14 +1,12 @@
-import logging
-from math import comb
-
 import torch
 from torch import nn
+
 from vocalocator.architectures.base import VocalocatorArchitecture
 from vocalocator.outputs import ModelOutputFactory
 
 
 class VocalocatorSimpleLayer(torch.nn.Module):
-    deVocalocator(
+    def __init__(
         self,
         channels_in: int,
         channels_out: int,
@@ -19,7 +17,6 @@ class VocalocatorSimpleLayer(torch.nn.Module):
         use_bn: bool = True
     ):
         super(VocalocatorSimpleLayer, self).__init__()
-Vocalocator
         self.fc = torch.nn.Conv1d(
             channels_in,
             channels_out,
@@ -50,7 +47,7 @@ Vocalocator
 
 
 class VocalocatorSimpleNetwork(VocalocatorArchitecture):
-    deVocalocator
+    defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True] * 5,
         "CONV_FILTER_SIZES": [33] * 10,
@@ -62,12 +59,11 @@ class VocalocatorSimpleNetwork(VocalocatorArchitecture):
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
         super(VocalocatorSimpleNetwork, self).__init__(CONFIG, output_factory)
-Vocalocator
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = VocalocatorSimpleNetwork.defaults.copy()
-        model_config.upVocalocatorG.get("MODEL_PARAMS", {}))
+        model_config.update(CONFIG.get("MODEL_PARAMS", {}))
         CONFIG["MODEL_PARAMS"] = (
             model_config  # Save the parameters used in this run for backward compatibility
         )
@@ -94,7 +90,7 @@ Vocalocator
 
         convolutions = [
             VocalocatorSimpleLayer(
-            Vocalocatornnels,
+                in_channels,
                 out_channels,
                 filter_size,
                 downsample=downsample,

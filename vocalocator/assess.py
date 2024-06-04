@@ -7,7 +7,6 @@ and whether the true value was in that set, etc.
 import argparse
 import json
 import logging
-from itertools import repeat
 from pathlib import Path
 from typing import Union
 
@@ -17,8 +16,9 @@ import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from vocalocator.architectures.base import vocalocatorArchitecture
-from vocalocator.architectures.ensemble import vocalocatorEnsemble
+
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.architectures.ensemble import VocalocatorEnsemble
 from vocalocator.calibration import CalibrationAccumulator
 from vocalocator.outputs.base import ModelOutput, ProbabilisticOutput, Unit
 from vocalocator.training.configs import build_config

@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
+
 from vocalocator.architectures.base import VocalocatorArchitecture
 from vocalocator.outputs import ModelOutputFactory
 
@@ -51,7 +51,7 @@ def gradsafe_sum(x_list: list[torch.Tensor]) -> torch.Tensor:
 
 
 class Wavenet(VocalocatorArchitecture):
-    defaults =Vocalocator
+    defaults = {
         "NUM_BLOCKS": 10,
         "CONV_CHANNELS": 64,
         "KERNEL_SIZE": 7,

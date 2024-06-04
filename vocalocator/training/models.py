@@ -6,6 +6,7 @@ from typing import Any, Callable, Union
 
 import numpy as np
 import torch
+
 from vocalocator.outputs import (
     GaussianOutputFixedVariance,
     ModelOutput,
@@ -15,7 +16,7 @@ from vocalocator.outputs import (
 from vocalocator.outputs.base import BaseDistributionOutput, MDNOutput
 
 from ..architectures.base import VocalocatorArchitecture
-from ..architectures.ensemble impVocalocatorizerEnsemble
+from ..architectures.ensemble import VocalocatorEnsemble
 from .losses import negative_log_likelihood, squared_error
 
 

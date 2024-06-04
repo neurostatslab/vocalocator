@@ -5,11 +5,7 @@ from vocalocator.outputs.base import (
     ProbabilisticOutput,
     UniformOutput,
 )
-
-vocalvocalocator
 from vocalocator.outputs.factory import ModelOutputFactory
-
-vocalocator
 from vocalocator.outputs.gaussian import (
     GaussianOutputDiagonalCov,
     GaussianOutputFixedVariance,

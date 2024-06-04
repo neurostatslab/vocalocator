@@ -1,16 +1,13 @@
 from itertools import combinations
 from math import comb
-from typing import Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import functional as F
+
 from vocalocator.architectures.base import VocalocatorArchitecture
 from vocalocator.outputs import ModelOutputFactory
 
 from .simplenet import VocalocatorSimpleLayer
-
-Vocalocator
 
 
 class SkipConnection(torch.nn.Module):
@@ -20,9 +17,6 @@ class SkipConnection(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x + self.submodule(x)
-
-
-Vocalocator
 
 
 class CorrSimpleNetwork(VocalocatorArchitecture):
@@ -69,7 +63,6 @@ class CorrSimpleNetwork(VocalocatorArchitecture):
         dilations = dilations[:min_len]
 
         use_batch_norm = model_config["USE_BATCH_NORM"]
-Vocalocator
         self.n_channels.insert(0, N)
 
         convolutions = [

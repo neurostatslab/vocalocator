@@ -1,11 +1,11 @@
 """Loss functions for the DNNs."""
 
 import logging
-from typing import Literal, Optional
 
 import torch
 from torch.distributions import MultivariateNormal
 from torch.nn import functional as F
+
 from vocalocator.outputs.base import ModelOutput, ProbabilisticOutput
 
 logger = logging.getLogger(__name__)
