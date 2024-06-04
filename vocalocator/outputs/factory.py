@@ -1,8 +1,7 @@
 from typing import Union
 
 import torch
-
-from gerbilizer.outputs.base import EnsembleOutput, MDNOutput, ModelOutput, Unit
+from vocalocator.outputs.base import EnsembleOutput, MDNOutput, ModelOutput, Unit
 
 
 class ModelOutputFactory:

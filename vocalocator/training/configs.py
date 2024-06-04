@@ -1,6 +1,7 @@
 """
 File to configure all hyperparameters (model architecture and training).
 """
+
 from sys import stderr
 from typing import NewType
 
@@ -24,9 +25,8 @@ DEFAULT_CONFIG = {
             {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
         ],
     },
-    "ARCHITECTURE": "GerbilizerSimpleNetwork",
+    "ARCHITECTURE": "VocalocatorSimpleNetwork",
     "GENERAL": {
-        "CONFIG_NAME": "simple_network",
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
         "TORCH_SEED": 888,  # rng seeds for reproducibility
         "NUMPY_SEED": 777,
@@ -38,7 +38,10 @@ DEFAULT_CONFIG = {
         "BATCH_SIZE": 32,
         "CROP_LENGTH": 8192,
         "AUGMENT_DATA": True,
-        "ARENA_DIMS": [558.9, 355.6],
+        "NORMALIZE_DATA": True,
+        "VOCALIZATION_DIR": None,
+        "ARENA_DIMS": [572, 356],
+        "ARENA_DIMS_UNITS": "MM",
     },
     "AUGMENTATIONS": {
         # Data augmentations: involves performing augmentations to the audio to which the model should be invariant
@@ -90,11 +93,6 @@ def build_config(filepath: str) -> JSON:
             raise ValueError(
                 f"Could not parse JSON file at {filepath}. Perhaps a JSON5 file was provided without the necessary libraries installed?"
             )
-
-    if "CONFIG_NAME" not in config["GENERAL"]:
-        raise ValueError(
-            "Configurations provided as JSON files should include a 'CONFIG_NAME' string."
-        )
 
     config = update_recursively(config, DEFAULT_CONFIG)
     return keys_to_uppercase(config)

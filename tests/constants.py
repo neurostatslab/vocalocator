@@ -13,7 +13,7 @@ SIMPLENET_BASE = {
     "CONV_FILTER_SIZES": [19, 7, 39, 41, 23, 29, 33],
     "NUM_MICROPHONES": 4,
     "NUM_EPOCHS": 20,
-    "ARCHITECTURE": "GerbilizerSimpleNetwork",
+    "ARCHITECTURE": "VocalocatorSimpleNetwork",
     "COMPUTE_XCORRS": True,
     "AUGMENT_DATA": False,
     "CLIP_GRADIENTS": True,
@@ -56,7 +56,7 @@ SIMPLENET_COV["OUTPUT_COV"] = True
 
 ENSEMBLE = {
     "MODELS": [SIMPLENET_COV, SIMPLENET_COV, SIMPLENET_COV],
-    "ARCHITECTURE": "GerbilizerEnsemble",
+    "ARCHITECTURE": "VocalocatorEnsemble",
     "ARENA_WIDTH": 600,
     "ARENA_LENGTH": 400,
     "CONFIG_NAME": "simplenet_no_cov",
@@ -65,7 +65,7 @@ ENSEMBLE = {
 
 ENSEMBLE_MISSING_COV = {
     "MODELS": [SIMPLENET_COV, SIMPLENET_BASE, SIMPLENET_COV],
-    "ARCHITECTURE": "GerbilizerEnsemble",
+    "ARCHITECTURE": "VocalocatorEnsemble",
     "ARENA_WIDTH": 600,
     "ARENA_LENGTH": 400,
     "CONFIG_NAME": "simplenet_no_cov",

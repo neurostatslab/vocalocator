@@ -1,15 +1,13 @@
 from itertools import combinations
 from math import comb
-from typing import Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.outputs import ModelOutputFactory
 
-from .simplenet import GerbilizerSimpleLayer
+from .simplenet import VocalocatorSimpleLayer
 
 
 class SkipConnection(torch.nn.Module):
@@ -21,7 +19,7 @@ class SkipConnection(torch.nn.Module):
         return x + self.submodule(x)
 
 
-class CorrSimpleNetwork(GerbilizerArchitecture):
+class CorrSimpleNetwork(VocalocatorArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True] * 5,
@@ -32,6 +30,7 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         "REGULARIZE_COV": False,
         "CPS_NUM_LAYERS": 3,
         "CPS_HIDDEN_SIZE": 1024,
+        "XCORR_LENGTH": 256,
     }
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
@@ -39,15 +38,14 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
 
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
-        self.xcorr_length = 256
-
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
         model_config = CorrSimpleNetwork.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
-        CONFIG[
-            "MODEL_PARAMS"
-        ] = model_config  # Save the parameters used in this run for backward compatibility
+        CONFIG["MODEL_PARAMS"] = (
+            model_config  # Save the parameters used in this run for backward compatibility
+        )
 
+        self.xcorr_length = model_config["XCORR_LENGTH"]
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
         filter_sizes = model_config["CONV_FILTER_SIZES"]
@@ -65,11 +63,10 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         dilations = dilations[:min_len]
 
         use_batch_norm = model_config["USE_BATCH_NORM"]
-
         self.n_channels.insert(0, N)
 
         convolutions = [
-            GerbilizerSimpleLayer(
+            VocalocatorSimpleLayer(
                 in_channels,
                 out_channels,
                 filter_size,
@@ -90,7 +87,9 @@ class CorrSimpleNetwork(GerbilizerArchitecture):
         self.final_pooling = nn.AdaptiveAvgPool1d(1)
 
         # layers for the cps branch of the network:
-        cps_initial_channels = comb(N, 2) * 256  # Number of microphone pairs
+        cps_initial_channels = (
+            comb(N, 2) * self.xcorr_length
+        )  # Number of microphone pairs
         cps_num_layers = model_config["CPS_NUM_LAYERS"]
         cps_hidden_size = model_config["CPS_HIDDEN_SIZE"]
 

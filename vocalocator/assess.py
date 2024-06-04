@@ -3,10 +3,10 @@ Assess covariance models on a dataset, tracking metrics like mean error,
 area of the 95% confidence set for each prediction
 and whether the true value was in that set, etc.
 """
+
 import argparse
 import json
 import logging
-from itertools import repeat
 from pathlib import Path
 from typing import Union
 
@@ -15,15 +15,16 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.architectures.ensemble import GerbilizerEnsemble
-from gerbilizer.calibration import CalibrationAccumulator
-from gerbilizer.outputs.base import ModelOutput, ProbabilisticOutput, Unit
-from gerbilizer.training.configs import build_config
-from gerbilizer.training.dataloaders import GerbilVocalizationDataset
-from gerbilizer.training.models import build_model
-from gerbilizer.util import make_xy_grids, subplots
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.architectures.ensemble import VocalocatorEnsemble
+from vocalocator.calibration import CalibrationAccumulator
+from vocalocator.outputs.base import ModelOutput, ProbabilisticOutput, Unit
+from vocalocator.training.configs import build_config
+from vocalocator.training.dataloaders import VocalizationDataset
+from vocalocator.training.models import build_model
+from vocalocator.util import make_xy_grids, subplots
 
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
@@ -88,7 +89,7 @@ def plot_results(f: h5py.File):
 
 
 def assess_model(
-    model: GerbilizerArchitecture,
+    model: VocalocatorArchitecture,
     dataloader: DataLoader,
     outfile: Union[Path, str],
     arena_dims: Union[np.ndarray, tuple[float, float]],
@@ -105,7 +106,7 @@ def assess_model(
     Optionally, visualize confidence sets a few times throughout training.
 
     Args:
-        model: instantiated GerbilizerArchitecture object
+        model: instantiated VocalocatorArchitecture object
         dataloader: DataLoader object on which the model should be assessed
         outfile: path to an h5 file in which output should be saved
         arena_dims: arena dimensions, *in millimeters*.
@@ -121,12 +122,9 @@ def assess_model(
         config_string = json.dumps(model.config)
         f.attrs["model_config"] = config_string
 
-        if not inference:
-            scaled_locations_dataset = f.create_dataset(
-                "scaled_locations", shape=(N, 2)
-            )
+        scaled_locations_dataset = None
 
-        if isinstance(model, GerbilizerEnsemble):
+        if isinstance(model, VocalocatorEnsemble):
             raw_output_dataset = []
             for i, constituent in enumerate(model.models):
                 raw_output_dataset.append(
@@ -149,14 +147,14 @@ def assess_model(
 
         with torch.no_grad():
             idx = 0
-            for sounds, locations in iter(dataloader):
+            for sounds, locations in tqdm(dataloader):
                 sounds = sounds.to(device)
                 # If inference, locations will be None
 
                 outputs: list[ModelOutput] = model(sounds, unbatched=True)
                 for output, location in zip(outputs, locations):
                     # add batch dimension back
-                    if isinstance(model, GerbilizerEnsemble):
+                    if isinstance(model, VocalocatorEnsemble):
                         for out_dataset, constituent_output in zip(
                             raw_output_dataset, output.raw_output
                         ):
@@ -173,16 +171,21 @@ def assess_model(
                     )
 
                     # unscale location from [-1, 1] square to units in arena (in mm)
-                    if not inference:
+                    if location is not None:
                         scaled_location = (
                             output._convert(location[None], Unit.ARBITRARY, Unit.MM)
                             .cpu()
                             .numpy()
                         )
+                        if scaled_locations_dataset is None:
+                            scaled_locations_dataset = f.create_dataset(
+                                "scaled_locations",
+                                shape=(N, *scaled_location.shape[1:]),
+                            )
                         scaled_locations_dataset[idx] = scaled_location
 
                         # other useful info
-                        if isinstance(output, ProbabilisticOutput):
+                        if isinstance(output, ProbabilisticOutput) and not inference:
                             should_compute_calibration = True
                             ca.calculate_step(
                                 output, scaled_location, temperature=temperature
@@ -336,10 +339,25 @@ if __name__ == "__main__":
 
     arena_dims = np.array(config_data["DATA"]["ARENA_DIMS"])
     arena_dims_units = config_data["DATA"].get("ARENA_DIMS_UNITS")
+    sample_rate = config_data["DATA"]["SAMPLE_RATE"]
+    crop_length = config_data["DATA"]["CROP_LENGTH"]
+    normalize_data = config_data["DATA"].get("NORMALIZE_DATA", True)
+    vocalization_dir = config_data["DATA"].get(
+        "VOCALIZATION_DIR",
+        None,
+    )
 
     # if provided in cm, convert to MM
-    if arena_dims_units == "CM":
+    if arena_dims_units == "MM":
+        pass
+    elif arena_dims_units == "CM":
         arena_dims = np.array(arena_dims) * 10
+    elif arena_dims_units == "M":
+        arena_dims = np.array(arena_dims) * 1000
+    else:
+        raise ValueError(
+            "ARENA_DIMS_UNITS must be one of 'MM,' 'CM,' or 'M' to specify the units of the arena dimensions."
+        )
 
     index = None
     if args.index is not None:
@@ -347,16 +365,21 @@ if __name__ == "__main__":
             raise ValueError(f"Requested index file could not be found: {args.index}")
         index = np.load(args.index)
 
-    dataset = GerbilVocalizationDataset(
+    dataset = VocalizationDataset(
         str(args.data),
         arena_dims=arena_dims,
-        crop_length=config_data["DATA"]["CROP_LENGTH"],
+        crop_length=crop_length,
         inference=args.inference,
         index=index,
+        normalize_data=normalize_data,
+        sample_rate=sample_rate,
+        sample_vocalization_dir=vocalization_dir,
     )
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset.collate
+    )
 
     # make the parent directories for the desired outfile if they don't exist
     parent = Path(args.outfile).parent

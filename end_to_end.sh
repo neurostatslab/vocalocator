@@ -70,11 +70,10 @@ echo "Pretraining model with config at path ${CONFIG} on simulated data in direc
 
 PRETRAIN_RESULT_DIR=$OUTPUT_DIR/pretrain
 # pretrain the model
-python -u -m gerbilizer \
+python -u -m vocalocator \
     --config $CONFIG \
     --data $PRETRAIN_DIR \
-    --save-path $PRETRAIN_RESULT_DIR \
-    --bare
+    --save-path $PRETRAIN_RESULT_DIR
 
 # get the new config file with updated WEIGHTS_PATH
 PRETRAINED_CONFIG=$PRETRAIN_RESULT_DIR/config.json
@@ -88,7 +87,7 @@ ASSESSMENT_DIR=$OUTPUT_DIR/assessment
 PRETRAIN_ASSESS_FILE=$ASSESSMENT_DIR/pretrain.h5
 
 echo "Assessing model performance on pretraining validation set, storing output to ${PRETRAIN_ASSESS_FILE}."
-python -m gerbilizer.assess \
+python -m vocalocator.assess \
     --config $PRETRAINED_CONFIG \
     --data $PRETRAIN_DIR/val_set.h5 \
     -o $PRETRAIN_ASSESS_FILE \
@@ -97,7 +96,7 @@ python -m gerbilizer.assess \
 ZERO_SHOT_ASSESS_FILE=$ASSESSMENT_DIR/zero_shot.h5
 
 echo "Assessing zero-shot model performance on finetuning validation set, storing output to ${ZERO_SHOT_ASSESS_FILE}."
-python -m gerbilizer.assess \
+python -m vocalocator.assess \
     --config $PRETRAINED_CONFIG \
     --data $FINETUNE_DIR/val_set.h5 \
     -o $ZERO_SHOT_ASSESS_FILE \
@@ -112,15 +111,14 @@ CONFIG_FOR_FINETUNING=$PRETRAINED_CONFIG
 
 if [ ! -z $FINETUNE_CHANGES ]; then
     CONFIG_FOR_FINETUNING=$PRETRAIN_RESULT_DIR/config_for_finetuning.json
-    python -m gerbilizer.update_json $PRETRAINED_CONFIG $FINETUNE_CHANGES $CONFIG_FOR_FINETUNING
+    python -m vocalocator.update_json $PRETRAINED_CONFIG $FINETUNE_CHANGES $CONFIG_FOR_FINETUNING
 fi
 
 # finetune the model
-python -u -m gerbilizer \
+python -u -m vocalocator \
     --config $CONFIG_FOR_FINETUNING \
     --data $FINETUNE_DIR \
-    --save-path $FINETUNE_RESULT_DIR \
-    --bare
+    --save-path $FINETUNE_RESULT_DIR
 
 # get the new config file with updated WEIGHTS_PATH
 FINETUNED_CONFIG=$FINETUNE_RESULT_DIR/config.json
@@ -134,7 +132,7 @@ FINAL_ASSESS_FILE=$ASSESSMENT_DIR/final.h5
 
 echo "Assessing finetuned model performance on ground truth validation set, storing output to ${FINAL_ASSESS_FILE}."
 
-python -m gerbilizer.assess \
+python -m vocalocator.assess \
     --config $FINETUNED_CONFIG \
     --data $FINETUNE_DIR/val_set.h5 \
     -o $FINAL_ASSESS_FILE \

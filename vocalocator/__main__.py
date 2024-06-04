@@ -2,8 +2,8 @@ import argparse
 from os import path
 from pathlib import Path
 
-from gerbilizer.training.configs import build_config
-from gerbilizer.training.trainer import Trainer
+from vocalocator.training.configs import build_config
+from vocalocator.training.trainer import Trainer
 
 
 def get_args():

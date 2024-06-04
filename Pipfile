@@ -17,7 +17,7 @@ matplotlib = "*"
 ipython = "*"
 notebook = "*"
 ipykernel = "*"
-gerbilizer = {editable = true, path = "."}
+vocalocator = {editable = true, path = "."}
 
 [requires]
 python_version = "3.9"

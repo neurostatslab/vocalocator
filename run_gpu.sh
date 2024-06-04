@@ -35,14 +35,14 @@ if [ -z $CONFIG ]; then
 fi
 
 if [ -z $OUTPUT_DIR ]; then
-    echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/gerbilizer."
-    OUTPUT_DIR=/mnt/home/${USER}/ceph/gerbilizer
+    echo "No output directory provided. Defaulting to /mnt/ceph/users/${USER}/vocalocator."
+    OUTPUT_DIR=/mnt/home/${USER}/ceph/vocalocator
 fi
 
 
-python -u -m gerbilizer \
+python -u -m vocalocator \
     --config $CONFIG \
     --data $DATA_DIR \
-    --save-path $OUTPUT_DIR \
+    --save-path $OUTPUT_DIR
 
 date;

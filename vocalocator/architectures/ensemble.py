@@ -2,13 +2,12 @@ from typing import Literal, overload
 
 import torch
 from torch import nn
-
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutput, ModelOutputFactory, ProbabilisticOutput
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.outputs import ModelOutput, ModelOutputFactory, ProbabilisticOutput
 
 
 # inference only for now
-class GerbilizerEnsemble(GerbilizerArchitecture):
+class VocalocatorEnsemble(VocalocatorArchitecture):
     """
     Wrapper class to help assess ensembles of models.
 
@@ -24,7 +23,7 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
     def __init__(
         self,
         config,
-        built_models: list[GerbilizerArchitecture],
+        built_models: list[VocalocatorArchitecture],
         output_factory: ModelOutputFactory,
     ):
         """
@@ -50,18 +49,18 @@ class GerbilizerEnsemble(GerbilizerArchitecture):
         Load the weights for each constituent model of the ensemble.
         """
         # best_weights_path included for consistency of signature
-        # with `GerbilizerArchitecture.load_weights`
+        # with `VocalocatorArchitecture.load_weights`
         for model in self.models:
             model.load_weights(use_final_weights=use_final_weights)
 
     # add overload for nice unbatched functionality
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput:
-        ...
+    def forward(self, x: torch.Tensor, unbatched: Literal[False]) -> ModelOutput: ...
 
     @overload
-    def forward(self, x: torch.Tensor, unbatched: Literal[True]) -> list[ModelOutput]:
-        ...
+    def forward(
+        self, x: torch.Tensor, unbatched: Literal[True]
+    ) -> list[ModelOutput]: ...
 
     def forward(self, x: torch.Tensor, unbatched: bool = False):
         """

@@ -1207,7 +1207,7 @@
             ],
             "version": "==1.5.1"
         },
-        "gerbilizer": {
+        "vocalocator": {
             "editable": true,
             "path": "."
         },

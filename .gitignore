@@ -14,7 +14,7 @@ __pycache__/
 trained_models/
 slurm_logs/
 .vscode/
-gerbilizer.egg-info/
+vocalocator.egg-info/
 
 # Pip build directory
 build/

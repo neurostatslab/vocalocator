@@ -1,14 +1,11 @@
-import logging
-from math import comb
-
 import torch
 from torch import nn
 
-from gerbilizer.architectures.base import GerbilizerArchitecture
-from gerbilizer.outputs import ModelOutputFactory
+from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.outputs import ModelOutputFactory
 
 
-class GerbilizerSimpleLayer(torch.nn.Module):
+class VocalocatorSimpleLayer(torch.nn.Module):
     def __init__(
         self,
         channels_in: int,
@@ -19,8 +16,7 @@ class GerbilizerSimpleLayer(torch.nn.Module):
         dilation: int,
         use_bn: bool = True
     ):
-        super(GerbilizerSimpleLayer, self).__init__()
-
+        super(VocalocatorSimpleLayer, self).__init__()
         self.fc = torch.nn.Conv1d(
             channels_in,
             channels_out,
@@ -50,7 +46,7 @@ class GerbilizerSimpleLayer(torch.nn.Module):
         return self.batch_norm(prod)
 
 
-class GerbilizerSimpleNetwork(GerbilizerArchitecture):
+class VocalocatorSimpleNetwork(VocalocatorArchitecture):
     defaults = {
         "USE_BATCH_NORM": True,
         "SHOULD_DOWNSAMPLE": [False, True] * 5,
@@ -62,16 +58,15 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
     }
 
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
-        super(GerbilizerSimpleNetwork, self).__init__(CONFIG, output_factory)
-
+        super(VocalocatorSimpleNetwork, self).__init__(CONFIG, output_factory)
         N = CONFIG["DATA"]["NUM_MICROPHONES"]
 
         # Obtains model-specific parameters from the config file and fills in missing entries with defaults
-        model_config = GerbilizerSimpleNetwork.defaults.copy()
+        model_config = VocalocatorSimpleNetwork.defaults.copy()
         model_config.update(CONFIG.get("MODEL_PARAMS", {}))
-        CONFIG[
-            "MODEL_PARAMS"
-        ] = model_config  # Save the parameters used in this run for backward compatibility
+        CONFIG["MODEL_PARAMS"] = (
+            model_config  # Save the parameters used in this run for backward compatibility
+        )
 
         should_downsample = model_config["SHOULD_DOWNSAMPLE"]
         self.n_channels = model_config["CONV_NUM_CHANNELS"]
@@ -94,7 +89,7 @@ class GerbilizerSimpleNetwork(GerbilizerArchitecture):
         self.n_channels.insert(0, N)
 
         convolutions = [
-            GerbilizerSimpleLayer(
+            VocalocatorSimpleLayer(
                 in_channels,
                 out_channels,
                 filter_size,
