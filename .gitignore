@@ -17,3 +17,4 @@ vocalocator.egg-info/
 
 # Pip build directory
 build/
+dist/
