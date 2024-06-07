@@ -1,0 +1,39 @@
+{
+    "OPTIMIZATION": {
+        "NUM_EPOCHS": 20,
+        "OPTIMIZER": "SGD",
+        "MOMENTUM": 0.7,
+        "WEIGHT_DECAY": 1e-05,
+        "CLIP_GRADIENTS": true,
+        "INITIAL_LEARNING_RATE": 0.03,
+        "LR_PARAMS": {
+            "SCHEDULER": "COSINE_ANNEALING",
+            "MIN_LEARNING_RATE": 0.0,
+        }
+    },
+
+    "ARCHITECTURE": "GerbilizerSimpleNetwork",  // Network type. See options in vocalocator.architectures package
+    "MODEL_PARAMS": {
+        "OUTPUT_TYPE": "GAUSSIAN_FULL_COV",  // Output distribution type. See options in vocalocator.outputs package
+    },
+
+    "GENERAL": {
+        "DEVICE": "GPU",  // 'GPU' or 'CPU'
+        "TORCH_SEED": 888,  // rng seeds for reproducibility
+        "NUMPY_SEED": 777,
+        "LOG_INTERVAL": 3,  // Amount of time between consecutive log messages
+    },
+
+    "DATA": {
+        "NUM_MICROPHONES": 8,
+        "TRAIN_BATCH_SIZE": 32,
+        "CROP_LENGTH": 8192,
+        "ARENA_DIMS": [914, 1219],
+        "ARENA_DIMS_UNITS": "MM",
+        "SAMPLE_RATE": 192000
+    },
+
+    "AUGMENTATIONS": {
+        "AUGMENT_DATA": true, // controls noise addition
+    },
+}
