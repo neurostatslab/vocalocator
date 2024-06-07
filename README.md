@@ -1,5 +1,5 @@
 # Vocal Call Locator
-==============================
+
 
 ## Project Organization
 ------------
@@ -19,11 +19,23 @@
 
 
 ## Installation
-1. Clone this repository: `git clone https://github.com/neurostatslab/vocalocator.git`
-2. Install prerequisites: `cd vocalocator & pipenv install`
-3. Install with pip: `pip install .`
 
-## Usage
+### Pip:
+1. (Optional) Create a virtual environment: `python -m venv vcl_env && source vcl_env/bin/activate`
+2. `pip install vocalocator`
+
+### Conda:
+1. Install Conda for your system with the [instructions here](https://docs.anaconda.com/free/miniconda/#quick-command-line-install)
+2. Clone this repository: `git clone https://github.com/neurostatslab/vocalocator.git && cd vocalocator`
+3. Create an environment and install: `conda create -n vcl -f environment_conda.yml`
+
+### Pipenv:
+1. Clone this repository: `git clone https://github.com/neurostatslab/vocalocator.git && cd vocalocator`
+2. Install Pipenv: `pip install pipenv`
+3. Install package: `pipenv install`
+4. Enter pipenv shell: `pipenv shell`
+
+## Advanced Usage
 1. Create a dataset. This should be an HDF5 file with the following datasets:
 
 | Dataset group/name | Shape             | Data type | Description                                                                                                                                    |
