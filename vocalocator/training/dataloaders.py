@@ -117,10 +117,6 @@ class VocalizationDataset(Dataset):
     def __len__(self):
         return self.length
 
-    def __del__(self):
-        if self.dataset is not None:
-            self.dataset.close()
-
     def __getitem__(self, idx):
         if self.dataset is None:
             self.dataset = h5py.File(self.datapath, "r")
