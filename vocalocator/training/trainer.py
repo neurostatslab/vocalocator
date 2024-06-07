@@ -330,6 +330,7 @@ class Trainer:
                         )
                         location = (
                             output._convert(location, Unit.ARBITRARY, Unit.CM)
+                            .float()
                             .cpu()
                             .numpy()
                         )

@@ -38,18 +38,27 @@ class VocalizationDataset(Dataset):
         """
         if isinstance(datapath, str):
             datapath = Path(datapath)
-        self.dataset = h5py.File(datapath, "r")
+        self.datapath = datapath
+        dataset = h5py.File(self.datapath, "r")
+
+        # dataset cannot exist as a member of the object until after pytorch has cloned and
+        # spread the dataset objects across multiple processes.
+        # This is because h5py handles cannot be pickled and pytorch uses pickle under the hood
+        # I get around this by re-initializing the h5py.File lazily in __getitem__
+        self.dataset: Optional[h5py.File] = None
 
         if not isinstance(arena_dims, np.ndarray):
             arena_dims = np.array(arena_dims).astype(np.float32)
 
-        if "length_idx" not in self.dataset and "rir_length_idx" not in self.dataset:
+        if "length_idx" not in dataset and "rir_length_idx" not in dataset:
             raise ValueError("Improperly formatted dataset")
 
-        if "audio" in self.dataset:
+        if "audio" in dataset:
             self.is_rir_dataset = False
-        elif "rir" in self.dataset:
+            self.length = len(dataset["length_idx"]) - 1
+        elif "rir" in dataset:
             self.is_rir_dataset = True
+            self.length = len(dataset["rir_length_idx"]) - 1
         else:
             raise ValueError("Improperly formatted dataset")
 
@@ -60,6 +69,9 @@ class VocalizationDataset(Dataset):
         self.normalize_data = normalize_data
         self.sample_rate = sample_rate
         self.sample_vocalization_dir = sample_vocalization_dir
+
+        if self.index is not None:
+            self.length = len(self.index)
 
         if self.is_rir_dataset and self.sample_vocalization_dir is None:
             raise ValueError("RIR dataset requires sample vocalizations")
@@ -87,6 +99,7 @@ class VocalizationDataset(Dataset):
 
             if not self.sample_vocalizations:
                 raise ValueError("No valid vocalizations found")
+        dataset.close()
 
     def convert_audio_to_float(self, audio: np.ndarray):
         """Converts audio to float32 and scales it to the range [-1, 1]"""
@@ -102,20 +115,19 @@ class VocalizationDataset(Dataset):
         return (audio.astype(np.float64) / (imax - imin)).astype(np.float32)
 
     def __len__(self):
-        if self.index is not None:
-            return len(self.index)
-        if self.is_rir_dataset:
-            return len(self.dataset["rir_length_idx"]) - 1
-        return len(self.dataset["length_idx"]) - 1
+        return self.length
+
+    def __del__(self):
+        if self.dataset is not None:
+            self.dataset.close()
 
     def __getitem__(self, idx):
+        if self.dataset is None:
+            self.dataset = h5py.File(self.datapath, "r")
         true_idx = idx
         if self.index is not None:
             true_idx = self.index[idx]
         return self.__processed_data_for_index__(true_idx)
-
-    def __del__(self):
-        self.dataset.close()
 
     def __make_crop(self, audio: torch.Tensor, crop_length: int):
         """Given an audio sample of shape (n_samples, n_channels), return a random crop
@@ -167,7 +179,7 @@ class VocalizationDataset(Dataset):
             # Shift range to [-1, 1]
             scaled_labels = labels
             scaled_labels[..., : len(self.arena_dims)] /= (
-                torch.from_numpy(self.arena_dims) / 2
+                torch.from_numpy(self.arena_dims).float() / 2
             )
 
         if self.normalize_data:
@@ -231,7 +243,10 @@ def build_dataloaders(
         index_arrays["train"] = np.load(index_dir / "train_set.npy")
         index_arrays["val"] = np.load(index_dir / "val_set.npy")
 
-    avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
+    try:
+        avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
+    except:
+        avail_cpus = max(1, os.cpu_count() - 1)
 
     if path_to_data.is_dir():
         train_path = path_to_data / "train_set.h5"
