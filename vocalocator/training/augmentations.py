@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch_audiomentations import AddColoredNoise, PolarityInversion
 
 
 class Identity(nn.Module):
@@ -11,6 +10,19 @@ class Identity(nn.Module):
 
     def forward(self, x):
         return x
+
+
+class PolarityInversion(nn.Module):
+    """Inverts the polarity of the audio."""
+
+    def __init__(self, p: float = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, x):
+        if torch.rand(1) > self.p:
+            return x
+        return -x
 
 
 class TimeMask(nn.Module):
@@ -57,6 +69,47 @@ class TimeMask(nn.Module):
         return x.reshape(*bshape, num_samples, num_channels)
 
 
+class AddWhiteNoise(nn.Module):
+    """Add white noise to the input tensor"""
+
+    def __init__(
+        self, min_snr_in_db: float = 0, max_snr_in_db: float = 10, p: float = 0.5
+    ):
+        super().__init__()
+        self.min_snr_in_db = min_snr_in_db
+        self.max_snr_in_db = max_snr_in_db
+        self.p = p
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Adds white noise to the input tensor
+
+        Args:
+            x (torch.Tensor): Input tensor
+
+        Returns:
+            torch.Tensor: Augmented tensor
+        """
+        # Assuming x has shape (*batch_size, num_samples, num_channels)
+        if torch.rand(1) > self.p:
+            return x
+        snr = (
+            torch.rand(*x.shape[:-2]) * (self.max_snr_in_db - self.min_snr_in_db)
+            + self.min_snr_in_db
+        )  # Shape: (*batch_size)
+        snr = snr.to(x.device)
+
+        noise = torch.randn_like(x)
+        signal_power = torch.sum(x**2, dim=(-2, -1))  # Shape: (*batch_size)
+        orig_noise_power = torch.sqrt(
+            torch.sum(noise**2, dim=(-1, -2))
+        )  # Shape: (*batch_size)
+        new_noise_power = torch.sqrt(
+            signal_power / 10 ** (snr / 10)
+        )  # Shape: (*batch_size)
+        noise = noise * new_noise_power[:, None, None] / orig_noise_power[:, None, None]
+        return x + noise
+
+
 def build_augmentations(CONFIG: dict) -> nn.Module:
     """Builds an augmentation module using the config parameters
     The augmentation module is a subclass of nn.Module which takes in a batched data tensor
@@ -70,7 +123,6 @@ def build_augmentations(CONFIG: dict) -> nn.Module:
     """
     augmentations = []
     aug_config = CONFIG["AUGMENTATIONS"]
-    sample_rate = CONFIG["DATA"]["SAMPLE_RATE"]
 
     if not CONFIG["AUGMENTATIONS"]["AUGMENT_DATA"]:
         return Identity()
@@ -79,21 +131,15 @@ def build_augmentations(CONFIG: dict) -> nn.Module:
         # Inverts the polarity of the audio
         inversion = PolarityInversion(
             p=inversion_config.get("PROB", 0.5),
-            mode="per_example",
-            sample_rate=sample_rate,
         )
         augmentations.append(inversion)
 
     if noise_config := aug_config.get("NOISE", False):
         # Adds white background noise to the audio
-        noise = AddColoredNoise(
+        noise = AddWhiteNoise(
             min_snr_in_db=noise_config.get("MIN_SNR", 0),
             max_snr_in_db=noise_config.get("MAX_SNR", 10),
             p=noise_config.get("PROB", 0.5),
-            min_f_decay=0,
-            max_f_decay=2,
-            mode="per_example",
-            sample_rate=sample_rate,
         )
         augmentations.append(noise)
 
