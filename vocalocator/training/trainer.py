@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from pathlib import Path
@@ -18,18 +19,6 @@ from ..training.augmentations import build_augmentations
 from ..training.dataloaders import build_dataloaders
 from ..training.logger import ProgressLogger
 from ..training.models import build_model
-
-try:
-    # Attempt to use json5 if available
-    import pyjson5 as json
-
-    using_json5 = True
-except ImportError:
-    logging.warn("Warning: json5 not available, falling back to json.")
-    import json
-
-    using_json5 = False
-
 
 JSON = NewType("JSON", dict)
 
@@ -150,7 +139,7 @@ class Trainer:
 
     def __init_dataloaders(self, index_dir: Optional[Path]):
         # Load training set, validation set, test set.
-        self.__traindata, self.__valdata = build_dataloaders(
+        self.__traindata, self.__valdata, testdata = build_dataloaders(
             self.__datafile, self.__config, index_dir
         )
 
@@ -163,6 +152,10 @@ class Trainer:
             index_dir.mkdir(parents=True, exist_ok=True)
             np.save(index_dir / "train_set.npy", train_idx)
             np.save(index_dir / "val_set.npy", val_idx)
+
+        if testdata is not None:
+            test_idx = testdata.dataset.index
+            np.save(index_dir / "test_set.npy", test_idx)
 
     def __init_model(self):
         """Creates the model, optimizer, and loss function."""
@@ -178,10 +171,7 @@ class Trainer:
 
         # In inference mode, there is no logger
         if not self.__eval:
-            # The JSON5 library only supports writing in binary mode, but the built-in json library does not
-            # Ensure this is written after the model has had the chance to update the config
-            filemode = "wb" if using_json5 else "w"
-            with open(os.path.join(self.__model_dir, "config.json"), filemode) as ctx:
+            with open(os.path.join(self.__model_dir, "config.json"), "w") as ctx:
                 json.dump(self.__config, ctx, indent=4)
 
             self.__logger.info(self.model.__repr__())

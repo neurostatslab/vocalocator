@@ -218,7 +218,7 @@ class VocalizationDataset(Dataset):
 
 def build_dataloaders(
     path_to_data: Union[Path, str], config: dict, index_dir: Optional[Path]
-):
+) -> tuple[DataLoader, DataLoader, Optional[DataLoader]]:
     # Construct Dataset objects.
     if not isinstance(path_to_data, Path):
         path_to_data = Path(path_to_data)
@@ -234,10 +234,12 @@ def build_dataloaders(
         None,
     )
 
-    index_arrays = {"train": None, "val": None}
+    index_arrays = {"train": None, "val": None, "test": None}
     if index_dir is not None:
         index_arrays["train"] = np.load(index_dir / "train_set.npy")
         index_arrays["val"] = np.load(index_dir / "val_set.npy")
+        if (index_dir / "test_set.npy").exists():
+            index_arrays["test"] = np.load(index_dir / "test_set.npy")
 
     try:
         avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
@@ -247,9 +249,11 @@ def build_dataloaders(
     if path_to_data.is_dir():
         train_path = path_to_data / "train_set.h5"
         val_path = path_to_data / "val_set.h5"
+        test_path = path_to_data / "test_set.h5"
     else:
         train_path = path_to_data
         val_path = path_to_data
+        test_path = path_to_data
         if index_dir is None:
             # manually create train/val split
             with h5py.File(train_path, "r") as f:
@@ -266,6 +270,7 @@ def build_dataloaders(
             index_arrays["val"] = full_index[
                 int(0.8 * dset_size) : int(0.9 * dset_size)
             ]
+            index_arrays["test"] = full_index[int(0.9 * dset_size) :]
 
     traindata = VocalizationDataset(
         train_path,
@@ -304,4 +309,24 @@ def build_dataloaders(
         collate_fn=valdata.collate,
     )
 
-    return train_dataloader, val_dataloader
+    test_dataloader = None
+    if test_path.exists():
+        testdata = VocalizationDataset(
+            test_path,
+            arena_dims=arena_dims,
+            crop_length=crop_length,
+            inference=True,
+            index=index_arrays["test"],
+            normalize_data=normalize_data,
+            sample_rate=sample_rate,
+            sample_vocalization_dir=vocalization_dir,
+        )
+        test_dataloader = DataLoader(
+            testdata,
+            batch_size=batch_size,
+            num_workers=1,
+            shuffle=False,
+            collate_fn=testdata.collate,
+        )
+
+    return train_dataloader, val_dataloader, test_dataloader
