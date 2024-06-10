@@ -6,10 +6,12 @@
         "WEIGHT_DECAY": 1e-05,
         "CLIP_GRADIENTS": true,
         "INITIAL_LEARNING_RATE": 0.03,
-        "LR_PARAMS": {
-            "SCHEDULER": "COSINE_ANNEALING",
-            "MIN_LEARNING_RATE": 0.0,
-        }
+        "SCHEDULERS": [
+            {
+                "SCHEDULER_TYPE": "COSINE_ANNEALING",
+                "MIN_LEARNING_RATE": 0.0
+            }
+        ]
     },
 
     "ARCHITECTURE": "GerbilizerSimpleNetwork",  // Network type. See options in vocalocator.architectures package

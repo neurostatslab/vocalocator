@@ -1,18 +1,45 @@
 {
     "OPTIMIZATION": {
-        "NUM_EPOCHS": 20,
+        "NUM_EPOCHS": 10,
         "OPTIMIZER": "SGD",
         "MOMENTUM": 0.7,
         "WEIGHT_DECAY": 1e-05,
         "CLIP_GRADIENTS": true,
         "INITIAL_LEARNING_RATE": 0.02,
-        "LR_PARAMS": {
-            "SCHEDULER": "COSINE_ANNEALING",
-            "MIN_LEARNING_RATE": 0.0
-        }
+        "SCHEDULERS": [
+            {
+                "SCHEDULER_TYPE": "COSINE_ANNEALING",
+                "MIN_LEARNING_RATE": 0.0
+            }
+        ]
     },
     "ARCHITECTURE": "CorrSimpleNetwork",
-    "MODEL_PARAMS": {  // Model params differ for each architecture. More details can be found in that architecture's declaration in the vocalocator.architectures package
+    "MODEL_PARAMS": {
+        "USE_BATCH_NORM": true,
+        "SHOULD_DOWNSAMPLE": [
+            false,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            true
+        ],
+        "CONV_FILTER_SIZES": [
+            33,
+            33,
+            33,
+            33,
+            33,
+            33,
+            33,
+            33,
+            33,
+            33
+        ],
         "CONV_NUM_CHANNELS": [
             128,
             128,
@@ -25,27 +52,54 @@
             512,
             512
         ],
-        "OUTPUT_TYPE": "GAUSSIAN_FULL_COV"  // Output distribution type. See options in vocalocator.outputs package
-
+        "CONV_DILATIONS": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+        ],
+        "CPS_NUM_LAYERS": 3,
+        "CPS_HIDDEN_SIZE": 1024,
+        "OUTPUT_TYPE": "GAUSSIAN_FULL_COV"
     },
     "GENERAL": {
         "DEVICE": "GPU",
         "TORCH_SEED": 888,
         "NUMPY_SEED": 777,
-        "LOG_INTERVAL": 3,
+        "LOG_INTERVAL": 3
     },
     "DATA": {
         "NUM_MICROPHONES": 4,
-        "TRAIN_BATCH_SIZE": 32,
         "CROP_LENGTH": 8192,
         "ARENA_DIMS": [
             572,
             366
         ],
         "ARENA_DIMS_UNITS": "MM",
-        "SAMPLE_RATE": 125000
+        "SAMPLE_RATE": 125000,
+        "BATCH_SIZE": 32,
+        "AUGMENT_DATA": true
     },
     "AUGMENTATIONS": {
-        "AUGMENT_DATA": true
+        "AUGMENT_DATA": true,
+        "INVERSION": {
+            "PROB": 0.5
+        },
+        "NOISE": {
+            "MIN_SNR": 3,
+            "MAX_SNR": 15,
+            "PROB": 0.5
+        },
+        "MASK": {
+            "PROB": 0.5,
+            "MIN_LENGTH": 75,
+            "MAX_LENGTH": 125
+        }
     }
 }
