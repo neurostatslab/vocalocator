@@ -7,6 +7,7 @@ from typing import Tuple, Union
 
 import numpy as np
 import torch
+
 from vocalocator.outputs.base import ProbabilisticOutput, Unit
 from vocalocator.util import assign_to_bin_2d, digitize, make_xy_grids
 
@@ -277,5 +278,5 @@ class CalibrationAccumulator:
         xgrid, ygrid = make_xy_grids(
             (xdim, ydim), shape=desired_shape, return_center_pts=True
         )
-        coords = np.dstack((xgrid, ygrid))
+        coords = np.dstack((xgrid, ygrid)).astype(np.float32)
         return coords

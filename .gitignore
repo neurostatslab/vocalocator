@@ -11,10 +11,10 @@ __pycache__/
 *.pt
 
 .ipynb_checkpoints/
-trained_models/
 slurm_logs/
 .vscode/
 vocalocator.egg-info/
 
 # Pip build directory
 build/
+dist/
