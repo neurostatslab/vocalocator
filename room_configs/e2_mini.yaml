@@ -1,0 +1,96 @@
+mics:
+  mic_diam: 0.036
+  mic_dir: !!python/object/apply:numpy.core.multiarray._reconstruct
+    args:
+    - &id001 !!python/name:numpy.ndarray ''
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+    state: !!python/tuple
+    - 1
+    - !!python/tuple
+      - 8
+      - 3
+    - &id002 !!python/object/apply:numpy.dtype
+      args:
+      - f8
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - false
+    - !!binary |
+      FQnzAirr4L8B2J7gzmvov+5hdIGex9e/Lm7tSBKz7b/C5k7L2iuYP+5hdIGex9e/0BqXLJTZ4L8v
+      76FV9HfoP+5hdIGex9e/JGtei/7Jnz+H72LrRrHtP+9hdIGex9e/ZOtFivGo4T9GTcu9+ePnP+1h
+      dIGex9e/ks38BUKz7T/yQCVzmTyXP+5hdIGex9e/yEB+zhwo4j/z9Som5YPnv+5hdIGex9e/RIiM
+      LSh6oD9ffcCb9bDtv+1hdIGex9e/
+  mic_pattern: SUBCARDIOID
+  mic_pos: !!python/object/apply:numpy.core.multiarray._reconstruct
+    args:
+    - *id001
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+    state: !!python/tuple
+    - 1
+    - !!python/tuple
+      - 8
+      - 3
+    - *id002
+    - false
+    - !!binary |
+      ZmZmZmZm6j89CtejcD3yP6vP1VbsL+M/FK5H4XoU6j8zMzMzMzPjP6vP1VbsL+M/ZmZmZmZm6j8z
+      MzMzMzOzP6vP1VbsL+M/KVyPwvUo3D9SuB6F61G4P6vP1VbsL+M/KVyPwvUorD+kcD0K16OwP6vP
+      1VbsL+M/w/UoXI/CtT8zMzMzMzPjP6vP1VbsL+M/KVyPwvUorD8UrkfhehTyP6vP1VbsL+M/KVyP
+      wvUo3D+uR+F6FK7xP6vP1VbsL+M/
+room:
+  air_abs: !!python/tuple
+  - - 0.0001
+    - 0.0003
+    - 0.0006
+    - 0.001
+    - 0.0019
+    - 0.0058
+    - 0.020300000000000002
+    - 0.1
+    - 0.53
+    - 0.8
+  - - 125.0
+    - 250.0
+    - 500.0
+    - 1000.0
+    - 2000.0
+    - 4000.0
+    - 8000.0
+    - 16000.0
+    - 32000.0
+    - 64000.0
+  ceil_abs: 0.9422023296356201
+  ceil_offset: 0
+  dim:
+  - 0.9144
+  - 1.2182
+  - 0.6096
+  flor_abs: 0.6360408663749695
+  jitter:
+    abs: null
+    dims: null
+    scattering: null
+  max_order: 9
+  scattering: 0.9
+  sr: 125000
+  wall_abs: 0.14746730029582977
+seed: 5042024
+srcs:
+  n_src: 1000
+  src_pattern: OMNI
+  z_offset: 0.05

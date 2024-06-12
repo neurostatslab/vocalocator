@@ -1,0 +1,92 @@
+mics:
+  mic_diam: 0.036
+  mic_dir: !!python/object/apply:numpy.core.multiarray._reconstruct
+    args:
+    - &id001 !!python/name:numpy.ndarray ''
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+    state: !!python/tuple
+    - 1
+    - !!python/tuple
+      - 4
+      - 3
+    - &id002 !!python/object/apply:numpy.dtype
+      args:
+      - f8
+      - false
+      - true
+      state: !!python/tuple
+      - 3
+      - <
+      - null
+      - null
+      - null
+      - -1
+      - -1
+      - 0
+    - false
+    - !!binary |
+      qsuUnDQJ2D9Ywn9fyI/oP5IoUYJAn+C/GCTghAAo17+xoifhGb/oP7UU8yD7qOC/8A9C3ZOJ179i
+      SiTRy2jpv904c1mW+d6/fwEYKlqU1j9K8IY0KvDov2kLvh9tkuC/
+  mic_pattern: SUBCARDIOID
+  mic_pos: !!python/object/apply:numpy.core.multiarray._reconstruct
+    args:
+    - *id001
+    - !!python/tuple
+      - 0
+    - !!binary |
+      Yg==
+    state: !!python/tuple
+    - 1
+    - !!python/tuple
+      - 4
+      - 3
+    - *id002
+    - false
+    - !!binary |
+      Utt+4McklT/oCt+QgLCpP7CJ1M0oitI/okgxH5Sg4T/oCt+QgLCpP7CJ1M0oitI/okgxH5Sg4T/1
+      Z4FuFozTP7CJ1M0oitI/Utt+4McklT/1Z4FuFozTP7CJ1M0oitI/
+room:
+  air_abs: !!python/tuple
+  - - 0.0001
+    - 0.0003
+    - 0.0006
+    - 0.001
+    - 0.0019
+    - 0.0058
+    - 0.020300000000000002
+    - 0.1
+    - 0.53
+    - 0.8
+  - - 125.0
+    - 250.0
+    - 500.0
+    - 1000.0
+    - 2000.0
+    - 4000.0
+    - 8000.0
+    - 16000.0
+    - 32000.0
+    - 64000.0
+  ceil_abs: 0.9422023296356201
+  ceil_offset: 0.0254
+  dim:
+  - 0.5715
+  - 0.3556
+  - 0.3683
+  flor_abs: 0.6360408663749695
+  jitter:
+    abs: null
+    dims: null
+    scattering: null
+  max_order: 9
+  scattering: 0.9
+  sr: 125000
+  wall_abs: 0.14746730029582977
+seed: 5042024
+srcs:
+  n_src: 1000
+  src_pattern: OMNI
+  z_offset: 0.05

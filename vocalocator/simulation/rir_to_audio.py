@@ -5,95 +5,13 @@ from shutil import rmtree
 from tqdm import tqdm
 import soundfile as sf
 import numpy as np
-import time
 from pqdm.processes import pqdm as pqdm_p
 from pqdm.threads import pqdm as pqdm_t
-
-from torch import from_numpy
-from torchaudio import functional as AF
-
 from scipy.signal import convolve
 
+from util import *
+
 import argparse
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "save_path",
-    type=str,
-    help="path to save audio dataset",
-)
-
-parser.add_argument(
-    "--save-dir",
-    dest="save_dir",
-    type=str,
-    help="path to save rir dataset parts",
-    default=None,
-)
-
-
-parser.add_argument(
-    "--rir-path",
-    dest="rir_path",
-    type=str,
-    help="path to load rir dataset",
-    required=False,
-    default="/vast/ci411/gerbil_data/rir_datasets/default.h5",
-)
-
-parser.add_argument(
-    "--voc-path",
-    dest="voc_path",
-    type=str,
-    help="path to load vocalizations",
-    required=False,
-    default="/vast/ci411/gerbil_data/vocal_datasets/raw/speaker_resampled",
-)
-
-parser.add_argument(
-    "--n-jobs",
-    dest="n_jobs",
-    type=int,
-    help="number of jobs to use in parallized process",
-    required=False,
-    default=16,
-)
-
-parser.add_argument(
-    "--all-vocs",
-    dest="all_vocs",
-    type=bool,
-    help="use all vocalizations per rir (if not, choose one random per rir)",
-    required=False,
-    default=False,
-)
-    
-parser.add_argument(
-    "--limit",
-    dest="limit",
-    type=int,
-    help="limit of RIRs to use",
-    required=False,
-    default=None,
-)
-
-parser.add_argument(
-    "--use-threads",
-    dest="use_threads",
-    type=bool,
-    help="use threads for parallelization (otherwise, use processes)",
-    required=False,
-    default=True,
-)
-    
-
-args = parser.parse_args()
-
-def get_n_rirs(path):
-    with h5py.File(path, 'r') as f:
-        n_rirs = f['locations'].shape[0]
-    return n_rirs
 
 def store_audio(rir_idx, voc_idx, path, db):
     audio, loc, voc_idx = convolve_audio((rir_idx, voc_idx), db)
@@ -119,25 +37,16 @@ def store_audio(rir_idx, voc_idx, path, db):
         stimulus_identities.resize(stimulus_identities.shape[0]+1, axis=0)
         stimulus_identities[-1:] = voc_idx
     return path
-            
-#define helper function for extracting RIR/location
-def rir_loc_for_index(idx, db):
-    start, end = db['rir_length_idx'][idx : idx + 2]
-    rir = db['rir'][start:end, :]
-    loc = db['locations'][idx]
-    return rir.T, loc
 
 #define function for convolving rir w/ vocalization
 def convolve_audio(idx_pair, db):
     rir_idx, voc_idx = idx_pair
     rir, loc = rir_loc_for_index(rir_idx, db)
     voc = vocalizations[voc_idx][None, :]
-    #audio = AF.convolve(from_numpy(rir), from_numpy(voc), mode="valid").numpy()
     audio = convolve(rir, voc, mode="full")
     return audio, loc, voc_idx
 
 def merge_aud_dbs(save_path, piece_paths):
-    
     with h5py.File(piece_paths[0], 'r') as f:
         num_mics = f['audio'].shape[1]
         
@@ -164,6 +73,79 @@ def merge_aud_dbs(save_path, piece_paths):
                 idx[-n_aud:] = g['length_idx'][1:] + idx_end
     
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "save_path",
+        type=str,
+        help="path to save audio dataset",
+    )
+
+    parser.add_argument(
+        dest="rir_path",
+        type=str,
+        help="path to load rir dataset",
+        required=True,
+    )
+    #/vast/ci411/gerbil_data/rir_datasets/default.h5
+
+    parser.add_argument(
+        dest="voc_path",
+        type=str,
+        help="path to load vocalizations",
+        required=True,
+    )
+    #/vast/ci411/gerbil_data/vocal_datasets/raw/speaker_resampled
+    
+    parser.add_argument(
+        "--save-dir",
+        dest="save_dir",
+        type=str,
+        help="path to save rir dataset parts",
+        required=False,
+        default=None,
+    )
+    
+    parser.add_argument(
+        "--n-jobs",
+        dest="n_jobs",
+        type=int,
+        help="number of jobs to use in parallized process",
+        required=False,
+        default=16,
+    )
+
+    parser.add_argument(
+        "--all-vocs",
+        dest="all_vocs",
+        type=bool,
+        help="use all vocalizations per rir (if not, choose one random per rir)",
+        required=False,
+        default=False,
+    )
+
+    parser.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        help="limit of RIRs to use",
+        required=False,
+        default=None,
+    )
+
+    parser.add_argument(
+        "--use-threads",
+        dest="use_threads",
+        type=bool,
+        help="use threads for parallelization (otherwise, use processes)",
+        required=False,
+        default=False,
+    )
+
+
+    args = parser.parse_args()
+    
+    
     if args.save_dir is None:
         args.save_dir = args.save_path.split('.')[0]
         print(f"Storing parts at {args.save_dir}")
