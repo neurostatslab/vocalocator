@@ -26,9 +26,13 @@ This section will give you a brief intro on training a deep neural network from 
 3. From this repository's `sample_configs` directory, download `xcorr_config_environment_1.json5` (4KB)
 4. For convenience, place these files in the same directory and make this your working directory
 5. At this point, the directory should contain the following files:
+
 |-- gerbilearbud-4m-e1_audio.h5
+
 |-- best_weights.pt (Optional, from the pretrained model zip file)
+
 |-- test_set.npy (Optional, from the test-train split zip file)
+
 |-- xcorr_config_environment_1.json
 
 ### Training
