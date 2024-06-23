@@ -137,7 +137,9 @@ def assess_model(
                 "raw_model_output", shape=(N, model.n_outputs)
             )
 
-        point_predictions = f.create_dataset("point_predictions", shape=(N, 2))
+        point_predictions = f.create_dataset(
+            "point_predictions", shape=(N, len(model.config["DATA"]["ARENA_DIMS"]))
+        )
 
         ca = CalibrationAccumulator(arena_dims)
 
