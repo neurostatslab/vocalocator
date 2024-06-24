@@ -175,9 +175,6 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         covariance = torch.zeros(self.batch_size, 3, 3, device=self.device)
         covariance[:, :2, :2] = self.plane_output.covs(units)
         covariance[:, 2, 2] = F.softplus(self.height_raw_output[:, 1]) ** 2
-        if units != Unit.ARBITRARY:
-            A = 0.5 * torch.diag(self.arena_dims[units])
-            covariance = A @ covariance @ A.T
         return covariance
 
 
