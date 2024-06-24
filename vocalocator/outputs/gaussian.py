@@ -174,7 +174,10 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
     def covs(self, units: Unit) -> torch.Tensor:
         covariance = torch.zeros(self.batch_size, 3, 3, device=self.device)
         covariance[:, :2, :2] = self.plane_output.covs(units)
-        covariance[:, 2, 2] = F.softplus(self.height_raw_output[:, 1])
+        covariance[:, 2, 2] = F.softplus(self.height_raw_output[:, 1]) ** 2
+        if units != Unit.ARBITRARY:
+            A = 0.5 * torch.diag(self.arena_dims[units])
+            covariance = A @ covariance @ A.T
         return covariance
 
 
@@ -349,6 +352,7 @@ class GaussianOutputFullCov(GaussianOutput):
         """
         Construct a GaussianOutput object with diagonal covariance matrices.
         """
+        arena_dims = arena_dims[:2]
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
         L = torch.zeros(self.batch_size, 2, 2, device=self.device)
