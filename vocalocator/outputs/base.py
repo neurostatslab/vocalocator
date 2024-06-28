@@ -66,18 +66,28 @@ class ModelOutput:
         elif in_units == Unit.CM and out_units == Unit.MM:
             return x * 10
         elif in_units == Unit.ARBITRARY:
-            dims = self.arena_dims[out_units]
+            dims = self.arena_dims[out_units].to(x.device)
+            scale_factor = dims.max() / 2
+            shift = dims / 2
             if dims.shape[-1] == x.shape[-1]:
-                return 0.5 * (x + 1) * dims.to(x.device)
+                return (x * scale_factor) + shift
+            elif dims.shape[-1] * 2 == x.shape[-1]:
+                shift = torch.cat([shift, shift], dim=-1)
+                return (x * scale_factor) + shift
             else:
-                xy = 0.5 * (x[..., :2] + 1) * dims.to(x.device)
+                xy = (x[..., :2] + 1) * dims.to(x.device)
                 return torch.cat([xy, x[..., 2:]], dim=-1)
         elif out_units == Unit.ARBITRARY:
-            dims = self.arena_dims[in_units]
+            dims = self.arena_dims[in_units].to(x.device)
+            scale_factor = dims.max() / 2
+            shift = dims / 2
             if dims.shape[-1] == x.shape[-1]:
-                return 2 * (x / dims.to(x.device)) - 1
+                return (x - shift) / scale_factor
+            elif dims.shape[-1] * 2 == x.shape[-1]:
+                shift = torch.cat([shift, shift], dim=-1)
+                return (x - shift) / scale_factor
             else:
-                xy = 2 * (x[..., :2] / dims.to(x.device)) - 1
+                xy = (x[..., :2] - shift) / scale_factor
                 return torch.cat([xy, x[..., 2:]], dim=-1)
         else:
             raise ValueError(

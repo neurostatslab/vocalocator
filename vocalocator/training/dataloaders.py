@@ -177,21 +177,18 @@ class VocalizationDataset(Dataset):
         from millimeter units to an arbitrary unit with range [-1, 1].
         """
 
-        scaled_labels = None
         if labels is not None and self.arena_dims is not None:
-            # Shift range to [-1, 1]
-            scaled_labels = labels
+            # Shift range to [-1, 1], but keep units same across dimensions
+            scale_factor = self.arena_dims.max() / 2
             if "orientations" in self.dataset:
-                scaled_labels[..., 0, :] /= (
-                    torch.from_numpy(self.arena_dims).float() / 2
-                )
+                labels[..., 0, :] /= scale_factor
             else:
-                scaled_labels[..., :] /= torch.from_numpy(self.arena_dims).float() / 2
+                labels[..., :] /= scale_factor
 
         if self.normalize_data:
             scaled_audio = (audio - audio.mean()) / audio.std()
 
-        return scaled_audio, scaled_labels
+        return scaled_audio, labels
 
     def __processed_data_for_index__(self, idx: int):
         if self.is_rir_dataset:
