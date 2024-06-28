@@ -174,7 +174,9 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
     def covs(self, units: Unit) -> torch.Tensor:
         covariance = torch.zeros(self.batch_size, 3, 3, device=self.device)
         covariance[:, :2, :2] = self.plane_output.covs(units)
+        covariance[:, 2, 2] = (
             F.softplus(self.height_raw_output[:, 1]) * self.arena_dims[units][2] / 2
+        ) ** 2
         return covariance
 
 
@@ -242,6 +244,216 @@ class GaussianOutput3dFullCov(GaussianOutput):
             A = 0.5 * torch.diag(self.arena_dims[units])
             covariance = A @ covariance @ A.T
         return covariance
+
+
+class GaussianOutput2dOriented(GaussianOutput):
+    N_OUTPUTS_EXPECTED = 7
+    config_name = "GAUSSIAN_2D_ORIENTED"
+
+    def __init__(
+        self,
+        raw_output: torch.Tensor,
+        arena_dims: torch.Tensor,
+        arena_dim_units: Unit,
+    ):
+        """Parametrizes a distribution for both the source location and source directivity.
+        First 2 components are mean location, next 3 components are the lower triangular
+        Cholesky factor of the covariance matrix for the location, next 2 components are
+        the mean and scale of the Von Mises distribution for the orientation.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+
+        self.n_dims: int = 2
+
+        L = torch.zeros(self.batch_size, 2, 2, device=self.device)
+        # embed the elements into the matrix
+        idxs = torch.tril_indices(2, 2)
+        L[:, idxs[0], idxs[1]] = self.raw_output[:, 2:-2]
+        # apply softplus to the diagonal entries to guarantee the resulting
+        # matrix is positive definite
+        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
+
+        self.cholesky_covs = L
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^4).
+        """
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+
+        if x.shape[-1] > self.n_dims:
+            x = x[..., : self.n_dims]
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (
+            len(x.shape) > 2
+            and x.shape[-2] != self.batch_size
+            and x.shape[-3] == self.batch_size
+        ):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to contain "
+                "orientation and location information, but instead found shape {x.shape}."
+            )
+
+        orientation = x[..., 1, :]
+        location = x[..., 0, :]
+
+        orientation_angle = torch.atan2(orientation[..., 1], orientation[..., 0])
+
+        distr = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
+        orientation_distr = torch.distributions.VonMises(
+            loc=self.raw_output[:, 5], concentration=F.softplus(self.raw_output[:, 6])
+        )
+
+        return distr.log_prob(location) + orientation_distr.log_prob(orientation_angle)
+
+    def angle(self):
+        """Mean of the Von Mises distribution over source orientation."""
+        return self.raw_output[:, 5]
+
+    def concentration(self):
+        """Concentration parameter of the Von Mises distribution over source orientation."""
+        return F.softplus(self.raw_output[:, 6])
+
+
+class GaussianOutput4dOriented(GaussianOutput):
+    N_OUTPUTS_EXPECTED = 14
+    config_name = "GAUSSIAN_4D_ORIENTED"
+
+    def __init__(
+        self,
+        raw_output: torch.Tensor,
+        arena_dims: torch.Tensor,
+        arena_dim_units: Unit,
+    ):
+        """Parametrizes a distribution for both source location and source directivity in 2D.
+        First two outputs are the source location, second two are for a point behind the source,
+        e.g. the head point. The final 10 outputs are the lower triangular Cholesky factor of the
+        covariance matrix for the two points.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+
+        self.n_dims: int = 4
+
+        L = torch.zeros(self.batch_size, 4, 4, device=self.device)
+        # embed the elements into the matrix
+        idxs = torch.tril_indices(4, 4)
+        L[:, idxs[0], idxs[1]] = self.raw_output[:, 4:]
+        # apply softplus to the diagonal entries to guarantee the resulting
+        # matrix is positive definite
+        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
+
+        self.cholesky_covs = L
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^4).
+        """
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+
+        if x.shape[-1] > self.n_dims:
+            x = x[..., : self.n_dims]
+        # Ensure there are multiple nodes in the ground truth location. The first is nose
+        # the second is an orientation vector
+        if not (
+            len(x.shape) > 2
+            and x.shape[-2] != self.batch_size
+            and x.shape[-3] == self.batch_size
+        ):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to contain "
+                "orientation and location information, but instead found shape {x.shape}."
+            )
+
+        nose = x[..., 0, :]
+        orientation = x[..., 1, :]  # currently in arbitrary units
+        head = nose - orientation * 0.1
+
+        loc = torch.cat((nose, head), dim=-1)
+        dist = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
+        return dist.log_prob(loc)
+
+
+class GaussianOutput6dOriented(GaussianOutput):
+    N_OUTPUTS_EXPECTED = 27
+    config_name = "GAUSSIAN_6D_ORIENTED"
+
+    def __init__(
+        self,
+        raw_output: torch.Tensor,
+        arena_dims: torch.Tensor,
+        arena_dim_units: Unit,
+    ):
+        """Parametrizes a distribution for both source location and source directivity in 3D.
+        First three outputs are the source location, next three are for a point behind the source,
+        e.g. the head point. The final 21 outputs are the lower triangular Cholesky factor of the
+        covariance matrix for the two points.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+
+        self.n_dims: int = 6
+
+        L = torch.zeros(self.batch_size, 6, 6, device=self.device)
+        # embed the elements into the matrix
+        idxs = torch.tril_indices(6, 6)
+        L[:, idxs[0], idxs[1]] = self.raw_output[:, 6:]
+        # apply softplus to the diagonal entries to guarantee the resulting
+        # matrix is positive definite
+        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
+
+        self.cholesky_covs = L
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^6).
+        """
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+
+        if x.shape[-1] > self.n_dims:
+            x = x[..., : self.n_dims]
+        # Ensure there are multiple nodes in the ground truth location. The first is nose
+        # the second is an orientation vector
+        if not (
+            len(x.shape) > 2
+            and x.shape[-2] != self.batch_size
+            and x.shape[-3] == self.batch_size
+        ):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to contain "
+                "orientation and location information, but instead found shape {x.shape}."
+            )
+
+        nose = x[..., 0, :]
+        orientation = x[..., 1, :]  # currently in arbitrary units
+        head = nose - orientation * 0.1
+
+        loc = torch.cat((nose, head), dim=-1)
+        dist = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
+        return dist.log_prob(loc)
 
 
 class GaussianOutputFixedVariance(GaussianOutput):

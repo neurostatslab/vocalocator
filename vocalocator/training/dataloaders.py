@@ -159,7 +159,14 @@ class VocalizationDataset(Dataset):
     def __label_for_index(self, idx: int):
         if "locations" not in self.dataset:
             return None
-        return torch.from_numpy(self.dataset["locations"][idx].astype(np.float32))
+        loc = torch.from_numpy(self.dataset["locations"][idx].astype(np.float32))
+        if "orientations" in self.dataset:
+            orient = torch.from_numpy(
+                self.dataset["orientations"][idx].astype(np.float32)
+            )
+            loc = torch.stack((loc, orient), axis=0)
+
+        return loc
 
     def scale_features(
         self,
@@ -174,9 +181,12 @@ class VocalizationDataset(Dataset):
         if labels is not None and self.arena_dims is not None:
             # Shift range to [-1, 1]
             scaled_labels = labels
-            scaled_labels[..., : len(self.arena_dims)] /= (
-                torch.from_numpy(self.arena_dims).float() / 2
-            )
+            if "orientations" in self.dataset:
+                scaled_labels[..., 0, :] /= (
+                    torch.from_numpy(self.arena_dims).float() / 2
+                )
+            else:
+                scaled_labels[..., :] /= torch.from_numpy(self.arena_dims).float() / 2
 
         if self.normalize_data:
             scaled_audio = (audio - audio.mean()) / audio.std()

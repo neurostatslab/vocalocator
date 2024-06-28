@@ -314,6 +314,9 @@ class Trainer:
                     outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
                     for output, location in zip(outputs, locations):
+                        if len(location.shape) > 1:
+                            location = location[0]
+
                         # Calculate error in cm
                         point_estimate = (
                             output.point_estimate(units=Unit.CM).cpu().numpy()
@@ -326,15 +329,18 @@ class Trainer:
                         )
 
                         # Ensure the same number of dimensions are being used
-                        location = location[: point_estimate.shape[-1]]
+                        n_dims = min(point_estimate.shape[-1], location.shape[-1])
+                        location = location[..., :n_dims]
+                        point_estimate = point_estimate[..., :n_dims]
 
                         err = np.linalg.norm(point_estimate - location, axis=-1).item()
                         batch_err += err
 
-                        if (
-                            isinstance(output, ProbabilisticOutput)
-                            and location.shape[-1] == 2
-                        ):
+                        # if (
+                        #     isinstance(output, ProbabilisticOutput)
+                        #     and location.shape[-1] == 2
+                        # ):
+                        if False:  # todo: permanent solution
                             compute_calibration = True
                             if idx == 0:
                                 ca = CalibrationAccumulator(
