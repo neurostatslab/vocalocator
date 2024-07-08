@@ -137,9 +137,7 @@ def assess_model(
                 "raw_model_output", shape=(N, model.n_outputs)
             )
 
-        point_predictions = f.create_dataset(
-            "point_predictions", shape=(N, len(model.config["DATA"]["ARENA_DIMS"]))
-        )
+        point_predictions = None
 
         ca = CalibrationAccumulator(arena_dims)
 
@@ -168,9 +166,12 @@ def assess_model(
                             output.raw_output.squeeze().cpu().numpy()
                         )
 
-                    point_predictions[idx] = (
-                        output.point_estimate(units=Unit.MM).cpu().numpy()
-                    )
+                    point_est = output.point_estimate(units=Unit.MM).cpu().numpy()
+                    if point_predictions is None:
+                        point_predictions = f.create_dataset(
+                            "point_predictions", shape=(N, point_est.shape[-1])
+                        )
+                    point_predictions[idx] = point_est
 
                     # unscale location from [-1, 1] square to units in arena (in mm)
                     if location is not None:
