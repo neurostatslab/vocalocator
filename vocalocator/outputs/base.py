@@ -145,7 +145,7 @@ class ProbabilisticOutput(ModelOutput):
         # jacobian determinant of the affine transform from [-1, 1]^2 \to
         # [0,xdim] x [0, ydim] is xdim * ydim / 4, so we divide the density by
         # that.
-        scale_factor = self.arena_dims[units].prod() / 4
+        scale_factor = (self.arena_dims[units].max() ** len(self.arena_dims[units])) / 4
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
@@ -319,12 +319,6 @@ class MDNOutput(ProbabilisticOutput):
         # with the log weights log(theta_ij) defined in the init
         # method, we can now compute the mixture density evaluated at a
         # certain (collection of) point(s)
-        if x.shape[-2] != self.batch_size:
-            raise ValueError(
-                f"Incorrect shape for input! Since batch size is {self.batch_size}, "
-                f"expected second-to-last dim of input `x` to have the same shape. Instead "
-                f"found shape {x.shape}."
-            )
         # stacks R tensors each of shape (..., self.batch_size)
         # into one big tensor of shape (..., self.batch_size, R)
         # this is for compatibility with self.log_weights, which has
