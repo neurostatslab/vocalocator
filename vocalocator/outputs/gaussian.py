@@ -89,8 +89,8 @@ class GaussianOutput(BaseDistributionOutput):
         # calculate this as the equivalent: (A @ L) @ (A @ L).T
         scaled_cholesky = self.cholesky_covs
         if units != Unit.ARBITRARY:
-            A = 0.5 * torch.diag(self.arena_dims[units])
-            scaled_cholesky = A @ scaled_cholesky
+            scale_factor = 0.5 * self.arena_dims[units].max()
+            scaled_cholesky = scale_factor * scaled_cholesky
         return scaled_cholesky @ scaled_cholesky.swapaxes(-2, -1)
 
 
@@ -322,6 +322,87 @@ class GaussianOutput2dOriented(GaussianOutput):
     def concentration(self):
         """Concentration parameter of the Von Mises distribution over source orientation."""
         return F.softplus(self.raw_output[:, 6])
+
+
+class GaussianOutput3dOriented(GaussianOutput):
+    N_OUTPUTS_EXPECTED = 11
+    config_name = "GAUSSIAN_3D_ORIENTED"
+
+    def __init__(
+        self,
+        raw_output: torch.Tensor,
+        arena_dims: torch.Tensor,
+        arena_dim_units: Unit,
+    ):
+        """Parametrizes a distribution for both the source location and source directivity.
+        First 3 components are mean location, next 6 components are the lower triangular
+        Cholesky factor of the covariance matrix for the location, next 2 components are
+        the mean and scale of the Von Mises distribution for the orientation.
+
+        This class is for predictions of 3d location and 2d orientation.
+        """
+        super().__init__(raw_output, arena_dims, arena_dim_units)
+
+        self.n_dims: int = 3
+
+        L = torch.zeros(self.batch_size, 3, 3, device=self.device)
+        # embed the elements into the matrix
+        idxs = torch.tril_indices(3, 3)
+        L[:, idxs[0], idxs[1]] = self.raw_output[:, 3:-2]
+        # apply softplus to the diagonal entries to guarantee the resulting
+        # matrix is positive definite
+        new_diagonals = F.softplus(L.diagonal(dim1=-2, dim2=-1))
+        L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
+
+        self.cholesky_covs = L
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^4).
+        """
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+
+        if x.shape[-1] > self.n_dims:
+            x = x[..., : self.n_dims]
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (
+            len(x.shape) > 2
+            and x.shape[-2] != self.batch_size
+            and x.shape[-3] == self.batch_size
+        ):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to contain "
+                "orientation and location information, but instead found shape {x.shape}."
+            )
+
+        orientation = x[..., 1, :]
+        location = x[..., 0, :]
+
+        orientation_angle = torch.atan2(orientation[..., 1], orientation[..., 0])
+
+        distr = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
+        orientation_distr = torch.distributions.VonMises(
+            loc=self.raw_output[:, -2], concentration=F.softplus(self.raw_output[:, -1])
+        )
+
+        # Note that this may require a different learning rate
+        return distr.log_prob(location) + orientation_distr.log_prob(orientation_angle)
+
+    def angle(self):
+        """Mean of the Von Mises distribution over source orientation."""
+        return self.raw_output[:, -2]
+
+    def concentration(self):
+        """Concentration parameter of the Von Mises distribution over source orientation."""
+        return F.softplus(self.raw_output[:, -1])
 
 
 class GaussianOutput4dOriented(GaussianOutput):
