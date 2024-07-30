@@ -145,7 +145,7 @@ class ProbabilisticOutput(ModelOutput):
         # jacobian determinant of the affine transform from [-1, 1]^2 \to
         # [0,xdim] x [0, ydim] is xdim * ydim / 4, so we divide the density by
         # that.
-        scale_factor = (self.arena_dims[units].max() ** len(self.arena_dims[units])) / 4
+        scale_factor = (self.arena_dims[units].max() / 2) ** len(self.arena_dims[units])
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
@@ -222,7 +222,9 @@ class UniformOutput(BaseDistributionOutput):
                 f"found shape {x.shape}."
             )
         output_shape = x.shape[:-1]
-        return torch.log(torch.tensor(0.25)) * torch.ones(output_shape, device=x.device)
+        return torch.log(
+            torch.tensor(1 / 2 ** (len(self.arena_dims[Unit.MM])))
+        ) * torch.ones(output_shape, device=x.device)
 
 
 class MDNOutput(ProbabilisticOutput):
