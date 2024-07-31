@@ -70,27 +70,11 @@ class ModelOutput:
         elif in_units == Unit.ARBITRARY:
             dims = self.arena_dims[out_units].to(x.device)
             scale_factor = dims.max() / 2
-            shift = dims / 2
-            if dims.shape[-1] == x.shape[-1]:
-                return (x * scale_factor) + shift
-            elif dims.shape[-1] * 2 == x.shape[-1]:
-                shift = torch.cat([shift, shift], dim=-1)
-                return (x * scale_factor) + shift
-            else:
-                xy = (x[..., :2] + 1) * dims.to(x.device)
-                return torch.cat([xy, x[..., 2:]], dim=-1)
+            return x * scale_factor
         elif out_units == Unit.ARBITRARY:
             dims = self.arena_dims[in_units].to(x.device)
             scale_factor = dims.max() / 2
-            shift = dims / 2
-            if dims.shape[-1] == x.shape[-1]:
-                return (x - shift) / scale_factor
-            elif dims.shape[-1] * 2 == x.shape[-1]:
-                shift = torch.cat([shift, shift], dim=-1)
-                return (x - shift) / scale_factor
-            else:
-                xy = (x[..., :2] - shift) / scale_factor
-                return torch.cat([xy, x[..., 2:]], dim=-1)
+            return x / scale_factor
         else:
             raise ValueError(
                 "Expected both `in_units` and `out_units` to be instances of "
