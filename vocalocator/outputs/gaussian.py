@@ -39,7 +39,8 @@ class GaussianOutput(BaseDistributionOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        return torch.clamp(self.raw_output[:, : self.n_dims], -1, 1)
+        # return torch.clamp(self.raw_output[:, : self.n_dims], -1, 1)
+        return self.raw_output[:, : self.n_dims]
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -119,8 +120,10 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        xy = torch.clamp(self.plane_raw_output[:, :2], -1, 1)
-        height = torch.clamp(self.height_raw_output[:, 0], -1, 1)
+        # xy = torch.clamp(self.plane_raw_output[:, :2], -1, 1)
+        # height = torch.clamp(self.height_raw_output[:, 0], -1, 1)
+        xy = self.plane_raw_output[:, :2]
+        height = self.height_raw_output[:, 0]
         return torch.cat((xy, height[:, None]), dim=-1)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
