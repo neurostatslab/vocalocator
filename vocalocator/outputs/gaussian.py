@@ -49,27 +49,16 @@ class GaussianOutput(BaseDistributionOutput):
         Expects x to have shape (..., self.batch_size, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^2).
         """
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
         # Handle the case where there are multiple nodes in the ground truth location
         # Subclasses should override this
-        if (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
-            x = x[:, 0, :]  # select one node arbitrarily
-
-        # check that the second-to-last dimension is the same as
-        # the batch dimension
-        if x.shape[-2] != self.batch_size:
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
             raise ValueError(
-                f"Incorrect shape for input! Since batch size is {self.batch_size}, "
-                f"expected second-to-last dim of input `x` to have the same shape. Instead "
-                f"found shape {x.shape}."
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
+
+        x = x[..., 0, : self.n_dims]  # This output only uses one node
+
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
@@ -141,6 +130,14 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 3), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^3).
         """
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
+            )
+
         # Handle the case where the dimensions of x are not the same as that of the
         # model output
         if x.shape[-1] < self.n_dims:
@@ -150,16 +147,7 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
                 f"but instead found shape {x.shape}."
             )
 
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
-            x = x[:, 0, :]
+        x = x[..., 0, : self.n_dims]  # This output only uses one node
 
         height_scale = F.softplus(self.height_raw_output[:, 1])
         distr_plane = torch.distributions.MultivariateNormal(
@@ -175,7 +163,7 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         covariance = torch.zeros(self.batch_size, 3, 3, device=self.device)
         covariance[:, :2, :2] = self.plane_output.covs(units)
         covariance[:, 2, 2] = (
-            F.softplus(self.height_raw_output[:, 1]) * self.arena_dims[units][2] / 2
+            F.softplus(self.height_raw_output[:, 1]) * self.arena_dims[units].max() / 2
         ) ** 2
         return covariance
 
@@ -214,6 +202,14 @@ class GaussianOutput3dFullCov(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 3), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^3).
         """
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
+            )
+
         # Handle the case where the dimensions of x are not the same as that of the
         # model output
         if x.shape[-1] < self.n_dims:
@@ -223,16 +219,7 @@ class GaussianOutput3dFullCov(GaussianOutput):
                 f"but instead found shape {x.shape}."
             )
 
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
-            x = x[:, 0, :]
+        x = x[..., 0, : self.n_dims]  # This output only uses one node
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
@@ -241,8 +228,8 @@ class GaussianOutput3dFullCov(GaussianOutput):
     def covs(self, units: Unit) -> torch.Tensor:
         covariance = self.cholesky_covs @ self.cholesky_covs.swapaxes(-2, -1)
         if units != Unit.ARBITRARY:
-            A = 0.5 * torch.diag(self.arena_dims[units])
-            covariance = A @ covariance @ A.T
+            scale = 0.5 * self.arena_dims[units].max()
+            covariance = scale**2 * covariance
         return covariance
 
 
@@ -284,25 +271,22 @@ class GaussianOutput2dOriented(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^4).
         """
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
         # Handle the case where there are multiple nodes in the ground truth location
         # Subclasses should override this
-        if not (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
             raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to contain "
-                "orientation and location information, but instead found shape {x.shape}."
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
 
-        orientation = x[..., 1, :]
-        location = x[..., 0, :]
+        # Handle the case where the dimensions of x are not the same as that of the
+        # model output
+        x = x[..., : self.n_dims]
+
+        nose = x[..., 0, :]
+        head = x[..., 1, :]
+
+        orientation = nose - head
 
         orientation_angle = torch.atan2(orientation[..., 1], orientation[..., 0])
 
@@ -313,7 +297,7 @@ class GaussianOutput2dOriented(GaussianOutput):
             loc=self.raw_output[:, 5], concentration=F.softplus(self.raw_output[:, 6])
         )
 
-        return distr.log_prob(location) + orientation_distr.log_prob(orientation_angle)
+        return distr.log_prob(nose) + orientation_distr.log_prob(orientation_angle)
 
     def angle(self):
         """Mean of the Von Mises distribution over source orientation."""
@@ -364,25 +348,19 @@ class GaussianOutput3dOriented(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^4).
         """
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
         # Handle the case where there are multiple nodes in the ground truth location
         # Subclasses should override this
-        if not (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
             raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to contain "
-                "orientation and location information, but instead found shape {x.shape}."
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
 
-        orientation = x[..., 1, :]
-        location = x[..., 0, :]
+        x = x[..., : self.n_dims]
+
+        nose = x[..., 0, :]
+        head = x[..., 1, :]
+        orientation = nose - head
 
         orientation_angle = torch.atan2(orientation[..., 1], orientation[..., 0])
 
@@ -394,7 +372,7 @@ class GaussianOutput3dOriented(GaussianOutput):
         )
 
         # Note that this may require a different learning rate
-        return distr.log_prob(location) + orientation_distr.log_prob(orientation_angle)
+        return distr.log_prob(nose) + orientation_distr.log_prob(orientation_angle)
 
     def angle(self):
         """Mean of the Von Mises distribution over source orientation."""
@@ -443,26 +421,17 @@ class GaussianOutput4dOriented(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^4).
         """
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
-        # Ensure there are multiple nodes in the ground truth location. The first is nose
-        # the second is an orientation vector
-        if not (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
             raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to contain "
-                "orientation and location information, but instead found shape {x.shape}."
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
+        x = x[..., : self.n_dims]
 
         nose = x[..., 0, :]
-        orientation = x[..., 1, :]  # currently in arbitrary units
-        head = nose - orientation * 0.1
+        head = x[..., 1, :]
 
         loc = torch.cat((nose, head), dim=-1)
         dist = torch.distributions.MultivariateNormal(
@@ -509,26 +478,17 @@ class GaussianOutput6dOriented(GaussianOutput):
         Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^6).
         """
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-
-        if x.shape[-1] > self.n_dims:
-            x = x[..., : self.n_dims]
-        # Ensure there are multiple nodes in the ground truth location. The first is nose
-        # the second is an orientation vector
-        if not (
-            len(x.shape) > 2
-            and x.shape[-2] != self.batch_size
-            and x.shape[-3] == self.batch_size
-        ):
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
             raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to contain "
-                "orientation and location information, but instead found shape {x.shape}."
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
+        x = x[..., :3]
 
         nose = x[..., 0, :]
-        orientation = x[..., 1, :]  # currently in arbitrary units
-        head = nose - orientation * 0.1
+        head = x[..., 1, :]
 
         loc = torch.cat((nose, head), dim=-1)
         dist = torch.distributions.MultivariateNormal(
