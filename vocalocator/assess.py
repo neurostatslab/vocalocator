@@ -188,8 +188,7 @@ def assess_model(
                         scaled_locations_dataset[idx] = scaled_location
 
                         # other useful info
-                        # TODO: add per-output should-calibrate flag
-                        if isinstance(output, ProbabilisticOutput) and not inference:
+                        if output.computes_calibration and not inference:
                             should_compute_calibration = True
                             ca.calculate_step(
                                 output, scaled_location, temperature=temperature

@@ -22,6 +22,8 @@ class ModelOutput:
     a (batch of) response distributions, if probabilistic.
     """
 
+    computes_calibration = False
+
     def __init__(
         self,
         raw_output,
@@ -115,7 +117,8 @@ class PointOutput(ModelOutput):
     config_name = "POINT"
 
     def _point_estimate(self):
-        return torch.clamp(self.raw_output, -1, 1)
+        # return torch.clamp(self.raw_output, -1, 1)
+        return self.raw_output
 
 
 class ProbabilisticOutput(ModelOutput):
@@ -124,6 +127,8 @@ class ProbabilisticOutput(ModelOutput):
     parameterizes a (batch of) distributions with its unit and choice of
     parameterization.
     """
+
+    computes_calibration = True
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -355,6 +360,10 @@ class MDNOutput(ProbabilisticOutput):
 
         return reweighted_estimates.sum(dim=1)  # (self.batch_size, 2)
 
+    @property
+    def computes_calibration(self):
+        return all(r.computes_calibration for r in self.responses)
+
 
 class EnsembleOutput(ProbabilisticOutput):
     """
@@ -410,3 +419,7 @@ class EnsembleOutput(ProbabilisticOutput):
             if not isinstance(distr, UniformOutput):
                 to_include.append(distr.point_estimate())
         return sum(to_include) / len(to_include)
+
+    @property
+    def computes_calibration(self):
+        return all(r.computes_calibration for r in self.distributions)

@@ -87,6 +87,7 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 7
     config_name = "GAUSSIAN_3D_INDEPENDENT_HEIGHT"
+    computes_calibration = False
 
     def __init__(
         self,
@@ -172,6 +173,7 @@ class GaussianOutput3dFullCov(GaussianOutput):
 
     N_OUTPUTS_EXPECTED = 9
     config_name = "GAUSSIAN_3D_FULL_COV"
+    computes_calibration = False
 
     def __init__(
         self,
@@ -386,6 +388,7 @@ class GaussianOutput3dOriented(GaussianOutput):
 class GaussianOutput4dOriented(GaussianOutput):
     N_OUTPUTS_EXPECTED = 14
     config_name = "GAUSSIAN_4D_ORIENTED"
+    computes_calibration = False
 
     def __init__(
         self,
@@ -443,6 +446,7 @@ class GaussianOutput4dOriented(GaussianOutput):
 class GaussianOutput6dOriented(GaussianOutput):
     N_OUTPUTS_EXPECTED = 27
     config_name = "GAUSSIAN_6D_ORIENTED"
+    computes_calibration = False
 
     def __init__(
         self,
