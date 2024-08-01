@@ -89,7 +89,7 @@ TESTING VALIDATION SET. Epoch 1 [416/770]
 |--------------------|-------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | /audio     | (*, n_channels) | float     | All sound events concatenated along axis 0                                                                                                     |
 | /length_idx        | (n + 1,)                  | int       | Index into audio dataset. Sound event `i` should span the half open interval [`length_idx[i]`, `length_idx[i+1]`) and the first element should be 0. |
-| /locations         | (n, num_nodes, num_dims)  | float     | Locations associated with each sound event. Only required for training. May contain multiple nodes.                            |
+| /locations         | (n, num_nodes, num_dims)  | float     | Locations associated with each sound event. Only required for training. May contain multiple nodes. Expects the origin to lie at the center of the arena.|
 | /node_names        | (num_dims,)               | str       | Names of nodes contained by `locations`. Only required for training.                                                                                                                                                                                 |
 1. Optionally, manually generate a train/val split. If none is provided, an 80/10/10 train/validation/test split will be generated automatically and saved in the model directory. Manually generated splits can be used by saving them to the same directory as 1-D numpy arrays with the names `train_set.npy` and `val_set.npy`. This directory is passed to VCL through the `--indices` option.
 ```python
