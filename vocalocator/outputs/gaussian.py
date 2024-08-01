@@ -504,6 +504,54 @@ class GaussianOutput6dOriented(GaussianOutput):
         return dist.log_prob(loc)
 
 
+class GaussianOutput6dSingleVariance(GaussianOutput):
+    N_OUTPUTS_EXPECTED = 1 + 4 * 6
+    config_name = "GAUSSIAN_MANY_OUTPUTS_SINGLE_VARIANCE"
+    computes_calibration = False
+
+    def __init__(
+        self, raw_output: torch.Tensor, arena_dims: torch.Tensor, arena_dims_units: Unit
+    ):
+        super().__init__(raw_output, arena_dims, arena_dims_units)
+
+        self.n_dims: int = 6
+
+        scale_factor = F.softplus(self.raw_output[:, 0])
+        L = torch.zeros(self.batch_size, 4 * 6, 4 * 6, device=self.device)
+        L = torch.eye(4 * 6, device=self.device) * scale_factor
+        L = L[None, ...].expand(self.batch_size, -1, -1)
+        self.cholesky_covs = L
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
+        in arbitrary units (i.e. on the square [-1, 1]^6).
+        """
+        # Handle the case where there are multiple nodes in the ground truth location
+        # Subclasses should override this
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
+            )
+        x = x[..., :3]
+
+        nose = x[..., 0, :]
+        head = x[..., 1, :]
+
+        loc = torch.cat((nose, head), dim=-1)
+        log_probs = [
+            torch.distributions.MultivariateNormal(
+                loc=self.raw_output[6 * i : 6 * i + 6], scale_tril=self.cholesky_covs
+            ).log_prob(loc)
+            for i in range(4)
+        ]
+        return torch.logsumexp(torch.stack(log_probs, dim=-1), dim=-1)
+
+
 class GaussianOutputFixedVariance(GaussianOutput):
     N_OUTPUTS_EXPECTED = 2
     config_name = "GAUSSIAN_FIXED_VARIANCE"
