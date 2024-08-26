@@ -57,14 +57,13 @@ class GaussianOutput(BaseDistributionOutput):
                 "Incorrect shape for input! Expected last two dimensions to be "
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
-
-        x = x[..., 0, : self.n_dims]  # This output only uses one node
+        nose = x[..., 0, : self.n_dims]  # This output only uses one node
 
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
 
-        return distr.log_prob(x)
+        return distr.log_prob(nose)
 
     def covs(self, units: Unit) -> torch.Tensor:
         """
