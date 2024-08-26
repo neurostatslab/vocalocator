@@ -343,7 +343,7 @@ class Trainer:
                                     output.arena_dims[Unit.MM].cpu().numpy()
                                 )
                             location_mm = location * 10
-                            ca.calculate_step(output, location_mm)
+                            ca.calculate_step(output, location_mm[None, :])
 
                         idx += 1
 

@@ -50,20 +50,15 @@ class GaussianOutput(BaseDistributionOutput):
         Expects x to have shape (..., self.batch_size, 2), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^2).
         """
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
-            raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to be "
-                "(num_nodes, num_dims), but instead found shape {x.shape}."
-            )
-        nose = x[..., 0, : self.n_dims]  # This output only uses one node
+        # Subclasses should have shape checks to ensure the correct number of nodes
+        # is provided
+        x = x[..., : self.n_dims]  # This output only uses one node
 
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
 
-        return distr.log_prob(nose)
+        return distr.log_prob(x)
 
     def covs(self, units: Unit) -> torch.Tensor:
         """
