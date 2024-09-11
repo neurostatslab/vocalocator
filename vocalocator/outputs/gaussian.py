@@ -428,7 +428,7 @@ class GaussianOutput4dOriented(GaussianOutput):
                 "Incorrect shape for input! Expected last two dimensions to be "
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
-        x = x[..., : self.n_dims]
+        x = x[..., :2]
 
         nose = x[..., 0, :]
         head = x[..., 1, :]
@@ -664,3 +664,30 @@ class GaussianOutputFullCov(GaussianOutput):
         L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
         # reshape y_hat so we can concatenate it to L
         self.cholesky_covs = L
+
+    def covs(self, units: Unit) -> torch.Tensor:
+        covariance = self.cholesky_covs @ self.cholesky_covs.swapaxes(-2, -1)
+        if units != Unit.ARBITRARY:
+            scale = 0.5 * self.arena_dims[units].max()
+            covariance = scale**2 * covariance
+        return covariance
+
+    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Return log p(x) under the Gaussian parameterized by the model
+        output.
+
+        Expects x to have shape (..., self.batch_size, 2), and to be provided
+        in arbitrary units (i.e. all dimensions are bounded by [-1, 1]
+        """
+        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
+            raise ValueError(
+                "Incorrect shape for input! Expected last two dimensions to be "
+                "(num_nodes, num_dims), but instead found shape {x.shape}."
+            )
+
+        x = x[..., 0, : self.n_dims]  # This output only uses one node
+        distr = torch.distributions.MultivariateNormal(
+            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+        )
+        return distr.log_prob(x)

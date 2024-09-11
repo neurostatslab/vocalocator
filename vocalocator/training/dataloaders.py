@@ -76,16 +76,20 @@ class VocalizationDataset(Dataset):
             self.node_indices = np.array([0])
         else:
             if "node_names" not in dataset:
-                raise ValueError("Dataset does not contain node names")
-            dset_node_names = list(map(bytes.decode, dataset["node_names"]))
+                pass
+                # raise ValueError("Dataset does not contain node names")
+                dset_node_names = []
+            else:
+                dset_node_names = list(map(bytes.decode, dataset["node_names"]))
             self.node_indices = [
                 i for i, node in enumerate(dset_node_names) if node in nodes
             ]
 
             if not self.node_indices:
-                raise ValueError(
-                    "No nodes found in dataset with the given names: {}".format(nodes)
-                )
+                self.node_indices = np.array([0])
+                # raise ValueError(
+                # "No nodes found in dataset with the given names: {}".format(nodes)
+                # )
             self.node_indices = np.array(self.node_indices)
 
         if self.index is not None:
@@ -177,7 +181,7 @@ class VocalizationDataset(Dataset):
     def __label_for_index(self, idx: int):
         if "locations" not in self.dataset:
             return None
-        if len(self.dataset["locations"]) == 2:
+        if len(self.dataset["locations"].shape) == 2:
             locs = torch.from_numpy(
                 self.dataset["locations"][idx].astype(np.float32)[None, :]
             )
