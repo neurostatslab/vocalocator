@@ -150,7 +150,9 @@ class ProbabilisticOutput(ModelOutput):
         the distribution. Higher temperatures shift the distribution towards uniform,
         lower temperatures towards a point mass at the mode.
         """
-        probs = torch.exp(self.log_p(coordinate_grid, units=units) / temperature)
+        probs = torch.exp(
+            self.log_p(coordinate_grid[..., None, :], units=units) / temperature
+        )
         # normalize to 1
         return probs / probs.sum()
 
