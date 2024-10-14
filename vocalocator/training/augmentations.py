@@ -1,4 +1,5 @@
 import torch
+from numpy import sqrt
 from torch import nn
 
 
@@ -110,6 +111,32 @@ class AddWhiteNoise(nn.Module):
         return x + noise
 
 
+class AddLowFreqNoise(nn.Module):
+    def __init__(self, p: float = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, audio: torch.Tensor):
+        """Adds low frequency noise to an audio tensor of shape (B, T, C)"""
+        if torch.rand(1) > self.p:
+            return audio
+
+        rand_shape = (audio.shape[0], audio.shape[1] // 2 + 1, audio.shape[2])
+        spectrum = torch.rand(rand_shape) * torch.exp(
+            -1.0j * torch.rand(rand_shape) * 2 * torch.pi
+        )
+        spectrum = spectrum.to(audio.device)
+        freq_decay = torch.exp(-2 * torch.linspace(0, 1, spectrum.shape[-2])).to(
+            audio.device
+        )
+        freq_decay[0] = 0
+
+        noise = torch.fft.irfft(spectrum * freq_decay[None, :, None], dim=-2)
+        noise = (noise - noise.mean()) / noise.std()
+        mix = (audio + noise) / sqrt(2)
+        return mix
+
+
 def build_augmentations(CONFIG: dict) -> nn.Module:
     """Builds an augmentation module using the config parameters
     The augmentation module is a subclass of nn.Module which takes in a batched data tensor
@@ -142,6 +169,13 @@ def build_augmentations(CONFIG: dict) -> nn.Module:
             p=noise_config.get("PROB", 0.5),
         )
         augmentations.append(noise)
+
+    if low_freq_noise_config := aug_config.get("LOW_FREQ_NOISE", False):
+        # Adds low frequency noise to the audio
+        low_freq_noise = AddLowFreqNoise(
+            p=low_freq_noise_config.get("PROB", 0.5),
+        )
+        augmentations.append(low_freq_noise)
 
     if mask_config := aug_config.get("MASK", False):
         # Masks a random part of the audio
