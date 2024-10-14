@@ -187,7 +187,7 @@ class VocalizationDataset(Dataset):
             )
             return locs
 
-        locs = self.dataset["locations"][idx, self.node_indices, :]
+        locs = self.dataset["locations"][idx, ..., self.node_indices, :]
         locs = torch.from_numpy(locs.astype(np.float32))
         return locs
 
