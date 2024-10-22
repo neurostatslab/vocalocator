@@ -1,4 +1,5 @@
 from .base import VocalocatorArchitecture
+from .conformer import ResnetConformer
 from .ensemble import VocalocatorEnsemble
 from .simplenet import VocalocatorSimpleNetwork
 from .simplenet_crosscorr import CorrSimpleNetwork
@@ -9,4 +10,5 @@ __all__ = [
     VocalocatorEnsemble,
     CorrSimpleNetwork,
     Wavenet,
+    ResnetConformer,
 ]
