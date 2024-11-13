@@ -50,7 +50,7 @@ class ResnetConformer(VocalocatorArchitecture):
         conf_ksize = model_config["CONFORMER_KERNEL_SIZE"]
 
         self.resnet = ResNet1D(
-            in_channels=4,
+            in_channels=N,
             base_filters=resnet_conv_channels // 2 ** (resnet_num_blocks // 8),
             kernel_size=resnet_kernel_size,
             stride=2,
@@ -92,3 +92,49 @@ class ResnetConformer(VocalocatorArchitecture):
 
     def clip_grads(self):
         nn.utils.clip_grad_norm_(self.parameters(), 1.0, error_if_nonfinite=True)
+
+
+if __name__ == "__main__":
+    from itertools import product
+
+    import numpy as np
+    from tqdm import tqdm
+
+    from ..training.configs import DEFAULT_CONFIG
+    from ..training.models import make_output_factory
+
+    sample_config = DEFAULT_CONFIG.copy()
+    factory = make_output_factory(sample_config)
+    sample_data = torch.rand(1, 1024, 4)
+
+    # Test various choices of model params to see what works and what doesn't
+    ranges = {
+        "RESNET_NUM_BLOCKS": [2, 31],
+        "RESNET_CONV_CHANNELS": (32, 64, 128, 256),
+        # "RESNET_KERNEL_SIZE": list(map(lambda x: 2 * x + 1, range(1, 20))),
+        "RESNET_KERNEL_SIZE": [3, 41],
+        # "CONFORMER_NUM_LAYERS": list(range(1, 20)),
+        "CONFORMER_NUM_LAYERS": [1, 30],
+        # "CONFORMER_KERNEL_SIZE": list(map(lambda x: 2 * x + 1, range(1, 20))),
+        "CONFORMER_KERNEL_SIZE": (3, 31),
+        "CONFORMER_HEADS": (1, 2, 4, 8, 16),
+        "CONFORMER_MLP_DIM": (128, 256, 512, 1024),
+    }
+    keys = list(ranges.keys())  # force an ordering
+    ranges = [ranges[k] for k in keys]
+    prod = product(*ranges)
+    num_tests = np.prod(list(map(len, ranges)))
+
+    for configuration in tqdm(prod, total=num_tests):
+        model_params = dict(zip(keys, configuration))
+        cfg = sample_config.copy()
+        cfg["MODEL_PARAMS"] = model_params
+        try:
+            model = ResnetConformer(cfg, factory)
+            model(sample_data)
+        except Exception as e:
+            print(f"{type(e)} for the following configuration:")
+            for key, value in model_params.items():
+                print(f"\t{key}: {value}")
+            print()
+            print()

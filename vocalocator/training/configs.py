@@ -26,6 +26,7 @@ DEFAULT_CONFIG = {
         ],
     },
     "ARCHITECTURE": "VocalocatorSimpleNetwork",
+    "MODEL_PARAMS": {"OUTPUT_TYPE": "GAUSSIAN_FULL_COV"},
     "GENERAL": {
         "DEVICE": "GPU",  # 'GPU' or 'CPU'
         "TORCH_SEED": 888,  # rng seeds for reproducibility
