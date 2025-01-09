@@ -151,7 +151,7 @@ def build_augmentations(CONFIG: dict) -> nn.Module:
     augmentations = []
     aug_config = CONFIG["AUGMENTATIONS"]
 
-    if not CONFIG["AUGMENTATIONS"]["AUGMENT_DATA"]:
+    if not CONFIG["DATA"]["AUGMENT_DATA"]:
         return Identity()
 
     if inversion_config := aug_config.get("INVERSION", False):
