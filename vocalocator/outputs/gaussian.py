@@ -24,7 +24,8 @@ class GaussianOutput(BaseDistributionOutput):
         # in their init methods
         self.cholesky_covs: torch.Tensor
 
-        self.n_dims: int = 2
+        self.nnode: int  # Should be provided by subclasses
+        self.ndim: int  # Should be provided by subclasses
 
         if raw_output.shape[-1] != self.N_OUTPUTS_EXPECTED:
             raise ValueError(
@@ -39,20 +40,24 @@ class GaussianOutput(BaseDistributionOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        # return torch.clamp(self.raw_output[:, : self.n_dims], -1, 1)
-        return self.raw_output[:, : self.n_dims]
+        # raw_output = torch.clamp(self.raw_output, -1, 1)
+        raw_output = self.raw_output
+        return raw_output[:, : self.ndim * self.nnode].reshape(
+            -1, self.nnode, self.ndim
+        )
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return log p(x) under the Gaussian parameterized by the model
         output.
 
-        Expects x to have shape (..., self.batch_size, 2), and to be provided
+        Expects x to have shape (..., self.batch_size, self.nnode, self.ndim), and to be provided
         in arbitrary units (i.e. on the square [-1, 1]^2).
         """
         # Subclasses should have shape checks to ensure the correct number of nodes
         # is provided
-        x = x[..., : self.n_dims]  # This output only uses one node
+        x = x[..., : self.nnode, : self.ndim]  # This output only uses one node
+        x = x.reshape(*x.shape[:-2], self.nnode * self.ndim)
 
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
@@ -79,7 +84,6 @@ class GaussianOutput(BaseDistributionOutput):
 
 
 class GaussianOutput3dIndependentHeight(GaussianOutput):
-
     N_OUTPUTS_EXPECTED = 7
     config_name = "GAUSSIAN_3D_INDEPENDENT_HEIGHT"
     computes_calibration = False
@@ -96,7 +100,8 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         # in their init methods
         self.cholesky_covs: torch.Tensor
 
-        self.n_dims: int = 3
+        self.nnode: int = 1
+        self.ndim: int = 3
 
         self.plane_raw_output = raw_output[
             :, : GaussianOutputFullCov.N_OUTPUTS_EXPECTED
@@ -118,15 +123,15 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         # height = torch.clamp(self.height_raw_output[:, 0], -1, 1)
         xy = self.plane_raw_output[:, :2]
         height = self.height_raw_output[:, 0]
-        return torch.cat((xy, height[:, None]), dim=-1)
+        return torch.cat((xy, height[:, None]), dim=-1).unsqueeze(-2)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         """
         Return log p(x) under the Gaussian parameterized by the model
         output.
 
-        Expects x to have shape (..., self.batch_size, 3), and to be provided
-        in arbitrary units (i.e. on the square [-1, 1]^3).
+        Expects x to have shape (..., self.batch_size, 1, 3), and to be provided
+        in arbitrary units (i.e. on the cube [-1, 1]^3).
         """
         # Handle the case where there are multiple nodes in the ground truth location
         # Subclasses should override this
@@ -138,14 +143,16 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
 
         # Handle the case where the dimensions of x are not the same as that of the
         # model output
-        if x.shape[-1] < self.n_dims:
+        if x.shape[-1] < self.ndim:
             # Issue warning if ground truth location does not contain height info
             raise ValueError(
                 f"Expected ground truth location to contain height information, "
                 f"but instead found shape {x.shape}."
             )
 
-        x = x[..., 0, : self.n_dims]  # This output only uses one node
+        x = x[..., : self.nnode, : self.ndim].reshape(
+            *x.shape[:-2], self.nnode * self.ndim
+        )
 
         height_scale = F.softplus(self.height_raw_output[:, 1])
         distr_plane = torch.distributions.MultivariateNormal(
@@ -167,7 +174,6 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
 
 
 class GaussianOutput3dFullCov(GaussianOutput):
-
     N_OUTPUTS_EXPECTED = 9
     config_name = "GAUSSIAN_3D_FULL_COV"
     computes_calibration = False
@@ -180,7 +186,8 @@ class GaussianOutput3dFullCov(GaussianOutput):
     ):
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
-        self.n_dims: int = 3
+        self.nnode: int = 1
+        self.ndim: int = 3
 
         L = torch.zeros(self.batch_size, 3, 3, device=self.device)
         # embed the elements into the matrix
@@ -211,14 +218,16 @@ class GaussianOutput3dFullCov(GaussianOutput):
 
         # Handle the case where the dimensions of x are not the same as that of the
         # model output
-        if x.shape[-1] < self.n_dims:
+        if x.shape[-1] < self.ndim:
             # Issue warning if ground truth location does not contain height info
             raise ValueError(
                 f"Expected ground truth location to contain height information, "
                 f"but instead found shape {x.shape}."
             )
 
-        x = x[..., 0, : self.n_dims]  # This output only uses one node
+        x = x[..., : self.nnode, : self.ndim].reshape(
+            *x.shape[:-2], self.nnode * self.ndim
+        )
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
@@ -249,7 +258,8 @@ class GaussianOutput2dOriented(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
-        self.n_dims: int = 2
+        self.nnode: int = 2
+        self.ndim: int = 2
 
         L = torch.zeros(self.batch_size, 2, 2, device=self.device)
         # embed the elements into the matrix
@@ -278,15 +288,12 @@ class GaussianOutput2dOriented(GaussianOutput):
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
 
-        # Handle the case where the dimensions of x are not the same as that of the
-        # model output
-        x = x[..., : self.n_dims]
+        x = x[..., : self.nnode, : self.ndim]
 
         nose = x[..., 0, :]
         head = x[..., 1, :]
 
         orientation = nose - head
-
         orientation_angle = torch.atan2(orientation[..., 1], orientation[..., 0])
 
         distr = torch.distributions.MultivariateNormal(
@@ -326,7 +333,8 @@ class GaussianOutput3dOriented(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
-        self.n_dims: int = 3
+        self.nnode: int = 2
+        self.ndim: int = 3
 
         L = torch.zeros(self.batch_size, 3, 3, device=self.device)
         # embed the elements into the matrix
@@ -355,7 +363,7 @@ class GaussianOutput3dOriented(GaussianOutput):
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
 
-        x = x[..., : self.n_dims]
+        x = x[..., : self.nnode, : self.ndim]
 
         nose = x[..., 0, :]
         head = x[..., 1, :]
@@ -400,7 +408,8 @@ class GaussianOutput4dOriented(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
-        self.n_dims: int = 4
+        self.nnode: int = 2
+        self.ndim: int = 2
 
         L = torch.zeros(self.batch_size, 4, 4, device=self.device)
         # embed the elements into the matrix
@@ -428,16 +437,14 @@ class GaussianOutput4dOriented(GaussianOutput):
                 "Incorrect shape for input! Expected last two dimensions to be "
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
-        x = x[..., :2]
+        x = x[..., : self.nnode, : self.ndim].reshape(
+            *x.shape[:-2], self.nnode * self.ndim
+        )
 
-        nose = x[..., 0, :]
-        head = x[..., 1, :]
-
-        loc = torch.cat((nose, head), dim=-1)
         dist = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
-        return dist.log_prob(loc)
+        return dist.log_prob(x)
 
 
 class GaussianOutput6dOriented(GaussianOutput):
@@ -458,7 +465,8 @@ class GaussianOutput6dOriented(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
-        self.n_dims: int = 6
+        self.nnode: int = 2
+        self.ndim: int = 3
 
         L = torch.zeros(self.batch_size, 6, 6, device=self.device)
         # embed the elements into the matrix
@@ -486,64 +494,14 @@ class GaussianOutput6dOriented(GaussianOutput):
                 "Incorrect shape for input! Expected last two dimensions to be "
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
-        x = x[..., :3]
+        x = x[..., : self.nnode, : self.ndim].reshape(
+            *x.shape[:-2], self.nnode * self.ndim
+        )
 
-        nose = x[..., 0, :]
-        head = x[..., 1, :]
-
-        loc = torch.cat((nose, head), dim=-1)
         dist = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )
-        return dist.log_prob(loc)
-
-
-class GaussianOutput6dSingleVariance(GaussianOutput):
-    N_OUTPUTS_EXPECTED = 1 + 4 * 6
-    config_name = "GAUSSIAN_MANY_OUTPUTS_SINGLE_VARIANCE"
-    computes_calibration = False
-
-    def __init__(
-        self, raw_output: torch.Tensor, arena_dims: torch.Tensor, arena_dims_units: Unit
-    ):
-        super().__init__(raw_output, arena_dims, arena_dims_units)
-
-        self.n_dims: int = 6
-
-        scale_factor = F.softplus(self.raw_output[:, 0])
-        L = torch.zeros(self.batch_size, 4 * 6, 4 * 6, device=self.device)
-        L = torch.eye(4 * 6, device=self.device) * scale_factor
-        L = L[None, ...].expand(self.batch_size, -1, -1)
-        self.cholesky_covs = L
-
-    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return log p(x) under the Gaussian parameterized by the model
-        output.
-
-        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
-        in arbitrary units (i.e. on the square [-1, 1]^6).
-        """
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
-            raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to be "
-                "(num_nodes, num_dims), but instead found shape {x.shape}."
-            )
-        x = x[..., :3]
-
-        nose = x[..., 0, :]
-        head = x[..., 1, :]
-
-        loc = torch.cat((nose, head), dim=-1)
-        log_probs = [
-            torch.distributions.MultivariateNormal(
-                loc=self.raw_output[6 * i : 6 * i + 6], scale_tril=self.cholesky_covs
-            ).log_prob(loc)
-            for i in range(4)
-        ]
-        return torch.logsumexp(torch.stack(log_probs, dim=-1), dim=-1)
+        return dist.log_prob(x)
 
 
 class GaussianOutputFixedVariance(GaussianOutput):
@@ -565,6 +523,9 @@ class GaussianOutputFixedVariance(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
+        self.nnode: int = 1
+        self.ndim: int = 2
+
         if not variance or not units:
             raise ValueError(
                 "For spherical fixed variance parameterization, "
@@ -579,10 +540,10 @@ class GaussianOutputFixedVariance(GaussianOutput):
         else:
             variances = (
                 torch.ones(2, device=self.device) * variance
-            ) / self.arena_dims[units]
+            ) / self.arena_dims[units].max()
 
         cholesky_cov = torch.diag_embed(torch.sqrt(variances))
-        self.cholesky_covs = cholesky_cov[None].repeat(self.batch_size, 1, 1)
+        self.cholesky_covs = cholesky_cov.unsqueeze(0).repeat(self.batch_size, 1, 1)
 
 
 class GaussianOutputSphericalCov(GaussianOutput):
@@ -604,6 +565,8 @@ class GaussianOutputSphericalCov(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
+        self.nnode: int = 1
+        self.ndim: int = 2
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
@@ -629,6 +592,9 @@ class GaussianOutputDiagonalCov(GaussianOutput):
         """
         super().__init__(raw_output, arena_dims, arena_dim_units)
 
+        self.nnode: int = 1
+        self.ndim: int = 2
+
         # for now, just do a softplus so the diagonal entries of the
         # Cholesky (lower triangular) factor of the covariance matrix
         # are positive
@@ -651,8 +617,10 @@ class GaussianOutputFullCov(GaussianOutput):
         """
         Construct a GaussianOutput object with diagonal covariance matrices.
         """
-        arena_dims = arena_dims[:2]
         super().__init__(raw_output, arena_dims, arena_dim_units)
+
+        self.nnode: int = 1
+        self.ndim: int = 2
 
         L = torch.zeros(self.batch_size, 2, 2, device=self.device)
         # embed the elements into the matrix
@@ -686,7 +654,9 @@ class GaussianOutputFullCov(GaussianOutput):
                 "(num_nodes, num_dims), but instead found shape {x.shape}."
             )
 
-        x = x[..., 0, : self.n_dims]  # This output only uses one node
+        x = x[..., : self.nnode, : self.ndim].reshape(
+            *x.shape[:-2], self.nnode * self.ndim
+        )
         distr = torch.distributions.MultivariateNormal(
             loc=self.point_estimate(), scale_tril=self.cholesky_covs
         )

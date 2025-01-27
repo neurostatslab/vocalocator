@@ -22,7 +22,10 @@ class ModelOutput:
     a (batch of) response distributions, if probabilistic.
     """
 
+    # Should all be implemented by subclasses
     computes_calibration = False
+    ndim: int
+    nnode: int
 
     def __init__(
         self,
@@ -39,6 +42,7 @@ class ModelOutput:
             self.device = raw_output[0].raw_output.device
 
         arena_dims = arena_dims.to(self.device)
+        self.ndim = len(arena_dims)
 
         if isinstance(arena_dim_units, str):
             try:
@@ -69,10 +73,12 @@ class ModelOutput:
             return x * 10
         elif in_units == Unit.ARBITRARY:
             dims = self.arena_dims[out_units].to(x.device)
+            # This ensures the relative scale of each dimension is preserved
             scale_factor = dims.max() / 2
             return x * scale_factor
         elif out_units == Unit.ARBITRARY:
             dims = self.arena_dims[in_units].to(x.device)
+            # This ensures the relative scale of each dimension is preserved
             scale_factor = dims.max() / 2
             return x / scale_factor
         else:
@@ -84,7 +90,7 @@ class ModelOutput:
 
     def _point_estimate(self):
         """Return a single point estimate in arbitrary units."""
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def point_estimate(self, units: Unit = Unit.ARBITRARY):
         """Return a single point estimate in the specified units."""
@@ -132,9 +138,9 @@ class ProbabilisticOutput(ModelOutput):
         log_prob = self._log_p(x_arbitrary)
         # scale probability accordingly
         # jacobian determinant of the affine transform from [-1, 1]^2 \to
-        # [0,xdim] x [0, ydim] is xdim * ydim / 4, so we divide the density by
+        # [0,xdim] x [0, ydim] is (scale_factor / 2)^ndim, so we divide the density by
         # that.
-        scale_factor = (self.arena_dims[units].max() / 2) ** len(self.arena_dims[units])
+        scale_factor = (self.arena_dims[units].max() / 2) ** self.ndim
         # equivalently, subtract the log of the scale factor from log_prob.
         return log_prob - torch.log(scale_factor)
 
@@ -203,7 +209,7 @@ class UniformOutput(BaseDistributionOutput):
             "should not be used in general.",
             file=sys.stderr,
         )
-        return torch.zeros(self.batch_size, 2, device=self.device)
+        return torch.zeros(self.batch_size, self.ndim, device=self.device)
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         if x.shape[-2] != self.batch_size:
@@ -213,9 +219,15 @@ class UniformOutput(BaseDistributionOutput):
                 f"found shape {x.shape}."
             )
         output_shape = x.shape[:-1]
-        return torch.log(
-            torch.tensor(1 / 2 ** (len(self.arena_dims[Unit.MM])))
-        ) * torch.ones(output_shape, device=x.device)
+        # Uniform distribution over [-ad[0]/ad.max, ad[0]/ad.max] x [-ad[1]/ad.max, ad[1]/ad.max] x ...
+        # Volume of the arena is (2*ad[0] / ad.max) * (2*ad[1] / ad.max) * ... = 2^ndim * prod(ad) / ad.max^ndim
+        volume = (
+            torch.prod(self.arena_dims[Unit.MM])
+            / (self.arena_dims[Unit.MM].max() ** self.ndim)
+            * (2**self.ndim)
+        )
+
+        return torch.full(output_shape, -torch.log(volume), device=x.device)
 
 
 class MDNOutput(ProbabilisticOutput):
@@ -307,6 +319,7 @@ class MDNOutput(ProbabilisticOutput):
         # instead compute log theta)ij = w_ij - log(sum_k exp(w_ik))
         normalizer = torch.logsumexp(unnormalized_logits, -1, keepdim=True)
         self.log_weights = unnormalized_logits - normalizer
+        self.ndim = self.responses[0].ndim
 
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         # with the log weights log(theta_ij) defined in the init
@@ -382,6 +395,8 @@ class EnsembleOutput(ProbabilisticOutput):
                     f"The encountered batch sizes are: {[o.batch_size for o in self.raw_output]}."
                 )
 
+        self.ndim = self.distributions[0].ndim
+
     def _log_p(self, x: torch.Tensor) -> torch.Tensor:
         # output probability should be the average of the individual
         # distribution's probabilities. say i is batch index and p_ij is
@@ -393,7 +408,7 @@ class EnsembleOutput(ProbabilisticOutput):
         )
         # shape (..., self.batch_size, self.n_distributions) |--> (..., self.batch_size)
         unnormalized = torch.logsumexp(individual_log_probs, -1)
-        normalizer = torch.log(torch.tensor(1 / self.n_distributions, device=x.device))
+        normalizer = -torch.log(torch.tensor(self.n_distributions, device=x.device))
         return normalizer + unnormalized
 
     def _point_estimate(self):
