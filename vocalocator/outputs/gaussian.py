@@ -40,7 +40,6 @@ class GaussianOutput(BaseDistributionOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        # raw_output = torch.clamp(self.raw_output, -1, 1)
         raw_output = self.raw_output
         return raw_output[:, : self.ndim * self.nnode].reshape(
             -1, self.nnode, self.ndim
@@ -59,8 +58,11 @@ class GaussianOutput(BaseDistributionOutput):
         x = x[..., : self.nnode, : self.ndim]  # This output only uses one node
         x = x.reshape(*x.shape[:-2], self.nnode * self.ndim)
 
+        # The center of the distribution needs to be in (nnode*ndim,) space instead of
+        # (nnode, ndim) space
+        dist_center = self.point_estimate().reshape(-1, self.nnode * self.ndim)
         distr = torch.distributions.MultivariateNormal(
-            loc=self.point_estimate(), scale_tril=self.cholesky_covs
+            loc=dist_center, scale_tril=self.cholesky_covs
         )
 
         return distr.log_prob(x)
@@ -119,8 +121,6 @@ class GaussianOutput3dIndependentHeight(GaussianOutput):
         Return the mean of the Gaussian(s) in the specified units.
         """
         # first two values of model output are always interpreted as the mean
-        # xy = torch.clamp(self.plane_raw_output[:, :2], -1, 1)
-        # height = torch.clamp(self.height_raw_output[:, 0], -1, 1)
         xy = self.plane_raw_output[:, :2]
         height = self.height_raw_output[:, 0]
         return torch.cat((xy, height[:, None]), dim=-1).unsqueeze(-2)
@@ -632,32 +632,3 @@ class GaussianOutputFullCov(GaussianOutput):
         L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
         # reshape y_hat so we can concatenate it to L
         self.cholesky_covs = L
-
-    def covs(self, units: Unit) -> torch.Tensor:
-        covariance = self.cholesky_covs @ self.cholesky_covs.swapaxes(-2, -1)
-        if units != Unit.ARBITRARY:
-            scale = 0.5 * self.arena_dims[units].max()
-            covariance = scale**2 * covariance
-        return covariance
-
-    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return log p(x) under the Gaussian parameterized by the model
-        output.
-
-        Expects x to have shape (..., self.batch_size, 2), and to be provided
-        in arbitrary units (i.e. all dimensions are bounded by [-1, 1]
-        """
-        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
-            raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to be "
-                "(num_nodes, num_dims), but instead found shape {x.shape}."
-            )
-
-        x = x[..., : self.nnode, : self.ndim].reshape(
-            *x.shape[:-2], self.nnode * self.ndim
-        )
-        distr = torch.distributions.MultivariateNormal(
-            loc=self.point_estimate(), scale_tril=self.cholesky_covs
-        )
-        return distr.log_prob(x)
