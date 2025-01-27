@@ -75,7 +75,8 @@ class Trainer:
             self.device = torch.device("mps")
         else:
             # fall back
-            torch.device = torch.device("cpu")
+            self.device = torch.device("cpu")
+
         print(f"Using device: {self.device}")
 
         if not self.__eval:
@@ -314,13 +315,10 @@ class Trainer:
                     outputs: list[ModelOutput] = self.model(sounds, unbatched=True)
 
                     for output, location in zip(outputs, locations):
-                        if len(location.shape) > 1:
-                            location = location[0]
-
                         # Calculate error in cm
                         point_estimate = (
                             output.point_estimate(units=Unit.CM).cpu().numpy()
-                        )
+                        )  # Returns (n_node, n_dim)
                         location = (
                             output._convert(location, Unit.ARBITRARY, Unit.CM)
                             .float()
@@ -329,11 +327,14 @@ class Trainer:
                         )
 
                         # Ensure the same number of dimensions are being used
-                        n_dims = min(point_estimate.shape[-1], location.shape[-1])
-                        location = location[..., :n_dims]
-                        point_estimate = point_estimate[..., :n_dims]
+                        n_nodes: int = output.nnode
+                        n_dims: int = output.ndim
+                        location = location[..., :n_nodes, :n_dims]
 
-                        err = np.linalg.norm(point_estimate - location, axis=-1).item()
+                        err = np.linalg.norm(
+                            point_estimate - location, axis=-1
+                        )  # (n_node,)
+                        err = err[0]  # Only look at the first node
                         batch_err += err
 
                         if output.computes_calibration:
@@ -343,7 +344,7 @@ class Trainer:
                                     output.arena_dims[Unit.MM].cpu().numpy()
                                 )
                             location_mm = location * 10
-                            ca.calculate_step(output, location_mm[None, :])
+                            ca.calculate_step(output, location_mm)
 
                         idx += 1
 
@@ -358,7 +359,9 @@ class Trainer:
             cal_curve = None
             if compute_calibration:
                 cal_curve = ca.results()["calibration_curve"]
-            val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
+            val_loss = self.__progress_log.finish_epoch(
+                calibration_curve=cal_curve
+            ).item()  # Should be one-element tensor
 
         else:
             val_loss = 0.0
