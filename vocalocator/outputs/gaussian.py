@@ -422,30 +422,6 @@ class GaussianOutput4dOriented(GaussianOutput):
 
         self.cholesky_covs = L
 
-    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return log p(x) under the Gaussian parameterized by the model
-        output.
-
-        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
-        in arbitrary units (i.e. on the square [-1, 1]^4).
-        """
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
-            raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to be "
-                "(num_nodes, num_dims), but instead found shape {x.shape}."
-            )
-        x = x[..., : self.nnode, : self.ndim].reshape(
-            *x.shape[:-2], self.nnode * self.ndim
-        )
-
-        dist = torch.distributions.MultivariateNormal(
-            loc=self.point_estimate(), scale_tril=self.cholesky_covs
-        )
-        return dist.log_prob(x)
-
 
 class GaussianOutput6dOriented(GaussianOutput):
     N_OUTPUTS_EXPECTED = 27
@@ -478,30 +454,6 @@ class GaussianOutput6dOriented(GaussianOutput):
         L = L.diagonal_scatter(new_diagonals, dim1=-2, dim2=-1)
 
         self.cholesky_covs = L
-
-    def _log_p(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return log p(x) under the Gaussian parameterized by the model
-        output.
-
-        Expects x to have shape (..., self.batch_size, 2, 2), and to be provided
-        in arbitrary units (i.e. on the square [-1, 1]^6).
-        """
-        # Handle the case where there are multiple nodes in the ground truth location
-        # Subclasses should override this
-        if not (len(x.shape) > 2 and x.shape[-3] == self.batch_size):
-            raise ValueError(
-                "Incorrect shape for input! Expected last two dimensions to be "
-                "(num_nodes, num_dims), but instead found shape {x.shape}."
-            )
-        x = x[..., : self.nnode, : self.ndim].reshape(
-            *x.shape[:-2], self.nnode * self.ndim
-        )
-
-        dist = torch.distributions.MultivariateNormal(
-            loc=self.point_estimate(), scale_tril=self.cholesky_covs
-        )
-        return dist.log_prob(x)
 
 
 class GaussianOutputFixedVariance(GaussianOutput):
