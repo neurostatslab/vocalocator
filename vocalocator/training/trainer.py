@@ -361,7 +361,9 @@ class Trainer:
                 cal_curve = ca.results()["calibration_curve"]
             val_loss = self.__progress_log.finish_epoch(
                 calibration_curve=cal_curve
-            ).item()  # Should be one-element tensor
+            )  # will have shape (n_node,)
+            reported_val_loss = ",".join([f"{float(x):.3f}" for x in val_loss])
+            val_loss = val_loss.mean()
 
         else:
             val_loss = 0.0
@@ -369,7 +371,7 @@ class Trainer:
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
             self.__best_loss = val_loss
-            fmt_val_loss = "{:.3f}cm".format(val_loss)
+            fmt_val_loss = f"{reported_val_loss}cm"
             self.__logger.info(
                 f">> MEAN VALIDATION LOSS, {fmt_val_loss}, IS BEST SO FAR, SAVING WEIGHTS TO {self.__best_weights_file}"
             )
@@ -394,5 +396,6 @@ class Trainer:
         for _ in range(self.num_epochs):
             self.train_epoch()
             val_loss = self.eval_validation()
+            # Update learning rates based on the mean val loss across nodes
             self.update_learning_rate(val_loss)
         self.finalize()
