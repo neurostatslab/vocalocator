@@ -39,9 +39,9 @@ class LORA_Conv1d(nn.Module):
         # Keep a cached version of the adapted kernel to use in inference
         self.register_buffer("cached_kernel", None)
 
-        self.register_buffer("w_wrap", w_wrap)
+        self.register_buffer("w_wrap", w_wrap, persistent=True)
         if self.use_bias:
-            self.register_buffer("b_wrap", b_wrap)
+            self.register_buffer("b_wrap", b_wrap, persistent=True)
 
         self.initialize_params()
         self.to(mod.weight.device)
@@ -123,9 +123,9 @@ class LORA_Linear(nn.Module):
 
         # Cache the weights of the wrapped module as buffers so
         # they are not seen by the optimizer
-        self.register_buffer("w_wrap", mod.weight)
+        self.register_buffer("w_wrap", mod.weight, persistent=True)
         if self.use_bias:
-            self.register_buffer("b_wrap", mod.bias)
+            self.register_buffer("b_wrap", mod.bias, persistent=True)
 
         self.initialize_params()
         self.to(mod.weight.device)

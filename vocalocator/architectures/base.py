@@ -49,15 +49,27 @@ class VocalocatorArchitecture(torch.nn.Module):
         self.to(device)
 
         print(f"Loading weights from path {weights_path}.")
-        weights = torch.load(weights_path, map_location=device)
-        self.load_state_dict(weights)
-
-        print("Attempting to make model fine-tuneable...")
+        weights = torch.load(weights_path, map_location=device, weights_only=True)
+        # First attempt a strict load. If the saved weights are the result of finetuning, this should fail.
         try:
-            self._make_finetuneable()
-            self.is_finetuning = True
-        except NotImplementedError as e:
-            print(f"Warning: Failed to make model efficiently fine-tuneable: {e}")
+            self.load_state_dict(weights, strict=True)
+        except RuntimeError:
+            print("Attempting to load model as finetuned...")
+            try:
+                self._make_finetuneable()
+                self.is_finetuning = True
+            except NotImplementedError as e:
+                print(f"Error, mismatch between architecture and saved weights: {e}")
+                raise
+        print("Weights loaded successfully.")
+
+        if not self.is_finetuning:
+            print("Attempting to make model finetunable...")
+            try:
+                self._make_finetuneable()
+                self.to(device)
+            except NotImplementedError as e:
+                print(f"{__class__}: Warning, model is not finetuneable: {e}")
 
     def _make_finetuneable(self):
         """Makes the model finetunable by wrapping the necessary child modules in LORA
