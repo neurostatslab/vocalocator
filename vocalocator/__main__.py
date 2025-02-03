@@ -76,10 +76,8 @@ def run(args):
         config_data=args.config_data,
         eval_mode=False,
         index_dir=args.indices,
+        init_weights_path=weights,
     )
-
-    if weights is not None:
-        trainer.model.load_weights(best_weights_path=weights)
 
     trainer.train()
 

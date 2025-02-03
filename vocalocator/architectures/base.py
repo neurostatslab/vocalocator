@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Literal, overload
 
 import torch
+
 from vocalocator.outputs import ModelOutput, ModelOutputFactory
 
 
@@ -11,9 +12,10 @@ class VocalocatorArchitecture(torch.nn.Module):
     def __init__(self, CONFIG, output_factory: ModelOutputFactory):
         super(VocalocatorArchitecture, self).__init__()
 
-        self.config = CONFIG
-        self.output_factory = output_factory
-        self.n_outputs = self.output_factory.n_outputs_expected
+        self.config: dict = CONFIG
+        self.output_factory: ModelOutputFactory = output_factory
+        self.n_outputs: int = self.output_factory.n_outputs_expected
+        self.is_finetuning: bool = False
 
     def load_weights(self, best_weights_path=None, use_final_weights: bool = False):
         """
@@ -49,6 +51,19 @@ class VocalocatorArchitecture(torch.nn.Module):
         print(f"Loading weights from path {weights_path}.")
         weights = torch.load(weights_path, map_location=device)
         self.load_state_dict(weights)
+
+        print("Attempting to make model fine-tuneable...")
+        try:
+            self._make_finetuneable()
+            self.is_finetuning = True
+        except NotImplementedError as e:
+            print(f"Warning: Failed to make model efficiently fine-tuneable: {e}")
+
+    def _make_finetuneable(self):
+        """Makes the model finetunable by wrapping the necessary child modules in LORA
+        objects. Should be called after loading weights.
+        """
+        raise NotImplementedError(f"{__class__}: This model is not fine-tuneable!")
 
     def _forward(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()

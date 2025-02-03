@@ -59,6 +59,17 @@ DEFAULT_CONFIG = {
             "MAX_LENGTH": 125,  # 1 ms at 125 kHz
         },
     },
+    "FINETUNING": {
+        "INITIAL_LEARNING_RATE": 0.0001,
+        "SCHEDULERS": [
+            {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
+        ],
+        "NUM_EPOCHS": 10,
+        "OPTIMIZER": "ADAM",
+        "ADAM_BETAS": [0.9, 0.999],
+        "LORA_RANK": 2,
+        "WEIGHT_DECAY": 0.0,
+    },
 }
 
 

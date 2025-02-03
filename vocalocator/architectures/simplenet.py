@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 from vocalocator.architectures.base import VocalocatorArchitecture
+from vocalocator.architectures.lora import LORA_Conv1d
 from vocalocator.outputs import ModelOutputFactory
 
 
@@ -14,7 +15,7 @@ class VocalocatorSimpleLayer(torch.nn.Module):
         *,
         downsample: bool,
         dilation: int,
-        use_bn: bool = True
+        use_bn: bool = True,
     ):
         super(VocalocatorSimpleLayer, self).__init__()
         self.fc = torch.nn.Conv1d(
@@ -34,6 +35,10 @@ class VocalocatorSimpleLayer(torch.nn.Module):
         self.batch_norm = (
             torch.nn.BatchNorm1d(channels_out) if use_bn else nn.Identity()
         )
+
+    def _make_finetuneable(self, rank: int):
+        self.fc = LORA_Conv1d(self.fc, rank)
+        self.gc = LORA_Conv1d(self.gc, rank)
 
     def forward(self, x):
         fcx = self.fc(x)
@@ -114,6 +119,13 @@ class VocalocatorSimpleNetwork(VocalocatorArchitecture):
                 "Number of parameters to output is undefined! Maybe check the model configuration and ModelOutputFactory object?"
             )
         self.coord_readout = torch.nn.Linear(self.n_channels[-1], self.n_outputs)
+
+    def _make_finetuneable(self):
+        rank = self.config["FINETUNING"]["LORA_RANK"]
+        for layer in self.conv_layers.children():
+            layer: VocalocatorSimpleLayer
+            layer._make_finetuneable(rank)
+        self.coord_readout.requires_grad_(False)
 
     def _forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.transpose(

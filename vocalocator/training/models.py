@@ -60,8 +60,7 @@ def make_output_factory(config: dict[str, Any]) -> ModelOutputFactory:
 
     if not arena_dims_units:
         raise ValueError(
-            "Need to specify units for arena dimensions under key "
-            "`ARENA_DIMS_UNITS`!"
+            "Need to specify units for arena dimensions under key `ARENA_DIMS_UNITS`!"
         )
 
     # now handle certain subclasses which require additional information
