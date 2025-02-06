@@ -1,7 +1,7 @@
 import typing as tp
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 from torch.nn import functional as F
 
 
@@ -19,8 +19,8 @@ class LORA_Conv1d(nn.Module):
             raise NotImplementedError("LORA not implemented for groups > 1")
 
         # Get weights
-        w_wrap: torch.Tensor = mod.weight
-        b_wrap: tp.Optional[torch.Tensor] = mod.bias
+        w_wrap: Tensor = mod.weight
+        b_wrap: tp.Optional[Tensor] = mod.bias
         self.use_bias = b_wrap is not None
 
         out_size, in_size, k_size = w_wrap.shape
@@ -71,7 +71,7 @@ class LORA_Conv1d(nn.Module):
         nn.init.xavier_normal_(self.w_lora_C)
         nn.init.zeros_(self.b_lora)
 
-    def _make_kernel(self) -> torch.Tensor:
+    def _make_kernel(self) -> Tensor:
         """Creates an adapted convolution kernel based on the current low rank weight
         matrices. The kernel is scaled proportionally to the inverse of the module's rank
         to allow for consistency in learning rate across different choices of the rank
@@ -86,7 +86,7 @@ class LORA_Conv1d(nn.Module):
         K_comb = self.w_wrap + K
         return K_comb
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         K_comb = (
             self._make_kernel() if self.cached_kernel is None else self.cached_kernel
         )
@@ -159,7 +159,7 @@ class LORA_Linear(nn.Module):
         nn.init.xavier_normal_(self.w_lora_A)
         nn.init.zeros_(self.w_lora_B)
 
-    def _make_matrix(self) -> torch.Tensor:
+    def _make_matrix(self) -> Tensor:
         """Creates an adapted weight matrix based on the current low rank weight
         matrices. The matrix is scaled proportionally to the inverse of the module's rank
         to allow for consistency in learning rate across different choices of the rank
@@ -170,7 +170,7 @@ class LORA_Linear(nn.Module):
         W_comb = self.w_wrap + W
         return W_comb
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         W_comb = (
             self._make_matrix() if self.cached_matrix is None else self.cached_matrix
         )

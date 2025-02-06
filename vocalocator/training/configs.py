@@ -61,13 +61,13 @@ DEFAULT_CONFIG = {
         },
     },
     "FINETUNING": {
-        "INITIAL_LEARNING_RATE": 0.0001,
+        "INITIAL_LEARNING_RATE": 2e-3,
         "SCHEDULERS": [
             {"SCHEDULER_TYPE": "COSINE_ANNEALING", "MIN_LEARNING_RATE": 0.0}
         ],
         "NUM_EPOCHS": 10,
         "OPTIMIZER": "ADAM",
-        "ADAM_BETAS": [0.9, 0.999],
+        "ADAM_BETAS": [0.8, 0.95],
         "LORA_RANK": 2,
         "WEIGHT_DECAY": 0.0,
     },

@@ -98,12 +98,18 @@ class Trainer:
 
             self.__best_loss = float("inf")
 
-            param_count = 0
-            for param in self.model.parameters():
+            total_param_count = 0
+            trainable_param_count = 0
+            for name, param in self.model.named_parameters():
+                total_param_count += param.numel()
                 if not param.requires_grad:
                     continue
-                param_count += param.numel()
-            self.__logger.info(f"Training model with {param_count} parameters.")
+                trainable_param_count += param.numel()
+            for buffer in self.model.buffers():
+                total_param_count += buffer.numel()
+            self.__logger.info(
+                f"Training model with {trainable_param_count}/{total_param_count} parameters."
+            )
 
     def save_weights(self, weight_path: str):
         torch.save(self.model.state_dict(), weight_path)
