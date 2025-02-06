@@ -3,6 +3,7 @@ from torch import nn
 from torchaudio.models import Conformer
 
 from ..architectures.base import VocalocatorArchitecture
+from ..architectures.lora import LORA_MHA
 from ..outputs import ModelOutputFactory
 from .resnet1d import ResNet1D
 
@@ -74,6 +75,15 @@ class ResnetConformer(VocalocatorArchitecture):
             nn.Linear(512, self.n_outputs),
         )
 
+    def _make_finetuneable(self):
+        """Convert all conformer layers to finetunable layers and disable gradient flow through conv layers"""
+        rank = self.config["FINETUNING"]["LORA_RANK"]
+        for p in self.parameters():
+            p.requires_grad_(False)
+        for layer in self.conformer.conformer_layers:
+            layer.self_attn = LORA_MHA(layer.self_attn, rank)
+            layer.self_attn.requires_grad_(True)
+
     def _forward(self, x):
         x = torch.einsum("btc->bct", x)  # transpose
 
@@ -129,12 +139,13 @@ if __name__ == "__main__":
         model_params = dict(zip(keys, configuration))
         cfg = sample_config.copy()
         cfg["MODEL_PARAMS"] = model_params
-        try:
-            model = ResnetConformer(cfg, factory)
-            model(sample_data)
-        except Exception as e:
-            print(f"{type(e)} for the following configuration:")
-            for key, value in model_params.items():
-                print(f"\t{key}: {value}")
-            print()
-            print()
+        # try:
+        model = ResnetConformer(cfg, factory)
+        model._make_finetuneable()
+        model(sample_data)
+        # except Exception as e:
+        # print(f"{type(e)} for the following configuration:")
+        # for key, value in model_params.items():
+        #     print(f"\t{key}: {value}")
+        # print()
+        # print()
