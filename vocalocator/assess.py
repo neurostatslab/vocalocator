@@ -36,8 +36,9 @@ def plot_results(f: h5py.File):
     Create and save plots of calibration curve, error distributions, etc.
     """
     point_predictions = f["point_predictions"][:]
+    scaled_locations = f["scaled_locations"][:].reshape(point_predictions.shape[0], -1)
 
-    errs = np.linalg.norm(point_predictions - f["scaled_locations"][:], axis=-1)
+    errs = np.linalg.norm(point_predictions - scaled_locations, axis=-1)
     if "calibration_curve" not in f.attrs:
         fig, err_ax = plt.subplots(1, 1, sharex=False, sharey=False)
 
@@ -137,7 +138,7 @@ def assess_model(
                 "raw_model_output", shape=(N, model.n_outputs)
             )
 
-        point_predictions = f.create_dataset("point_predictions", shape=(N, 2))
+        point_predictions = None
 
         ca = CalibrationAccumulator(arena_dims)
 
@@ -166,9 +167,12 @@ def assess_model(
                             output.raw_output.squeeze().cpu().numpy()
                         )
 
-                    point_predictions[idx] = (
-                        output.point_estimate(units=Unit.MM).cpu().numpy()
-                    )
+                    point_est = output.point_estimate(units=Unit.MM).cpu().numpy()
+                    if point_predictions is None:
+                        point_predictions = f.create_dataset(
+                            "point_predictions", shape=(N, *point_est.shape[1:])
+                        )
+                    point_predictions[idx] = point_est
 
                     # unscale location from [-1, 1] square to units in arena (in mm)
                     if location is not None:
@@ -185,7 +189,7 @@ def assess_model(
                         scaled_locations_dataset[idx] = scaled_location
 
                         # other useful info
-                        if isinstance(output, ProbabilisticOutput) and not inference:
+                        if output.computes_calibration and not inference:
                             should_compute_calibration = True
                             ca.calculate_step(
                                 output, scaled_location, temperature=temperature
@@ -342,6 +346,7 @@ if __name__ == "__main__":
     sample_rate = config_data["DATA"]["SAMPLE_RATE"]
     crop_length = config_data["DATA"]["CROP_LENGTH"]
     normalize_data = config_data["DATA"].get("NORMALIZE_DATA", True)
+    node_names = config_data["DATA"].get("NODES_TO_LOAD", None)
     vocalization_dir = config_data["DATA"].get(
         "VOCALIZATION_DIR",
         None,
@@ -374,6 +379,7 @@ if __name__ == "__main__":
         normalize_data=normalize_data,
         sample_rate=sample_rate,
         sample_vocalization_dir=vocalization_dir,
+        nodes=node_names,
     )
 
     batch_size = config_data["DATA"]["BATCH_SIZE"]

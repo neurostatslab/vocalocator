@@ -182,12 +182,12 @@ def make_xy_grids(
         # create one extra gridpoint in each direction
         # then return the average of each successive bin
         if return_center_pts:
-            edge_coords = np.linspace(0, dimension, n_pts + 1)
+            edge_coords = np.linspace(-dimension / 2, dimension / 2, n_pts + 1)
             # add half the successive differences to get avgs
             # between edge_pts[i] and edge_pts[i+1]
             coords = edge_coords[:-1] + (np.diff(edge_coords) / 2)
         else:
-            coords = np.linspace(0, dimension, n_pts)
+            coords = np.linspace(-dimension / 2, dimension / 2, n_pts)
         return coords
 
     xs, ys = map(_coord_array, zip(arena_dims, pts_per_dim))

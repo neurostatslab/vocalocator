@@ -21,6 +21,7 @@ class VocalizationDataset(Dataset):
         datapath: Union[Path, str],
         crop_length: int,
         *,
+        nodes: Optional[list[str]] = None,
         inference: bool = False,
         arena_dims: Optional[Union[np.ndarray, Tuple[float, float]]] = None,
         index: Optional[np.ndarray] = None,
@@ -69,6 +70,27 @@ class VocalizationDataset(Dataset):
         self.normalize_data = normalize_data
         self.sample_rate = sample_rate
         self.sample_vocalization_dir = sample_vocalization_dir
+
+        # Determine which nodes indices to select
+        if nodes is None:
+            self.node_indices = np.array([0])
+        else:
+            if "node_names" not in dataset:
+                pass
+                # raise ValueError("Dataset does not contain node names")
+                dset_node_names = []
+            else:
+                dset_node_names = list(map(bytes.decode, dataset["node_names"]))
+            self.node_indices = [
+                i for i, node in enumerate(dset_node_names) if node in nodes
+            ]
+
+            if not self.node_indices:
+                self.node_indices = np.array([0])
+                # raise ValueError(
+                # "No nodes found in dataset with the given names: {}".format(nodes)
+                # )
+            self.node_indices = np.array(self.node_indices)
 
         if self.index is not None:
             self.length = len(self.index)
@@ -136,7 +158,7 @@ class VocalizationDataset(Dataset):
             # will fail if input is numpy array
             return F.pad(audio, (0, 0, 0, pad_size))
         if self.inference:
-            range_start = 0
+            range_start = 0  # Ensure the output is deterministic at inference time
         else:
             range_start = self.rng.integers(0, valid_range)
         range_end = range_start + crop_length
@@ -159,7 +181,15 @@ class VocalizationDataset(Dataset):
     def __label_for_index(self, idx: int):
         if "locations" not in self.dataset:
             return None
-        return torch.from_numpy(self.dataset["locations"][idx].astype(np.float32))
+        if len(self.dataset["locations"].shape) == 2:
+            locs = torch.from_numpy(
+                self.dataset["locations"][idx].astype(np.float32)[None, :]
+            )
+            return locs
+
+        locs = self.dataset["locations"][idx, ..., self.node_indices, :]
+        locs = torch.from_numpy(locs.astype(np.float32))
+        return locs
 
     def scale_features(
         self,
@@ -170,18 +200,16 @@ class VocalizationDataset(Dataset):
         from millimeter units to an arbitrary unit with range [-1, 1].
         """
 
-        scaled_labels = None
-        if labels is not None and self.arena_dims is not None:
-            # Shift range to [-1, 1]
-            scaled_labels = labels
-            scaled_labels[..., : len(self.arena_dims)] /= (
-                torch.from_numpy(self.arena_dims).float() / 2
-            )
+        if labels is not None:
+            # Shift range to [-1, 1], but keep units same across dimensions
+            # Origin remains at center of arena
+            scale_factor = self.arena_dims.max() / 2
+            labels /= scale_factor
 
         if self.normalize_data:
             scaled_audio = (audio - audio.mean()) / audio.std()
 
-        return scaled_audio, scaled_labels
+        return scaled_audio, labels
 
     def __processed_data_for_index__(self, idx: int):
         if self.is_rir_dataset:
@@ -228,6 +256,7 @@ def build_dataloaders(
     crop_length = config["DATA"]["CROP_LENGTH"]
     normalize_data = config["DATA"].get("NORMALIZE_DATA", True)
     sample_rate = config["DATA"].get("SAMPLE_RATE", 192000)
+    node_names = config["DATA"].get("NODES_TO_LOAD", None)
 
     vocalization_dir = config["DATA"].get(
         "VOCALIZATION_DIR",
@@ -242,6 +271,7 @@ def build_dataloaders(
             index_arrays["test"] = np.load(index_dir / "test_set.npy")
 
     try:
+        # I think this function only exists on linux
         avail_cpus = max(1, len(os.sched_getaffinity(0)) - 1)
     except:
         avail_cpus = max(1, os.cpu_count() - 1)
@@ -280,6 +310,7 @@ def build_dataloaders(
         normalize_data=normalize_data,
         sample_rate=sample_rate,
         sample_vocalization_dir=vocalization_dir,
+        nodes=node_names,
     )
 
     valdata = VocalizationDataset(
@@ -291,6 +322,7 @@ def build_dataloaders(
         normalize_data=normalize_data,
         sample_rate=sample_rate,
         sample_vocalization_dir=vocalization_dir,
+        nodes=node_names,
     )
 
     train_dataloader = DataLoader(

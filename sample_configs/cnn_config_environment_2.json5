@@ -14,7 +14,7 @@
         ]
     },
 
-    "ARCHITECTURE": "GerbilizerSimpleNetwork",  // Network type. See options in vocalocator.architectures package
+    "ARCHITECTURE": "VocalocatorSimpleNetwork",  // Network type. See options in vocalocator.architectures package
     "MODEL_PARAMS": {
         "OUTPUT_TYPE": "GAUSSIAN_FULL_COV",  // Output distribution type. See options in vocalocator.outputs package
     },
@@ -33,9 +33,6 @@
         "ARENA_DIMS": [914, 1219],
         "ARENA_DIMS_UNITS": "MM",
         "SAMPLE_RATE": 192000
-    },
-
-    "AUGMENTATIONS": {
-        "AUGMENT_DATA": true, // controls noise addition
+        "AUGMENT_DATA": true
     },
 }

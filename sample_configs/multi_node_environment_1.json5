@@ -13,7 +13,7 @@
             }
         ]
     },
-    "ARCHITECTURE": "CorrSimpleNetwork",
+    "ARCHITECTURE": "VocalocatorSimpleNetwork",
     "MODEL_PARAMS": {
         "USE_BATCH_NORM": true,
         "SHOULD_DOWNSAMPLE": [
@@ -64,9 +64,7 @@
             1,
             1
         ],
-        "CPS_NUM_LAYERS": 3,
-        "CPS_HIDDEN_SIZE": 1024,
-        "OUTPUT_TYPE": "GAUSSIAN_FULL_COV"
+        "OUTPUT_TYPE": "GAUSSIAN_4D_ORIENTED"
     },
     "GENERAL": {
         "DEVICE": "GPU",

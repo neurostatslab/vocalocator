@@ -92,8 +92,9 @@ TESTING VALIDATION SET. Epoch 1 [416/770]
 | Dataset group/name | Shape             | Data type | Description                                                                                                                                    |
 |--------------------|-------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | /audio     | (*, n_channels) | float     | All sound events concatenated along axis 0                                                                                                     |
-| /length_idx           | (n + 1,)          | int       | Index into audio dataset. Sound event `i` should span the half open interval [`length_idx[i]`, `length_idx[i+1]`) and the first element should be 0. |
-| /locations         | (n, 2)            | float     | Locations associated with each sound event. Only required for training.                                                                        |
+| /length_idx        | (n + 1,)                  | int       | Index into audio dataset. Sound event `i` should span the half open interval [`length_idx[i]`, `length_idx[i+1]`) and the first element should be 0. |
+| /locations         | (n, num_nodes, num_dims)  | float     | Locations associated with each sound event. Only required for training. May contain multiple nodes. Expects the origin to lie at the center of the arena.|
+| /node_names        | (num_dims,)               | str       | Names of nodes contained by `locations`. Only required for training.                                                                                                                                                                                 |
 1. Optionally, manually generate a train/val split. If none is provided, an 80/10/10 train/validation/test split will be generated automatically and saved in the model directory. Manually generated splits can be used by saving them to the same directory as 1-D numpy arrays with the names `train_set.npy` and `val_set.npy`. This directory is passed to VCL through the `--indices` option.
 ```python
 # Simple script to generate a test-train split
@@ -105,7 +106,7 @@ np.save('train_set.npy', train_set)
 np.save('val_set.npy', val_set)
 np.save('test_set.npy', test_set)
 ```
-2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm. See examples in the `sample_configs` directory of the repository
+2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm. See examples in the `sample_configs` directory of the repository. If using multiple nodes (e.g. for inference on orientation in addition to position), use the `DATA/NODES_TO_LOAD` entry in the config JSON file to list all nodes in the dataset that will be used for training (see: `sample_configs/multi_node_environment_1.json5`).
 3. Train a model: `python -m vocalocator --data /path/to/directory/containing/trainset/ --config /path/to/config.json --save-path /path/to/model/weight/directory/ --indices /optional/path/to/index/directory`
    *  _(Optional)_ Initialize with pretrained weights by populating the "WEIGHTS_PATH" field in the top-level of the config file with a path to the saved model state as a .pt file.
 5. Using the trained model, perform inference: `python -m vocalocator.assess --inference --data /path/to/hdf5/dataset.h5 --config /path/to/model_dir/config.json -o /optional/output/path.h5 --index /optional/index/path.npy`.

@@ -75,7 +75,8 @@ class Trainer:
             self.device = torch.device("mps")
         else:
             # fall back
-            torch.device = torch.device("cpu")
+            self.device = torch.device("cpu")
+
         print(f"Using device: {self.device}")
 
         if not self.__eval:
@@ -317,7 +318,7 @@ class Trainer:
                         # Calculate error in cm
                         point_estimate = (
                             output.point_estimate(units=Unit.CM).cpu().numpy()
-                        )
+                        )  # Returns (n_node, n_dim)
                         location = (
                             output._convert(location, Unit.ARBITRARY, Unit.CM)
                             .float()
@@ -326,12 +327,17 @@ class Trainer:
                         )
 
                         # Ensure the same number of dimensions are being used
-                        location = location[: point_estimate.shape[-1]]
+                        n_nodes: int = output.nnode
+                        n_dims: int = output.ndim
+                        location = location[..., :n_nodes, :n_dims]
 
-                        err = np.linalg.norm(point_estimate - location, axis=-1).item()
+                        err = np.linalg.norm(
+                            point_estimate - location, axis=-1
+                        )  # (n_node,)
+                        err = err[0]  # Only look at the first node
                         batch_err += err
 
-                        if isinstance(output, ProbabilisticOutput):
+                        if output.computes_calibration:
                             compute_calibration = True
                             if idx == 0:
                                 ca = CalibrationAccumulator(
@@ -353,7 +359,11 @@ class Trainer:
             cal_curve = None
             if compute_calibration:
                 cal_curve = ca.results()["calibration_curve"]
-            val_loss = self.__progress_log.finish_epoch(calibration_curve=cal_curve)
+            val_loss = self.__progress_log.finish_epoch(
+                calibration_curve=cal_curve
+            )  # will have shape (n_node,)
+            reported_val_loss = ",".join([f"{float(x):.3f}" for x in val_loss])
+            val_loss = val_loss.mean()
 
         else:
             val_loss = 0.0
@@ -361,7 +371,7 @@ class Trainer:
         # Save best set of weights.
         if val_loss < self.__best_loss or self.__valdata is None:
             self.__best_loss = val_loss
-            fmt_val_loss = "{:.3f}cm".format(val_loss)
+            fmt_val_loss = f"{reported_val_loss}cm"
             self.__logger.info(
                 f">> MEAN VALIDATION LOSS, {fmt_val_loss}, IS BEST SO FAR, SAVING WEIGHTS TO {self.__best_weights_file}"
             )
@@ -386,5 +396,6 @@ class Trainer:
         for _ in range(self.num_epochs):
             self.train_epoch()
             val_loss = self.eval_validation()
+            # Update learning rates based on the mean val loss across nodes
             self.update_learning_rate(val_loss)
         self.finalize()
