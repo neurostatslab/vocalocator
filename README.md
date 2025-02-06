@@ -102,7 +102,7 @@ np.save('train_set.npy', train_set)
 np.save('val_set.npy', val_set)
 np.save('test_set.npy', test_set)
 ```
-2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm. See examples in the `sample_configs` directory of the repository
+2. Create a config. This is a JSON file consisting of a single object whose properties correspond to the hyperparameters of the model and optimization algorithm. See examples in the `sample_configs` directory of the repository. If using multiple nodes (e.g. for inference on orientation in addition to position), use the `DATA/NODES_TO_LOAD` entry in the config JSON file to list all nodes in the dataset that will be used for training (see: `sample_configs/multi_node_environment_1.json5`).
 3. Train a model: `python -m vocalocator --data /path/to/directory/containing/trainset/ --config /path/to/config.json --save-path /path/to/model/weight/directory/ --indices /optional/path/to/index/directory`
    *  _(Optional)_ Initialize with pretrained weights by populating the "WEIGHTS_PATH" field in the top-level of the config file with a path to the saved model state as a .pt file.
 5. Using the trained model, perform inference: `python -m vocalocator.assess --inference --data /path/to/hdf5/dataset.h5 --config /path/to/model_dir/config.json -o /optional/output/path.h5 --index /optional/index/path.npy`.
