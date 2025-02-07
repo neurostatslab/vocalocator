@@ -57,9 +57,13 @@ class VocalocatorArchitecture(torch.nn.Module):
             print("Attempting to load model as finetuned...")
             try:
                 self._make_finetuneable()
+                self.load_state_dict(weights, strict=True)
                 self.is_finetuning = True
             except NotImplementedError as e:
                 print(f"Error, mismatch between architecture and saved weights: {e}")
+                raise
+            except RuntimeError as e:
+                print(f"Error loading weights: {e}")
                 raise
         print("Weights loaded successfully.")
 
